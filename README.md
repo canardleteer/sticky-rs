@@ -1,5 +1,12 @@
 # sticky-rs
 
+> [!NOTE]
+> I do have a "functioning" Embedded Rust dev environment for the Sticky,
+> but I'm porting it over to clean git history slowly.
+>
+> For now, I'm just going to include the skill and safety information,
+> but am working on moving the rest over as I can.
+
 Hardware notes and a board contract for the Seeed Studio reTerminal Sticky.
 Firmware is not in this tree yet.
 

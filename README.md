@@ -1,4 +1,6 @@
-# sticky-rs
+# `sticky-rs`
+
+> **Embedded Rust Tooling & Crates for the [Sticky](https://www.seeedstudio.com/sticky/docs/)**
 
 > [!NOTE]
 > I do have a "functioning" Embedded Rust dev environment for the Sticky,

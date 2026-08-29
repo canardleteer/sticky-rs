@@ -1,0 +1,28 @@
+# Normal Rust Repository Things
+/target
+
+# NOTE(canardleteer): These will become more relevant, as more of the
+# repository is migrated.
+
+# sticky-rs firmware
+/firmware/*/target
+
+# NOTE(canardleteer): Per-unit factory originals: NVS, RF calibration,
+# MAC, serials. Never commit this tree. See docs/SAFETY.md.
+/backups/
+
+# NOTE(canardleteer): Flash images and device dumps: these contain per-unit
+# NVS, Wi-Fi RF calibration, MAC, and serial number. Never commit them. See
+# docs/SAFETY.md.
+*.bin
+*.elf
+!**/partitions.csv
+
+# NOTE(canardleteer): I don't really want to deal with managing
+# all the licensing surrounding spec sheets.Local vendor
+# datasheet PDFs and extracted markdown.
+#
+# Catalog is stored in:
+# .agents/skills/seeed-sticky-hardware/resources/datasheets.md
+.agents/skills/seeed-sticky-hardware/resources/datasheets/pdf/
+.agents/skills/seeed-sticky-hardware/resources/datasheets/md/

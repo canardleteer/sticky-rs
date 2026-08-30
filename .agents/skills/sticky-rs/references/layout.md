@@ -10,7 +10,7 @@
 | `xtask/` | Clap front-end at the repo root (`cargo xtask`). Maps flags to `sticky-host`; `repo_root()` is the parent of this package |
 | `backups/` | Gitignored per-unit originals and `learn-uart/` YAML plus sidecar UART logs. Not in git |
 | `firmware/*` | Not migrated yet. When they land: workspace members, not default-members; ELFs in workspace `target/` |
-| `docs/` | [SAFETY.md](../../../../docs/SAFETY.md), [API-RULES.md](../../../../docs/API-RULES.md), [CRATES.md](../../../../docs/CRATES.md) |
+| `docs/` | [SAFETY.md](../../../../docs/SAFETY.md), [API-RULES.md](../../../../docs/API-RULES.md), [CRATES.md](../../../../docs/CRATES.md), [ssd1677.md](../../../../docs/ssd1677.md) |
 | `.agents/skills/seeed-sticky-hardware/` | Board contract |
 | `.agents/skills/sticky-rs/` | This skill |
 

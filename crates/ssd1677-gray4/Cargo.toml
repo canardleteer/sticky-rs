@@ -1,0 +1,35 @@
+[package]
+name = "ssd1677-gray4"
+version = "0.1.0"
+description = "SSD1677 e-paper driver: four gray levels on mono film via dual RAM planes, factory panel waveforms (OTP), optional 105-byte look-up table"
+readme = "README.md"
+publish = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+default = ["graphics"]
+# embedded-graphics DrawTarget for the four-gray canvas.
+graphics = ["dep:embedded-graphics-core"]
+# Async BUSY waiting via embedded-hal-async's Wait trait.
+async = ["dep:embedded-hal-async"]
+
+[dependencies]
+embedded-hal.workspace = true
+embedded-hal-async = { workspace = true, optional = true }
+embedded-graphics-core = { workspace = true, optional = true }
+
+[dev-dependencies]
+embedded-hal-mock.workspace = true
+embedded-graphics.workspace = true
+# Dev-only executor, so the async BUSY wait is actually executed by a test
+# rather than merely type-checked. block_on is all we need.
+embassy-futures = "0.1.2"
+
+[lints]
+workspace = true

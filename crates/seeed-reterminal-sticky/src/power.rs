@@ -52,7 +52,9 @@ where
     /// is fixed here so callers cannot get it wrong.
     ///
     /// `PWR_HOLD` then `PWR_LOCK` are strapping pins with default weak
-    /// pull-down (ESP32-S3 v2.2). Drive them high; never pulse `PWR_LOCK`.
+    /// pull-down (ESP32-S3 v2.2 section `3 Boot Configurations` /
+    /// `Table 3-1. Default Configuration of Strapping Pins`). Drive them
+    /// high; never pulse `PWR_LOCK`.
     pub fn acquire<D: DelayNs>(
         mut hold: HOLD,
         mut lock: LOCK,

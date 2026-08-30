@@ -24,9 +24,10 @@
 //!
 //! 1. **Two RAM planes** ([`planes`]) whose bit pair selects waveform slot
 //!    LUT0..LUT3 (look-up table index 0 through 3).
-//! 2. Either the **panel OTP** (one-time programmable memory **on the glass**,
-//!    no `0x32` write — Seeed Sticky) or a **panel-specific 105-byte table**
-//!    the microcontroller writes with command `0x32` ([`Lut`]).
+//! 2. Either the **panel OTP** (Rev 1.0 section `6.10 One Time Programmable
+//!    (OTP) Memory`, no `Write LUT register` — Seeed Sticky) or a
+//!    **panel-specific 105-byte table** the microcontroller writes with
+//!    Table 7-1 `Write LUT register` ([`Lut`]).
 //!
 //! The datasheet cannot invent a safe four-gray table, so this crate ships
 //! **no default look-up table**. The Sticky's confirmed path uses OTP
@@ -96,7 +97,7 @@ pub enum Error<SpiError, PinError> {
     AddressOutOfRange {
         /// The offending value.
         value: u16,
-        /// The datasheet maximum for that axis.
+        /// Maximum from `8.3` / `8.4` (`RAM_X_MAX` / `RAM_Y_MAX`).
         max: u16,
     },
 }
@@ -121,10 +122,10 @@ pub type SleepResult<SPI, DC, RST, BUSY, DELAY> =
 
 /// A RAM window in datasheet address units.
 ///
-/// Values are passed through unmodified. The datasheet calls these address
-/// units and limits them to `0x000..=0x3BF` (X) and `0x000..=0x2A7` (Y);
-/// this crate does **not** silently divide by 8, because guessing the unit is
-/// how you get a frame written to the wrong place.
+/// Values are passed through unmodified. SSD1677 Rev 1.0 sections `8.3 Set
+/// RAM X - Address Start / End Position (44h)` and `8.4 Set RAM Y - Address
+/// Start / End Position (45h)` limit X to `0x000..=0x3BF` and Y to
+/// `0x000..=0x2A7`. This crate does **not** silently divide by 8.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Window {
     /// First X address unit.
@@ -351,7 +352,7 @@ where
         self.start_update(sequence)
     }
 
-    /// Writes the RAM window (0x44 / 0x45) in datasheet address units.
+    /// Writes the RAM window (`8.3` 0x44 / `8.4` 0x45) in address units.
     pub fn set_window(&mut self, window: &Window) -> DriverResult<(), SPI, DC> {
         window.validate()?;
 

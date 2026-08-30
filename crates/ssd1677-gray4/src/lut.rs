@@ -22,10 +22,11 @@
 
 /// Length of the `Write LUT register` payload: **105 bytes**.
 ///
-/// Datasheet Rev 1.0, Table 7-1: command 0x32 takes 105 bytes containing
-/// `VS[nX-LUT]`, `TP#[nX]`, and `RP#[n]`. Section 6.7 separately describes 112
-/// bytes of on-chip waveform storage including gate/source voltage and frame
-/// rate; the MCU-facing command is the shorter one.
+/// The SSD1677 Rev 1.0 section `Table 7-1: Command Table` names
+/// `Write LUT register` as 105 bytes containing `VS[nX-LUT]`, `TP#[nX]`, and
+/// `RP#[n]`. Section `6.6 Programmable Waveform for Gate, Source and VCOM`
+/// describes on-chip waveform storage (including gate/source/VCOM); the
+/// MCU-facing command is the 105-byte one.
 pub const LUT_LEN: usize = 105;
 
 /// A 105-byte waveform look-up table the microcontroller can write with
@@ -73,9 +74,11 @@ impl Lut {
 }
 
 // Unconfirmed MCU waveform. FreeInk `lut_grayscale_sticky` (105 bytes of
-// VS/TP/RP + frame rate). Stock `reterminal_template` 1.1.0 app0 does not
-// contain this table; Seeed `seeed_epaper` `ssd1677.c` never sends command
-// 0x32. Leave commented. Details: docs/ssd1677.md.
+// VS/TP/RP + frame rate). Not a Rev 1.0 Table 7-1 payload — vendor-adjacent
+// bytes. Stock `reterminal_template` 1.1.0 app0 does not contain this table;
+// Seeed `seeed_epaper` `ssd1677.c` never sends `Write LUT register` (0x32).
+// Leave commented (section `6.10 One Time Programmable (OTP) Memory` is the
+// Sticky path). Details: docs/ssd1677.md.
 //
 // const UNCONFIRMED_FREEINK_STICKY_LUT: [u8; LUT_LEN] = [
 //     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,

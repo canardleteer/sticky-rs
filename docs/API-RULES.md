@@ -32,7 +32,14 @@ Additional rules for this workspace:
 - **Cite the datasheet in rustdoc** for every register, opcode, and magic
   number, including the document revision. A constant without a citation is a
   bug: see the
-  [datasheet catalog](DATASHEETS.md).
+  [datasheet catalog](DATASHEETS.md). Cite the **heading title** as it
+  appears in the extracted markdown cache (`resources/datasheets/md/<id>.md`),
+  not a page number — page numbers die at PDF→MD. Example: “The TI BQ25616
+  datasheet SLUSDF7 section `Table 7-1. Pin Functions` says CE driven LOW
+  enables charging.” Safe named rows become public `const` / `enum` variants
+  even if unused. Hazardous encodings (`CFGUPDATE`, OTP program, MCU LUT
+  bytes) stay in commented `UNCONFIRMED_*` / danger blocks with the same
+  heading cite; do not uncomment them for autocomplete.
 - **Do not invent registers.** If a datasheet has not been read, expose a
   documented raw primitive instead of a typed accessor built on a guess, and
   record the gap in that catalog.

@@ -24,9 +24,11 @@
 //! 4. Two I2C masters. Sensors at [`I2C_FREQUENCY_HZ`] (400 kHz). GT911 at
 //!    [`touch::I2C_HZ`] (100 kHz on glass). Never put [`pins::SENSOR_I2C_SCL`]
 //!    (GPIO0) or [`pins::TOUCH_I2C_SDA`] (GPIO3) on the SPI bus: both are
-//!    strapping pins. A zero-initialised SPI config that claims GPIO0 kills
-//!    the sensor bus after display init. After the GT911 address dance, leave
-//!    [`pins::TOUCH_INT`] as a floating input (GPIO21 has no reset pull).
+//!    strapping pins (ESP32-S3 datasheet v2.2 section `3 Boot Configurations`).
+//!    A zero-initialised SPI config that claims GPIO0 kills the sensor bus
+//!    after display init. After the GT911 address dance, leave
+//!    [`pins::TOUCH_INT`] as a floating input (v2.2 `Table 2-1. Pin Overview`:
+//!    GPIO21 has no reset pull).
 //! 5. SPI at [`display::SPI_MAX_HZ`], shared between panel and card with
 //!    exactly one chip select asserted at a time.
 //! 6. Panel rail, then the controller; touch rail, then the GT911 reset
@@ -65,7 +67,8 @@ pub use crate::rails::{EpdRail, MicRail, PanelParked, SdRail, TouchRail};
 /// names it as the fuel gauge's `GPOUT`. Both cannot be right, and driving a
 /// pin that another device is also driving is how transistors die. On-glass
 /// IMU bring-up has polled I2C and left this pin alone, so this crate offers
-/// no output constructor for it. Leave it an input until someone measures it.
+/// no output constructor for it. Leave it an input until someone measures it
+/// (`nyc-gpio7`).
 pub const AMBIGUOUS_INTERRUPT_NOTE: &str =
     "GPIO7 owner is unconfirmed (IMU INT vs gauge GPOUT): input only";
 
@@ -75,18 +78,25 @@ pub mod addresses {
     pub const SHT40: u8 = 0x44;
     /// NXP PCF8563 real-time clock, sensor bus.
     pub const PCF8563: u8 = 0x51;
-    /// TI BQ27220 fuel gauge, sensor bus.
+    /// TI BQ27220 fuel gauge, sensor bus (SLUSCB7 `7.3.1.1 I2C Interface`
+    /// 7-bit `0x55`).
     pub const BQ27220: u8 = 0x55;
     /// ST LSM6DS3TR-C IMU, sensor bus.
     pub const LSM6DS3TRC: u8 = 0x6a;
     /// Goodix GT911 on the **touch** bus after INT-high reset
-    /// ([`crate::touch::SlaveAddress::Pair28_29`]). Working units report this one.
+    /// ([`crate::touch::SlaveAddress::Pair28_29`]). Rev.09 section `6.1 I2C
+    /// Timing` names the 8-bit pair `0x28`/`0x29`; working units answer at
+    /// 7-bit `0x14`.
     pub const GT911_PRIMARY: u8 = crate::touch::SlaveAddress::Pair28_29.seven_bit();
     /// GT911 after INT-low reset ([`crate::touch::SlaveAddress::PairBaBb`]).
+    /// Rev.09 `6.1 I2C Timing` pair `0xBA`/`0xBB` (7-bit `0x5D`).
     pub const GT911_ALTERNATE: u8 = crate::touch::SlaveAddress::PairBaBb.seven_bit();
 }
 
-/// I2C bus speed for both buses, in hertz.
+/// Sensor-bus I2C speed, in hertz.
+///
+/// ESP32-S3 datasheet v2.2 section `4.2.1.2 I2C Interface`: Fast mode is
+/// 400 kbit/s. Touch stays at [`touch::I2C_HZ`] (100 kHz on glass).
 pub const I2C_FREQUENCY_HZ: u32 = 400_000;
 
 #[cfg(test)]

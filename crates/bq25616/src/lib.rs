@@ -7,10 +7,12 @@
 //!
 //! # Polarity
 //!
-//! `/CE` is **active low**: driving it low enables charging, driving it high
-//! disables charging (TI BQ25616 datasheet SLUSDF7). No caller ever writes a
-//! raw level — [`Charger`] tracks state in the type system and
-//! [`Charger::new`] leaves the part in the disabled state.
+//! `/CE` is **active low**. The TI BQ25616 datasheet SLUSDF7 section
+//! `Table 7-1. Pin Functions` says the CE pin enables battery charging when
+//! driven LOW. Section `9.3.5 Standalone Charger` says charging is enabled or
+//! disabled via the CE pin. No caller ever writes a raw level — [`Charger`]
+//! tracks state in the type system and [`Charger::new`] leaves the part
+//! disabled.
 //!
 //! ```
 //! use bq25616::Charger;
@@ -27,9 +29,11 @@
 //! # Status inputs
 //!
 //! [`ExternalPower`] wraps the external-power sense input, where high means
-//! external power is present. [`ChargeStatus`] deliberately reports a raw
-//! level rather than "charging": on the reTerminal Sticky that net's polarity
-//! is still unconfirmed, and a driver that guesses is worse than one that
+//! external power is present. [`StatPinState`] records what SLUSDF7 section
+//! `9.3.8.2 Charging Status Indicator (STAT)` / `Table 9-6. STAT Pin State`
+//! says about the **chip** STAT pin. [`ChargeStatus`] still reports a raw
+//! [`Level`]: on the reTerminal Sticky that net (`nyc-gpio40-polarity`) has
+//! not been measured, and a driver that guesses is worse than one that
 //! makes you look it up.
 
 #![no_std]
@@ -54,10 +58,14 @@ pub trait ChargeState: sealed::Sealed {
 }
 
 /// Charging is disabled: `/CE` is high. The state [`Charger::new`] returns.
+///
+/// SLUSDF7 `Table 7-1. Pin Functions`: CE driven LOW enables charging.
 #[derive(Debug)]
 pub struct Disabled;
 
 /// Charging is enabled: `/CE` is low.
+///
+/// SLUSDF7 `Table 7-1. Pin Functions`: CE driven LOW enables charging.
 #[derive(Debug)]
 pub struct Enabled;
 
@@ -91,7 +99,8 @@ pub struct Charger<CE, S: ChargeState> {
 
 impl<CE: OutputPin> Charger<CE, Disabled> {
     /// Takes ownership of the `/CE` pin and drives it high, so charging starts
-    /// disabled regardless of how the pin was left.
+    /// disabled regardless of how the pin was left (SLUSDF7 `9.3.5 Standalone
+    /// Charger`: charging is enabled or disabled via CE).
     ///
     /// Starting disabled is the safe default: it is recoverable, whereas
     /// enabling a charger against an unknown pack state is not.
@@ -103,7 +112,7 @@ impl<CE: OutputPin> Charger<CE, Disabled> {
         })
     }
 
-    /// Drives `/CE` low, enabling charging.
+    /// Drives `/CE` low, enabling charging (SLUSDF7 `Table 7-1. Pin Functions`).
     pub fn enable_charging(
         mut self,
     ) -> Result<Charger<CE, Enabled>, TransitionError<CE, Disabled>> {
@@ -121,7 +130,7 @@ impl<CE: OutputPin> Charger<CE, Disabled> {
 }
 
 impl<CE: OutputPin> Charger<CE, Enabled> {
-    /// Drives `/CE` high, disabling charging.
+    /// Drives `/CE` high, disabling charging (SLUSDF7 `Table 7-1. Pin Functions`).
     pub fn disable_charging(
         mut self,
     ) -> Result<Charger<CE, Disabled>, TransitionError<CE, Enabled>> {
@@ -196,13 +205,32 @@ pub enum Level {
     High,
 }
 
-/// Charge-status input.
+/// What SLUSDF7 says the **chip** STAT pin means.
 ///
-/// This intentionally exposes a [`Level`] and not `is_charging()`. The
-/// BQ25616 status pin's meaning depends on board wiring, and on the reTerminal
-/// Sticky its polarity has not been measured. Interpreting it here would turn
-/// an open question into a silent assumption; read the gauge current instead
-/// if you need to know whether charge is flowing.
+/// The TI BQ25616 datasheet SLUSDF7 section `9.3.8.2 Charging Status Indicator
+/// (STAT)` / `Table 9-6. STAT Pin State` lists these encodings. This is
+/// silicon documentation, not a reading of the reTerminal Sticky GPIO40 net
+/// ([`ChargeStatus`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StatPinState {
+    /// Table 9-6: charging in progress (including recharge) — STAT **LOW**.
+    ChargingInProgress,
+    /// Table 9-6: charging termination, sleep, charge disable, or boost —
+    /// STAT **HIGH**.
+    HighIdle,
+    /// Table 9-6: charge suspend (OVP, TS, safety timer, or system OVP) —
+    /// STAT blinking at 1 Hz.
+    ChargeSuspendBlink,
+}
+
+/// Charge-status input on a board net.
+///
+/// This intentionally exposes a [`Level`] and not `is_charging()`. SLUSDF7
+/// `Table 9-6. STAT Pin State` describes the chip STAT pin ([`StatPinState`]);
+/// on the reTerminal Sticky the wired net's polarity is still unmeasured
+/// (`nyc-gpio40-polarity`). Interpreting GPIO40 here would turn an open
+/// question into a silent assumption; read the gauge current instead if you
+/// need to know whether charge is flowing.
 #[derive(Debug)]
 pub struct ChargeStatus<P> {
     pin: P,

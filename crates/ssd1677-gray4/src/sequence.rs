@@ -1,13 +1,14 @@
 //! Datasheet-verified parameter blocks for init and refresh.
 //!
-//! These are **controller** facts from SSD1677 Rev 1.0 Table 7-1: booster
-//! inrush, which stored waveform sequence Master Activation will run, and
-//! gate-scan bits. Which values **this glass** wants live in
-//! `seeed-reterminal-sticky` and [docs/ssd1677.md].
-//! On the Sticky those sequences load factory OTP waveforms; they are not a
-//! 105-byte table written with command 0x32.
+//! These are **controller** facts from SSD1677 Rev 1.0 `Table 7-1: Command
+//! Table`: booster inrush, which stored waveform sequence Master Activation
+//! will run, and gate-scan bits (`8.1 Driver Output Control (01h)`). Which
+//! values **this glass** wants live in `seeed-reterminal-sticky` and
+//! [docs/ssd1677.md]. On the Sticky those sequences load factory OTP
+//! (section `6.10 One Time Programmable (OTP) Memory`); they are not a
+//! 105-byte `Write LUT register` table.
 
-/// Five-byte payload for [`command::Command::BoosterSoftStart`] (0x0C).
+/// Five-byte payload for [`crate::Command::BoosterSoftStart`] (0x0C).
 ///
 /// Table 7-1 lists two inrush levels; both share `AE C7 C3 C0` and differ only
 /// in the last byte.
@@ -76,7 +77,8 @@ impl UpdateSequence {
     pub const SEEED_GRAY4: Self = Self(0xd7);
 
     // Unconfirmed: Lotus and bb_epaper EP397 use 0xFC for "partial" instead of
-    // Seeed [`Self::DISPLAY_MODE_2_WITH_TEMP`]. Do not switch the crate.
+    // Seeed [`Self::DISPLAY_MODE_2_WITH_TEMP`]. Not a Table 7-1 named row we
+    // extracted. Do not switch the crate.
     // const UNCONFIRMED_BB_EPAPER_PARTIAL: UpdateSequence =
     //     UpdateSequence::from_byte(0xfc);
 
@@ -106,8 +108,8 @@ impl UpdateSequence {
 
 /// `Driver Output control` (0x01) scan byte `B[2:0]`.
 ///
-/// Datasheet §8.1: `GD` first-gate select, `SM` odd/even split, `TB` scan
-/// direction. **`TB = 1` is reserved** — do not set it.
+/// SSD1677 Rev 1.0 section `8.1 Driver Output Control (01h)`: `GD` first-gate
+/// select, `SM` odd/even split, `TB` scan direction. **`TB = 1` is reserved**.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GateScan {
     /// `B[2]`: first gate output channel (`0` = G0 first).
@@ -149,7 +151,8 @@ impl GateScan {
 
 /// `Data Entry mode setting` (0x11) `A[2:0]`.
 ///
-/// POR is `0b011`: Y increment, X increment, address updates in X.
+/// SSD1677 Rev 1.0 section `8.2 Data Entry Mode Setting (11h)`. POR is
+/// `0b011`: Y increment, X increment, address updates in X.
 pub const DATA_ENTRY_Y_INC_X_INC: u8 = 0b011;
 
 /// `Border Waveform Control` (0x3C) helpers.

@@ -1,9 +1,11 @@
 //! Panel geometry, OTP refresh modes, and the confirmed SSD1677 init.
 //!
 //! The film is **mono**. Four gray levels on this product come from Seeed's
-//! OTP gray4 path (dual planes + inverted polarity + [`UpdateSequence::SEEED_GRAY4`]), not from a
-//! shipped MCU LUT. Provenance and the hazards of getting a waveform wrong:
-//! [docs/ssd1677.md](../../../docs/ssd1677.md).
+//! OTP gray4 path (SSD1677 Rev 1.0 `6.5 RAM` + `6.10 One Time Programmable
+//! (OTP) Memory` + [`UpdateSequence::SEEED_GRAY4`]), not from a shipped MCU
+//! LUT. Provenance:
+//! [docs/ssd1677.md](../../../docs/ssd1677.md) and the hardware skill
+//! `references/display.md`.
 //!
 //! Controller opcodes live in `ssd1677-gray4`. This module is **this glass**.
 
@@ -18,9 +20,9 @@ pub const WIDTH: u16 = 800;
 /// Panel height in pixels, landscape.
 pub const HEIGHT: u16 = 480;
 
-/// Last RAM X address unit for a full-width window.
+/// Last RAM X address unit for a full-width window (`8.3` address units).
 pub const RAM_X_END: u16 = WIDTH - 1;
-/// Last RAM Y address unit for a full-height window.
+/// Last RAM Y address unit for a full-height window (`8.4` address units).
 pub const RAM_Y_END: u16 = HEIGHT - 1;
 
 /// Value for the controller's `Driver Output control`: gate lines minus one.
@@ -59,7 +61,8 @@ pub const FULL_WINDOW: Window = Window {
 
 /// How Seeed's stock driver refreshes this panel.
 ///
-/// These are OTP sequences. They do **not** write command 0x32.
+/// These are OTP sequences (section `6.10`). They do **not** write Table 7-1
+/// `Write LUT register` (0x32).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RefreshKind {
     /// Black/white full update: software reset, [`border::FOLLOW_LUT1`],
@@ -145,10 +148,9 @@ impl RefreshKind {
 }
 
 // Unconfirmed MCU 105-byte waveform (FreeInk `lut_grayscale_sticky`).
-// Compared to stock `reterminal_template` 1.1.0 app0: the table is absent.
-// Seeed `seeed_epaper` `ssd1677.c` never sends 0x32. Leave commented: stock
-// firmware does not send this table, and there is no in-repo dump of panel OTP.
-// See docs/ssd1677.md.
+// Not Table 7-1 / `6.10` OTP. Compared to stock `reterminal_template` 1.1.0
+// app0: the table is absent. Seeed never sends `Write LUT register`. Leave
+// commented. See docs/ssd1677.md.
 //
 // const UNCONFIRMED_FREEINK_STICKY_LUT: [u8; 105] = [
 //     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,

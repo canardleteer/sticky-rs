@@ -1,11 +1,11 @@
 //! Gate, source, and common-voltage (VCOM) analog registers.
 //!
-//! These are the high-voltage rails that actually move pigment. Datasheet
-//! Rev 1.0: command 0x32 carries 105 bytes of waveform phases. Gate (0x03),
-//! source (0x04), and VCOM (0x2C) are **separate** writes. Seeed's Sticky
-//! SSD1677 driver never sends them — factory OTP (one-time programmable
-//! memory on the panel) brings analog up with the stored waveform. Writing a
-//! guessed VGH/VSH/VCOM envelope is how you cook film.
+//! These are the high-voltage rails that actually move pigment. Table 7-1
+//! `Write LUT register` (0x32) is 105 waveform-phase bytes. Gate (0x03),
+//! source (0x04), and VCOM (0x2C) are **separate** writes (section `6.6
+//! Programmable Waveform for Gate, Source and VCOM`). Seeed's Sticky driver
+//! never sends them — factory OTP (`6.10 One Time Programmable (OTP)
+//! Memory`) brings analog up with the stored waveform.
 //!
 //! [`AnalogVoltages::POR`] is the controller power-on default from Table 7-1,
 //! not a Sticky calibration. Do not send it unless a panel note says the OTP
@@ -118,10 +118,9 @@ impl AnalogVoltages {
 }
 
 // Unconfirmed: FreeInk `lut_grayscale_sticky` voltage tail (VGH, VSH1, VSH2,
-// VSL, VCOM) = 0x17, 0x41, 0xA8, 0x32, 0x30. Those five bytes were **not** in
-// stock `reterminal_template` app0. Seeed's SSD1677 driver does not write
-// 0x03 / 0x04 / 0x2C. Leave commented: not factory, and analog rails are not
-// something this repository can dump from glass.
+// VSL, VCOM) = 0x17, 0x41, 0xA8, 0x32, 0x30. Not Table 7-1 POR. Those five
+// bytes were **not** in stock `reterminal_template` app0. Seeed does not
+// write 0x03 / 0x04 / 0x2C (OTP path, `6.10`). Leave commented.
 //
 // const UNCONFIRMED_FREEINK_STICKY_ANALOG: AnalogVoltages = AnalogVoltages {
 //     gate: GateVoltage::from_byte(0x17),

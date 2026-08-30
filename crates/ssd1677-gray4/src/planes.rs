@@ -8,9 +8,9 @@
 //!
 //! The SSD1677 was designed for black/white/red. It holds **two** RAM planes
 //! (`Write RAM (Black White)` 0x24 and `Write RAM (RED)` 0x26, each 960×680
-//! bits — datasheet Rev 1.0 §6.2). For each pixel the two bits select one of
-//! four waveform slots (LUT0..LUT3, look-up table index 0 through 3), per
-//! Table 6-4:
+//! bits — SSD1677 Rev 1.0 section `6.5 RAM`). For each pixel the two bits
+//! select one of four waveform slots (LUT0..LUT3), per `Table 6-4 : RAM bit
+//! and LUT mapping for 3-color display`:
 //!
 //! | RED RAM bit | Black/White RAM bit | Waveform slot |
 //! | --- | --- | --- |

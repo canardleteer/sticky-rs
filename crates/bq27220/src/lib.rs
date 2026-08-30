@@ -19,15 +19,16 @@
 //! `enter_cfgupdate()` or `set_full_charge_capacity()` convenience wrapper:
 //! nobody should reach a destructive sequence by autocomplete.
 //!
-//! # Register coverage is deliberately narrow
+//! # Standard commands
 //!
-//! Typed accessors exist only for commands confirmed against the board
-//! contract and TI documentation. Other offsets in the standard command map
-//! are reachable through [`Bq27220::read_u16`] rather than being guessed at,
-//! and the CEDV data-memory block layout is not implemented at all pending a
-//! page-by-page read of the technical reference manual. A plausible-looking
-//! constant is worse than an honest gap: see the hardware skill datasheet
-//! catalog.
+//! [`Command`] lists the named rows of the TI BQ27220 TRM SLUUBD4 section
+//! `2 Standard Data Commands` / `Table 2-1. Standard Commands`. Convenience
+//! readers stay on the handful firmware uses; unused variants are still
+//! public. [`Bq27220::read_u16`] remains the escape hatch for a garbled
+//! extract row. CEDV data-memory **block** layout is not typed.
+//!
+//! Hazardous `Control()` subcommands (`SEALED`, `ENTER_CFG_UPDATE`,
+//! `ENTER_ROM`, …) stay in a commented block — not autocomplete.
 //!
 //! ```
 //! use bq27220::{Bq27220, DEVICE_TYPE_BQ27220};
@@ -58,39 +59,176 @@ use embedded_hal::delay::DelayNs;
 use embedded_hal::i2c::{I2c, SevenBitAddress};
 
 /// Default I2C address of the gauge on the reTerminal Sticky sensor bus.
+///
+/// The TI BQ27220 datasheet SLUSCB7 section `7.3.1.1 I2C Interface` says the
+/// 7-bit device address is fixed as `1010101` (`0x55`).
 pub const ADDRESS: SevenBitAddress = 0x55;
 
-/// `DeviceType` value a BQ27220 reports.
+/// Value SLUUBD4 section `2.2.2 DEVICE_NUMBER: 0x0001` says `MACData()`
+/// returns for this part (`0x0220`).
 pub const DEVICE_TYPE_BQ27220: u16 = 0x0220;
-
-/// `Control()` subcommand that requests `DeviceType`.
-const SUBCOMMAND_DEVICE_TYPE: u16 = 0x0001;
 
 /// Settling time between a `Control()` subcommand and reading `MACData()`.
 ///
-/// The board contract calls for ~15 ms; this crate waits a little longer
-/// because the failure mode is a silently stale read.
+/// The board contract calls for ~15 ms; this crate waits that long because a
+/// silently stale `MACData()` is the failure mode.
+///
+/// The TI BQ27220 datasheet SLUSCB7 section `7.3.1.3 I2C Command Waiting Time`
+/// shows 66 ms on the Control-subcommand / status-read figure (and `t(BUF)` ≥
+/// 66 μs between packets). Leave the sheet figure unused:
+///
+/// ```text
+/// // SLUSCB7 `7.3.1.3 I2C Command Waiting Time` figure: 66 ms between the
+/// // Control() subcommand write and reading the status / MACData() result.
+/// // const MAC_DATA_SETTLE_MS_SLUSCB7_FIGURE: u32 = 66;
+/// ```
 const MAC_DATA_SETTLE_MS: u32 = 15;
 
-/// Standard commands this crate reads.
-///
-/// Only offsets confirmed against TI documentation and the board contract are
-/// listed. Use [`Bq27220::read_u16`] for anything else, and add a variant here
-/// once you have read the datasheet page that defines it.
+/// First byte of a standard-command pair from SLUUBD4 `Table 2-1. Standard
+/// Commands`. Each command is two consecutive offsets; this enum names the
+/// first byte.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Command {
-    /// `Control()` — subcommand gateway.
+    /// SLUUBD4 `2.2 Control()/CONTROL_STATUS(): 0x00 and 0x01`.
     Control = 0x00,
-    /// `Voltage()` — pack voltage in mV, unsigned.
+    /// SLUUBD4 `2.3 AtRate(): 0x02 and 0x03`. Table 2-1 unit: mA. RW.
+    AtRate = 0x02,
+    /// SLUUBD4 `2.4 AtRateTimeToEmpty(): 0x04 and 0x05`. Minutes. R.
+    AtRateTimeToEmpty = 0x04,
+    /// SLUUBD4 `2.5 Temperature(): 0x06 and 0x07`. 0.1 K. RW.
+    Temperature = 0x06,
+    /// SLUUBD4 `2.6 Voltage(): 0x08 and 0x09`. Table 2-1 / section: mV. R.
     Voltage = 0x08,
-    /// `Current()` — measured current in mA, signed.
+    /// SLUUBD4 `2.7 BatteryStatus(): 0x0A and 0x0B`. R.
+    BatteryStatus = 0x0a,
+    /// SLUUBD4 `2.8 Current(): 0x0C and 0x0D`. Section `2.8` units are **mA**
+    /// (signed). Table 2-1 UNIT column says mAh — follow the section text.
     Current = 0x0c,
-    /// `StateOfCharge()` — state of charge in percent, unsigned.
+    /// SLUUBD4 `2.9 RemainingCapacity(): 0x10 and 0x11`. mAh. R.
+    RemainingCapacity = 0x10,
+    /// SLUUBD4 `2.10 FullChargeCapacity(): 0x12 and 0x13`. mAh. **Read** of
+    /// compensated full capacity, not a data-memory FCC write.
+    FullChargeCapacity = 0x12,
+    /// SLUUBD4 `Table 2-1. Standard Commands` `AverageCurrent()`. 0x14/0x15. mA.
+    AverageCurrent = 0x14,
+    /// SLUUBD4 `2.11 TimeToEmpty(): 0x16 and 0x17`. Minutes. R.
+    TimeToEmpty = 0x16,
+    /// SLUUBD4 `2.12 TimeToFull(): 0x18 and 0x19`. Minutes. R.
+    TimeToFull = 0x18,
+    /// SLUUBD4 `2.13 StandbyCurrent(): 0x1A and 0x1B`. mA. R.
+    StandbyCurrent = 0x1a,
+    /// SLUUBD4 `2.14 StandbyTimeToEmpty(): 0x1C and 0x1D`. Minutes. R.
+    StandbyTimeToEmpty = 0x1c,
+    /// SLUUBD4 `2.15 MaxLoadCurrent(): 0x1E and 0x1F`. mA. R.
+    MaxLoadCurrent = 0x1e,
+    /// SLUUBD4 `2.16 MaxLoadTimeToEmpty(): 0x20 and 0x21`. min. R.
+    MaxLoadTimeToEmpty = 0x20,
+    /// SLUUBD4 `2.17 RawCoulombCount(): 0x22 and 0x23`. mAh. R.
+    RawCoulombCount = 0x22,
+    /// SLUUBD4 `2.18 AveragePower(): 0x24 and 0x25`. mW. R.
+    AveragePower = 0x24,
+    /// SLUUBD4 `2.19 InternalTemperature(): 0x28 and 0x29`. 0.1 K. R.
+    InternalTemperature = 0x28,
+    /// SLUUBD4 `2.20 CycleCount(): 0x2A and 0x2B`. R.
+    CycleCount = 0x2a,
+    /// SLUUBD4 `2.21 StateOfCharge(): 0x2C and 0x2D` (`RelativeStateOfCharge`
+    /// in Table 2-1). Percent, 0–100. R.
     StateOfCharge = 0x2c,
-    /// `MACData()` — response buffer for a `Control()` subcommand.
+    /// SLUUBD4 `2.22 StateOfHealth(): 0x2E and 0x2F`. R.
+    StateOfHealth = 0x2e,
+    /// SLUUBD4 `Table 2-1` `ChargeVoltage()` (TOC: `2.23 ChargingVoltage()`).
+    /// 0x30/0x31. mV. R.
+    ChargeVoltage = 0x30,
+    /// SLUUBD4 `Table 2-1` `ChargeCurrent()` (TOC: `2.24 ChargingCurrent()`).
+    /// 0x32/0x33. mA. R.
+    ChargeCurrent = 0x32,
+    /// SLUUBD4 `2.25 BTPDischargeSet(): 0x34 and 0x35`. mAh.
+    BtpDischargeSet = 0x34,
+    /// SLUUBD4 `2.26 BTPChargeSet(): 0x36 and 0x37`. mAh.
+    BtpChargeSet = 0x36,
+    /// SLUUBD4 `2.27 OperationStatus(): 0x3A and 0x3B`. R.
+    OperationStatus = 0x3a,
+    /// SLUUBD4 `2.28 DesignCapacity(): 0x3C and 0x3D`. mAh. R.
+    DesignCapacity = 0x3c,
+    /// SLUUBD4 `2.29 MACData(): 0x40 through 0x5F`. First byte of the MAC
+    /// response window.
     MacData = 0x40,
+    /// SLUUBD4 `2.30 MACDataSum(): 0x60`.
+    MacDataSum = 0x60,
+    /// SLUUBD4 `2.31 MACDataLen(): 0x61`.
+    MacDataLen = 0x61,
+    /// SLUUBD4 `2.32 AnalogCount(): 0x79`.
+    AnalogCount = 0x79,
+    /// SLUUBD4 `2.33 RawCurrent(): 0x7A and 0x7B`.
+    RawCurrent = 0x7a,
+    /// SLUUBD4 `2.34 RawVoltage(): 0x7C and 0x7D`.
+    RawVoltage = 0x7c,
+    /// SLUUBD4 `Table 2-1. Standard Commands` (continued) `RawIntTemp()`.
+    /// 0x7E/0x7F.
+    RawIntTemp = 0x7e,
 }
+
+/// Read-safe `Control()` MAC subcommands from SLUUBD4 `2.2
+/// Control()/CONTROL_STATUS(): 0x00 and 0x01` / `Table 2-2. Control() MAC
+/// Subcommands`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u16)]
+pub enum ControlSubcommand {
+    /// SLUUBD4 `2.2.1 CONTROL_STATUS: 0x0000`.
+    ControlStatus = 0x0000,
+    /// SLUUBD4 `2.2.2 DEVICE_NUMBER: 0x0001`. Response `0x0220` in `MACData()`.
+    DeviceNumber = 0x0001,
+    /// SLUUBD4 `2.2.3 FW_VERSION: 0x0002`.
+    FwVersion = 0x0002,
+    /// SLUUBD4 `2.2.4 HW_VERSION: 0x0003`.
+    HwVersion = 0x0003,
+    /// SLUUBD4 `2.2.5 BOARD_OFFSET: 0x0009`.
+    BoardOffset = 0x0009,
+    /// SLUUBD4 `2.2.6 CC_OFFSET: 0x000A`.
+    CcOffset = 0x000a,
+    /// SLUUBD4 `2.2.17 OPERATION_STATUS: 0x0054`.
+    OperationStatus = 0x0054,
+    /// SLUUBD4 `2.2.18 GaugingStatus: 0x0056`.
+    GaugingStatus = 0x0056,
+}
+
+impl ControlSubcommand {
+    /// Little-endian subcommand word written to `Control()`.
+    #[inline]
+    #[must_use]
+    pub const fn word(self) -> u16 {
+        self as u16
+    }
+}
+
+// Hazardous Control() MAC subcommands (SLUUBD4 `2.2 Control()/CONTROL_STATUS()`
+// / `Table 2-2`). Not compiled: a named variant here is autocomplete for a
+// one-way or OTP-adjacent sequence. `config-write` stays raw `u16` only.
+//
+// SLUUBD4 `2.2.7 CC_OFFSET_SAVE: 0x000B`
+// SLUUBD4 `2.2.8 OCV_CMD: 0x000C`
+// SLUUBD4 `2.2.9 BAT_INSERT: 0x000D`
+// SLUUBD4 `2.2.10 BAT_REMOVE: 0x000E`
+// SLUUBD4 `2.2.11 SET_SNOOZE: 0x0013`
+// SLUUBD4 `2.2.12 CLEAR_SNOOZE: 0x0014`
+// SLUUBD4 `2.2.13 SET_PROFILE_1/2/3/4/5/6: 0x0015–0x001A`
+// SLUUBD4 `2.2.14 CAL_TOGGLE: 0x002D`
+// SLUUBD4 `2.2.15 SEALED: 0x0030`
+// SLUUBD4 `2.2.16 RESET: 0x0041`
+// SLUUBD4 `2.2.19 EXIT_CAL: 0x0080`
+// SLUUBD4 `2.2.20 ENTER_CAL: 0x0081`
+// SLUUBD4 `2.2.21 ENTER_CFG_UPDATE: 0x0090`
+// SLUUBD4 `2.2.22 EXIT_CFG_UPDATE_REINIT: 0x0091`
+// SLUUBD4 `2.2.23 EXIT_CFG_UPDATE: 0x0092`
+// SLUUBD4 `2.2.24 ENTER_ROM: 0x0F00`
+// SLUUBD4 `3.3 Sealing and Unsealing Data Memory Access` (unseal keys)
+//
+// // const CONTROL_SEALED: u16 = 0x0030;
+// // const CONTROL_ENTER_CFG_UPDATE: u16 = 0x0090;
+// // const CONTROL_EXIT_CFG_UPDATE_REINIT: u16 = 0x0091;
+// // const CONTROL_EXIT_CFG_UPDATE: u16 = 0x0092;
+// // const CONTROL_ENTER_ROM: u16 = 0x0F00;
 
 impl Command {
     /// The register offset on the wire.
@@ -165,20 +303,21 @@ impl<I2C: I2c> Bq27220<I2C> {
         self.read_u16(command.offset())
     }
 
-    /// Pack voltage in millivolts.
+    /// Pack voltage in millivolts (SLUUBD4 `2.6 Voltage(): 0x08 and 0x09`).
     #[inline]
     pub fn voltage_mv(&mut self) -> Result<u16, Error<I2C::Error>> {
         self.read(Command::Voltage)
     }
 
-    /// Measured current in milliamperes. Positive is charge, negative is
-    /// discharge.
+    /// Instantaneous current in milliamperes (SLUUBD4 `2.8 Current(): 0x0C
+    /// and 0x0D`; signed). Positive is charge, negative is discharge.
     #[inline]
     pub fn current_ma(&mut self) -> Result<i16, Error<I2C::Error>> {
         self.read(Command::Current).map(|raw| raw as i16)
     }
 
-    /// State of charge in percent.
+    /// State of charge in percent (SLUUBD4 `2.21 StateOfCharge(): 0x2C and
+    /// 0x2D`, range 0–100).
     #[inline]
     pub fn state_of_charge_pct(&mut self) -> Result<u8, Error<I2C::Error>> {
         // The command returns a u16 whose value is a percentage; truncating
@@ -187,12 +326,12 @@ impl<I2C: I2c> Bq27220<I2C> {
             .map(|raw| u8::try_from(raw).unwrap_or(u8::MAX))
     }
 
-    /// Issues the `DeviceType` subcommand and returns the response.
+    /// Issues SLUUBD4 `2.2.2 DEVICE_NUMBER: 0x0001` and returns `MACData()`.
     ///
     /// Requires a delay because `MACData()` is not valid immediately after the
-    /// `Control()` write.
+    /// `Control()` write (this crate waits 15 ms; see `MAC_DATA_SETTLE_MS`).
     pub fn device_type<D: DelayNs>(&mut self, delay: &mut D) -> Result<u16, Error<I2C::Error>> {
-        self.write_control_subcommand_internal(SUBCOMMAND_DEVICE_TYPE)?;
+        self.write_control_subcommand_internal(ControlSubcommand::DeviceNumber.word())?;
         delay.delay_ms(MAC_DATA_SETTLE_MS);
         self.read(Command::MacData)
     }
@@ -242,8 +381,9 @@ impl<I2C: I2c> Bq27220<I2C> {
 ///
 /// Enabling this feature unlocks paths that can permanently misconfigure a
 /// gauge, and the OTP is one-time-programmable. There are no convenience
-/// wrappers here on purpose: if you need `CFGUPDATE`, read TI's technical
-/// reference manual, write the sequence explicitly at your call site, and
+/// wrappers here on purpose: if you need `CFGUPDATE`, read SLUUBD4 section
+/// `2.2.21 ENTER_CFG_UPDATE: 0x0090` and `3.3 Sealing and Unsealing Data
+/// Memory Access`, write the sequence explicitly at your call site, and
 /// verify every step. See `docs/SAFETY.md`.
 #[cfg(feature = "config-write")]
 impl<I2C: I2c> Bq27220<I2C> {
@@ -347,6 +487,16 @@ mod tests {
 
         delay.done();
         gauge.release().done();
+    }
+
+    #[test]
+    fn table_2_1_first_bytes_match() {
+        assert_eq!(Command::AtRate.offset(), 0x02);
+        assert_eq!(Command::FullChargeCapacity.offset(), 0x12);
+        assert_eq!(Command::AverageCurrent.offset(), 0x14);
+        assert_eq!(Command::MacDataSum.offset(), 0x60);
+        assert_eq!(Command::RawIntTemp.offset(), 0x7e);
+        assert_eq!(ControlSubcommand::DeviceNumber.word(), 0x0001);
     }
 
     #[test]

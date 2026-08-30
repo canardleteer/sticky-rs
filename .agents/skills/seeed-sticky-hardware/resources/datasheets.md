@@ -38,10 +38,10 @@ TRM. The extraction is text for agents; figures stay in the PDF.
 
 | Id | Part | Document | Revision used | Cache | Datasheet notations |
 | --- | --- | --- | --- | --- | --- |
-| `ssd1677` | SSD1677 EPD controller | [Waveshare SSD1677 Rev 1.0](https://files.waveshare.com/upload/2/2a/SSD1677_1.0.pdf) ([solumco copy](https://www.solumco.com/files/SSD1677.pdf)) | **Rev 1.0, Nov 2018** | `pdf/ssd1677.pdf`, `md/ssd1677.md` | Table 7-1 opcodes; 105-byte LUT (0x32); window ranges §8.3–8.5; dual RAM planes §6.2, Tables 6-4/6-5 |
-| `bq27220-sluscb7` | BQ27220 fuel gauge | [TI SLUSCB7](https://www.ti.com/lit/ds/symlink/bq27220.pdf) ([GitHub mirror](https://github.com/kodediy/kode_bq27220-idf/raw/main/BQ27220_Datasheet_RevA.pdf)) | SLUSCB7 | `pdf/bq27220-sluscb7.pdf`, `md/bq27220-sluscb7.md` | Standard commands; DeviceType handshake |
-| `bq27220-sluubd4` | BQ27220 fuel gauge | [TI SLUUBD4](https://www.ti.com/lit/ug/sluubd4/sluubd4.pdf) | SLUUBD4 | `pdf/bq27220-sluubd4.pdf`, `md/bq27220-sluubd4.md` | CEDV data-memory layout |
-| `bq25616` | BQ25616 charger | [TI SLUSDF7](https://www.ti.com/lit/ds/symlink/bq25616.pdf) | SLUSDF7 | `pdf/bq25616.pdf`, `md/bq25616.md` | Active-low charge enable |
+| `ssd1677` | SSD1677 EPD controller | [Waveshare SSD1677 Rev 1.0](https://files.waveshare.com/upload/2/2a/SSD1677_1.0.pdf) ([solumco copy](https://www.solumco.com/files/SSD1677.pdf)) | **Rev 1.0, Nov 2018** | `pdf/ssd1677.pdf`, `md/ssd1677.md` | Table 7-1 opcodes; 105-byte LUT (0x32); `8.3`–`8.5` window/cursor; dual RAM planes `6.5 RAM`, Tables 6-4/6-5 |
+| `bq27220-sluscb7` | BQ27220 fuel gauge | [TI SLUSCB7](https://www.ti.com/lit/ds/symlink/bq27220.pdf) ([GitHub mirror](https://github.com/kodediy/kode_bq27220-idf/raw/main/BQ27220_Datasheet_RevA.pdf)) | SLUSCB7 | `pdf/bq27220-sluscb7.pdf`, `md/bq27220-sluscb7.md` | `7.3.1.1 I2C Interface` 7-bit address; DeviceType via MAC |
+| `bq27220-sluubd4` | BQ27220 fuel gauge | [TI SLUUBD4](https://www.ti.com/lit/ug/sluubd4/sluubd4.pdf) | SLUUBD4 | `pdf/bq27220-sluubd4.pdf`, `md/bq27220-sluubd4.md` | `Table 2-1. Standard Commands`; `2.2 Control()`; CEDV data-memory layout |
+| `bq25616` | BQ25616 charger | [TI SLUSDF7](https://www.ti.com/lit/ds/symlink/bq25616.pdf) | SLUSDF7 | `pdf/bq25616.pdf`, `md/bq25616.md` | `Table 7-1. Pin Functions` CE active-low; `9.3.8.2` / `Table 9-6` STAT |
 | `lsm6ds3tr-c` | LSM6DS3TR-C IMU | [ST product page](https://www.st.com/en/mems-and-sensors/lsm6ds3tr-c.html) ([ST PDF](https://www.st.com/resource/en/datasheet/lsm6ds3tr-c.pdf); fetch used a [public copy](https://www.makerguides.com/wp-content/uploads/2025/09/lsm6ds3tr-c-datasheet.pdf) after ST timed out) | — | `pdf/lsm6ds3tr-c.pdf`, `md/lsm6ds3tr-c.md` | Orientation / axis registers |
 | `gt911` | GT911 touch | [Waveshare GT911](https://files.waveshare.com/wiki/common/GT911_EN_Datasheet.pdf) ([Pine64 copy](https://files.pine64.org/doc/datasheet/pine64/GT911%20Capacitive%20Touch%20Controller%20Datasheet.pdf)) | **Rev.09, 11 Mar 2015** | `pdf/gt911.pdf`, `md/gt911.md` | 8-bit→7-bit addresses; 400 kbps cap; 5-point max; register map deleted in Rev.07 (on-glass names for remaining encodings) |
 | `sht4x` | SHT40 | [Sensirion catalog](https://sensirion.com/products/catalog/SHT40) ([PDF V7.3](https://sensirion.com/media/documents/33FD6951/6A7C10A0/HT_DS_Datasheet_SHT4x_V7.3.pdf)); drivers on [GitHub](https://github.com/Sensirion/embedded-sht) | V7.3; measure `0xFD` / `0xF6` / `0xE0` | `pdf/sht4x.pdf`, `md/sht4x.md` | High/medium/low precision measure; serial command `0x89` (do not print a unit serial) |
@@ -84,16 +84,18 @@ place where a plausible guess produces a corrupt frame or unnecessary panel
 stress:
 
 - **Opcodes** come from Table 7-1. Use the datasheet name for each opcode.
-- **`Write LUT register` (0x32) takes 105 bytes.** Section 6.7 describes 112
-  bytes of on-chip waveform storage including gate/source voltage and frame
-  rate, but the MCU-facing command is 105.
+- **`Write LUT register` (0x32) takes 105 bytes.** Section `6.6 Programmable
+  Waveform for Gate, Source and VCOM` describes on-chip waveform storage
+  including gate/source voltage and frame rate; the MCU-facing Table 7-1
+  command is 105 bytes. (`6.2 Oscillator` is a different section.)
 - **Two RAM planes exist** (`Write RAM (Black White)` 0x24 and
   `Write RAM (RED)` 0x26), each 960x680 bits, and the bit pair selects a LUT
-  index. That is the mechanism four-gray is built on.
+  index (section `6.5 RAM`, Tables 6-4 / 6-5). That is the mechanism
+  four-gray is built on.
 - **Window and cursor values are 10-bit**, with X limited to `0x000..=0x3BF`
-  and Y to `0x000..=0x2A7` (§8.3-8.5). Keep these in datasheet address units;
-  do **not** silently divide by 8. The address unit is an address unit, not
-  a byte.
+  and Y to `0x000..=0x2A7` (sections `8.3 Set RAM X - Address Start / End
+  Position (44h)`, `8.4 Set RAM Y… (45h)`, `8.5 Set RAM Address Counter`).
+  Keep these in datasheet address units; do **not** silently divide by 8.
 - **Deep sleep is 0x10 with `A[1:0] = 0b11`**, and BUSY stays high afterwards.
 
 ## Verified against the GT911 datasheet
@@ -150,7 +152,7 @@ plausible-looking constant:
 
 | Gap | What to do |
 | --- | --- |
-| BQ27220 command offsets beyond Control (0x00), Voltage (0x08), Current (0x0C), StateOfCharge (0x2C), MAC Data (0x40) | Use a documented raw read until SLUSCB7 is read page by page. |
+| BQ27220 CEDV data-memory *block* addresses beyond SLUUBD4 `3 Data Memory Interface` headings | Standard Commands live in `crates/bq27220` `Command` (SLUUBD4 `Table 2-1`). Use a raw read/write for garbled extract rows; do not infer block maps. |
 | BQ27220 CEDV data-memory block addresses and subcommand codes | Stock firmware reads the CEDV core and thresholds; the block layout must come from SLUUBD4, not from inference. |
 | Vendor "standby" display state | Stock driver exposes a distinct standby; its command sequence is unconfirmed. Confirmed path is active and deep sleep. |
 | Four-gray LUT contents for this glass | No default LUT. The Sticky confirmed path is OTP (no 0x32). An MCU table stays optional and attributed; record its source and license here before adding one. |

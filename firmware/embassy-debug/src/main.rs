@@ -63,8 +63,10 @@ use seeed_reterminal_sticky::power::Latched;
 use seeed_reterminal_sticky::rails::MicRail;
 use seeed_reterminal_sticky::rails::{Disabled, Enabled, Rail, SdRail, TouchRail};
 use seeed_reterminal_sticky::touch::{
-    Register, SlaveAddress, COMMAND_READ_COORDINATES, I2C_HZ as TOUCH_I2C_HZ, INT_SETTLE_MS,
-    POST_RESET_SETTLE_MS, RESET_HOLD_MS, RESET_RELEASE_MS, STATUS_CLEAR,
+    Register, SlaveAddress, StatusBits, StatusWrite, ADDR_SELECT_INT_FLOAT_MS,
+    ADDR_SELECT_INT_HIGH_AT_RST, ADDR_SELECT_INT_HOLD_AFTER_RST_MS, ADDR_SELECT_RESET_HOLD_MS,
+    ADDR_SELECT_RESET_RELEASE_MS, I2C_MAX_HZ as TOUCH_I2C_HZ, POINT_RECORD_LEN, POINT_X_OFFSET,
+    POINT_Y_OFFSET, PRODUCT_ID_LEN, STATUS_HEARTBEAT, STATUS_POLL_MS,
 };
 use seeed_reterminal_sticky::{imu, Latch, I2C_FREQUENCY_HZ};
 
@@ -182,11 +184,47 @@ fn park_charger_and_unused(
     }
 }
 
-/// Power the touch rail, INT-during-reset, then read the product ID.
+/// Rev.09 §6.1 address select: hold INT at the pair level through RST.
+fn reset_with_int_level(
+    rst: &mut Output<'static>,
+    int: &mut Flex<'static>,
+    int_high: bool,
+    delay: &mut Delay,
+) {
+    int.apply_output_config(&OutputConfig::default());
+    int.set_output_enable(true);
+    rst.set_low();
+    apply_int_level(int, int_high);
+    delay.delay_ms(ADDR_SELECT_RESET_HOLD_MS);
+    rst.set_high();
+    delay.delay_ms(ADDR_SELECT_RESET_RELEASE_MS);
+    apply_int_level(int, int_high);
+    delay.delay_ms(ADDR_SELECT_INT_HOLD_AFTER_RST_MS);
+    int.set_output_enable(false);
+    int.apply_input_config(&InputConfig::default().with_pull(Pull::None));
+    int.set_input_enable(true);
+    delay.delay_ms(ADDR_SELECT_INT_FLOAT_MS);
+}
+
+fn apply_int_level(int: &mut Flex<'static>, high: bool) {
+    if high {
+        int.set_high();
+    } else {
+        int.set_low();
+    }
+}
+
+fn probe_gt911_addr(i2c: &mut I2c<'static, Blocking>, addr: u8) -> bool {
+    let mut id = [0u8; PRODUCT_ID_LEN];
+    i2c.write_read(addr, &Register::Id.addr_bytes(), &mut id)
+        .is_ok()
+}
+
+/// Power the touch rail, then Rev.09 §6.1 INT-during-reset address select.
 ///
-/// On the unit: the glass becomes a digitizer. In the MCU: 100 kHz,
-/// address `0x14`, no config-RAM write. Leave INT floating (GPIO21 has
-/// no reset pull).
+/// [`ADDR_SELECT_INT_HIGH_AT_RST`] then [`SlaveAddress::probe_order`].
+/// Bus at `TOUCH_I2C_HZ` (`I2C_MAX_HZ`, Rev.09 §6.1 cap). No init
+/// [`StatusWrite::Clear`]. No [`Register::Command`]. No config-RAM write.
 fn touch_i2c_after_int_reset(
     mut touch_i2c: I2c<'static, Blocking>,
     rst: esp_hal::peripherals::GPIO41<'static>,
@@ -199,6 +237,7 @@ fn touch_i2c_after_int_reset(
     Output<'static>,
     Flex<'static>,
     TouchRail<Output<'static>, Enabled>,
+    Option<u8>,
 ) {
     let touch_rail: TouchRail<_, _> = Rail::new(
         Output::new(rail, Level::Low, OutputConfig::default()),
@@ -211,44 +250,35 @@ fn touch_i2c_after_int_reset(
 
     let mut touch_rst = Output::new(rst, Level::Low, OutputConfig::default());
     let mut touch_int = Flex::new(int);
-    touch_int.apply_output_config(&OutputConfig::default());
-    touch_int.set_output_enable(true);
-    touch_int.set_high();
-    touch_rst.set_low();
-    delay.delay_ms(RESET_HOLD_MS);
-    touch_rst.set_high();
-    delay.delay_ms(RESET_RELEASE_MS);
-    touch_int.set_output_enable(false);
-    touch_int.apply_input_config(&InputConfig::default().with_pull(Pull::None));
-    touch_int.set_input_enable(true);
-    delay.delay_ms(INT_SETTLE_MS);
-    delay.delay_ms(POST_RESET_SETTLE_MS);
+    println!("{LOG_PREFIX}: gt911 addr dance");
 
-    let gt911_addr = SlaveAddress::Pair28_29.seven_bit();
-    let mut id = [0u8; 4];
-    let gt911_ack = touch_i2c
-        .write_read(gt911_addr, &Register::Id.addr_bytes(), &mut id)
-        .is_ok();
-    println!(
-        "{}: {:#04x} {}",
-        LOG_PREFIX,
-        gt911_addr,
-        if gt911_ack { "ack" } else { "nak" }
-    );
-
-    match touch_i2c.write(gt911_addr, &Register::Status.write_u8(STATUS_CLEAR)) {
-        Ok(()) => println!("{LOG_PREFIX}: gt911 status cleared"),
-        Err(_) => println!("{LOG_PREFIX}: gt911 status clear failed"),
-    }
-    match touch_i2c.write(
-        gt911_addr,
-        &Register::Command.write_u8(COMMAND_READ_COORDINATES),
-    ) {
-        Ok(()) => println!("{LOG_PREFIX}: gt911 command read-coordinates"),
-        Err(_) => println!("{LOG_PREFIX}: gt911 command failed"),
+    let mut gt911_addr = None;
+    for int_high in ADDR_SELECT_INT_HIGH_AT_RST {
+        reset_with_int_level(&mut touch_rst, &mut touch_int, int_high, delay);
+        println!("{}: gt911 int={}", LOG_PREFIX, u8::from(int_high));
+        for pair in SlaveAddress::probe_order() {
+            let addr = pair.seven_bit();
+            let ack = probe_gt911_addr(&mut touch_i2c, addr);
+            println!(
+                "{}: {:#04x} {}",
+                LOG_PREFIX,
+                addr,
+                if ack { "ack" } else { "nak" }
+            );
+            if ack && gt911_addr.is_none() {
+                gt911_addr = Some(addr);
+            }
+        }
+        if gt911_addr.is_some() {
+            break;
+        }
     }
 
-    (touch_i2c, touch_rst, touch_int, touch_rail)
+    // Rev.09 has no init Status/Command write at this port.
+    println!("{LOG_PREFIX}: gt911 no init status clear");
+    println!("{LOG_PREFIX}: gt911 no command write");
+
+    (touch_i2c, touch_rst, touch_int, touch_rail, gt911_addr)
 }
 
 /// Raise the panel 3.3 V rail after the latch witness.
@@ -280,6 +310,7 @@ struct SpawnParts {
     touch_rst: Output<'static>,
     touch_int: Flex<'static>,
     touch_rail: TouchRail<Output<'static>, Enabled>,
+    gt911_addr: Option<u8>,
     sensor_i2c: I2c<'static, Blocking>,
     ledc: esp_hal::peripherals::LEDC<'static>,
     buzzer: esp_hal::peripherals::GPIO48<'static>,
@@ -298,6 +329,7 @@ fn spawn_tasks(spawner: &Spawner, parts: SpawnParts) {
             parts.touch_rst,
             parts.touch_int,
             parts.touch_rail,
+            parts.gt911_addr,
         )
         .expect("touch task"),
     );
@@ -370,7 +402,7 @@ async fn main(spawner: Spawner) {
     .with_sda(peripherals.GPIO3)
     .with_scl(peripherals.GPIO2);
 
-    let (touch_i2c, touch_rst, touch_int, touch_rail) = touch_i2c_after_int_reset(
+    let (touch_i2c, touch_rst, touch_int, touch_rail, gt911_addr) = touch_i2c_after_int_reset(
         touch_i2c,
         peripherals.GPIO41,
         peripherals.GPIO21,
@@ -409,6 +441,7 @@ async fn main(spawner: Spawner) {
             touch_rst,
             touch_int,
             touch_rail,
+            gt911_addr,
             sensor_i2c,
             ledc: peripherals.LEDC,
             buzzer: peripherals.GPIO48,
@@ -532,34 +565,81 @@ async fn button_task(
     }
 }
 
-/// Poll the glass. A new contact set prints `touch` and beeps on first down.
+/// Poll `Register::Status`, then `Register::Points` (coords at byte 0).
+/// Clear Status only after a ready frame.
 #[embassy_executor::task]
 async fn touch_task(
     mut i2c: I2c<'static, Blocking>,
     _rst: Output<'static>,
     _int: Flex<'static>,
     _rail: TouchRail<Output<'static>, Enabled>,
+    addr: Option<u8>,
 ) {
-    let addr = SlaveAddress::Pair28_29.seven_bit();
-    let touch = gt911::Gt911Blocking::new(addr);
+    let Some(addr) = addr else {
+        println!("{LOG_PREFIX}: gt911 absent");
+        return;
+    };
     let mut last_n = 0u8;
     let mut last_points = [TouchPoint::default(); MAX_TOUCH_POINTS];
+    let mut last_status_uart: Option<Instant> = None;
 
     loop {
-        match touch.get_multi_touch(&mut i2c) {
-            Ok(points) => {
-                let n = core::cmp::min(points.len(), MAX_TOUCH_POINTS) as u8;
+        let status_due = STATUS_HEARTBEAT.interval_secs().is_some_and(|secs| {
+            last_status_uart.is_none_or(|t| {
+                Instant::now().saturating_duration_since(t) >= Duration::from_secs(u64::from(secs))
+            })
+        });
+        if status_due {
+            let mut st = [0u8];
+            if i2c
+                .write_read(addr, &Register::Status.addr_bytes(), &mut st)
+                .is_ok()
+            {
+                last_status_uart = Some(Instant::now());
+                emit(Event::Gt911Status {
+                    t_ms: now_ms(),
+                    status: st[0],
+                });
+            }
+        }
+
+        let mut st = [0u8];
+        if i2c
+            .write_read(addr, &Register::Status.addr_bytes(), &mut st)
+            .is_ok()
+        {
+            let bits = StatusBits::from_byte(st[0]);
+            if bits.buffer_ready() {
+                let n = core::cmp::min(bits.touch_count() as usize, MAX_TOUCH_POINTS);
                 let mut mapped = [TouchPoint::default(); MAX_TOUCH_POINTS];
-                for (i, point) in points.iter().take(MAX_TOUCH_POINTS).enumerate() {
-                    let (x, y) = seeed_reterminal_sticky::touch::to_screen(
-                        u32::from(point.x),
-                        u32::from(point.y),
-                    );
-                    mapped[i] = TouchPoint {
-                        x: x as u16,
-                        y: y as u16,
-                    };
+                if n > 0 {
+                    let mut raw = [0u8; MAX_TOUCH_POINTS * POINT_RECORD_LEN];
+                    if i2c
+                        .write_read(
+                            addr,
+                            &Register::Points.addr_bytes(),
+                            &mut raw[..n * POINT_RECORD_LEN],
+                        )
+                        .is_ok()
+                    {
+                        for i in 0..n {
+                            let rec = &raw[i * POINT_RECORD_LEN..];
+                            let cx =
+                                u16::from_le_bytes([rec[POINT_X_OFFSET], rec[POINT_X_OFFSET + 1]]);
+                            let cy =
+                                u16::from_le_bytes([rec[POINT_Y_OFFSET], rec[POINT_Y_OFFSET + 1]]);
+                            let (x, y) = seeed_reterminal_sticky::touch::to_screen(
+                                u32::from(cx),
+                                u32::from(cy),
+                            );
+                            mapped[i] = TouchPoint {
+                                x: x as u16,
+                                y: y as u16,
+                            };
+                        }
+                    }
                 }
+                let n = n as u8;
                 if n != last_n || mapped != last_points {
                     let became_contact = n > 0 && last_n == 0;
                     last_n = n;
@@ -573,11 +653,10 @@ async fn touch_task(
                         ask_beep();
                     }
                 }
+                let _ = i2c.write(addr, &Register::Status.write_u8(StatusWrite::Clear.byte()));
             }
-            Err(gt911::Error::NotReady) => {}
-            Err(_) => {}
         }
-        Timer::after(Duration::from_millis(30)).await;
+        Timer::after(Duration::from_millis(STATUS_POLL_MS)).await;
     }
 }
 

@@ -40,6 +40,12 @@ pub const GT911_ID_CAPACITY: usize = 48;
 /// Bytes reserved for a GT911 INT line (`gt911 int=0`).
 pub const GT911_INT_CAPACITY: usize = 32;
 
+/// Bytes reserved for a SHT40 line (`sht t=… rh=…` or `sht none`).
+pub const SHT_CAPACITY: usize = 48;
+
+/// Bytes reserved for a PCF8563 line (`rtc y=…` or `rtc none`).
+pub const RTC_CAPACITY: usize = 64;
+
 /// Why a format into a caller buffer failed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FormatError {
@@ -190,6 +196,9 @@ pub fn format_prompt<'a>(step_id: &str, buf: &'a mut [u8]) -> Result<&'a str, Fo
 }
 
 /// Writes `simple-debug: contacts=<n>` into `buf` without a trailing newline.
+///
+/// `n` is 0..=5 on this FPC (GT911 Rev.09 §1). Status-line cadence is
+/// board `touch::STATUS_HEARTBEAT`, not this formatter.
 pub fn format_contacts(n: u8, buf: &mut [u8]) -> Result<&str, FormatError> {
     write_into(buf, format_args!("{}: contacts={n}", LOG_PREFIX))
 }
@@ -220,6 +229,43 @@ pub fn format_gt911_id<'a>(id: &[u8; 4], buf: &'a mut [u8]) -> Result<&'a str, F
             ),
         )
     }
+}
+
+/// Writes `simple-debug: sht t=<milli °C> rh=<milli % RH>` into `buf`.
+pub fn format_sht(t_mc: i32, rh_mp: i32, buf: &mut [u8]) -> Result<&str, FormatError> {
+    write_into(buf, format_args!("{LOG_PREFIX}: sht t={t_mc} rh={rh_mp}"))
+}
+
+/// Writes `simple-debug: sht none` when the measure NAKs.
+pub fn format_sht_none(buf: &mut [u8]) -> Result<&str, FormatError> {
+    write_into(buf, format_args!("{LOG_PREFIX}: sht none"))
+}
+
+/// Writes a PCF8563 time line. `year` is the chip's 0–99 field. `vl` is
+/// the seconds-register VL bit (NXP: 1 = integrity not guaranteed).
+pub fn format_rtc(
+    year: u8,
+    month: u8,
+    day: u8,
+    hours: u8,
+    minutes: u8,
+    seconds: u8,
+    vl: bool,
+    buf: &mut [u8],
+) -> Result<&str, FormatError> {
+    write_into(
+        buf,
+        format_args!(
+            "{}: rtc y={year} mo={month} d={day} h={hours} mi={minutes} s={seconds} vl={}",
+            LOG_PREFIX,
+            u8::from(vl),
+        ),
+    )
+}
+
+/// Writes `simple-debug: rtc none` when the RTC read NAKs.
+pub fn format_rtc_none(buf: &mut [u8]) -> Result<&str, FormatError> {
+    write_into(buf, format_args!("{LOG_PREFIX}: rtc none"))
 }
 
 /// Writes `simple-debug: gt911 int=0` or `int=1` into `buf` without a trailing newline.
@@ -503,6 +549,23 @@ mod tests {
             format_gt911_int(false, &mut buf).unwrap(),
             "simple-debug: gt911 int=0"
         );
+        assert_eq!(seeed_reterminal_sticky::touch::MAX_TOUCH_POINTS, 5);
+        assert_eq!(
+            seeed_reterminal_sticky::touch::STATUS_HEARTBEAT,
+            seeed_reterminal_sticky::touch::StatusHeartbeat::EverySecs(10)
+        );
+        let mut buf = [0u8; SHT_CAPACITY];
+        assert_eq!(
+            format_sht(23400, 45100, &mut buf).unwrap(),
+            "simple-debug: sht t=23400 rh=45100"
+        );
+        assert_eq!(format_sht_none(&mut buf).unwrap(), "simple-debug: sht none");
+        let mut buf = [0u8; RTC_CAPACITY];
+        assert_eq!(
+            format_rtc(26, 8, 30, 15, 14, 0, false, &mut buf).unwrap(),
+            "simple-debug: rtc y=26 mo=8 d=30 h=15 mi=14 s=0 vl=0"
+        );
+        assert_eq!(format_rtc_none(&mut buf).unwrap(), "simple-debug: rtc none");
     }
 
     fn has_colon_mac(line: &str) -> bool {

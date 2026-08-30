@@ -50,6 +50,11 @@ bit 7 (`0x80`) is the low-voltage / integrity flag. INT is net `RTC_INTn`
 and is **NC** to the ESP32. CLKOUT is a test point. The RTC cannot wake
 the MCU on a pin.
 
+simple-debug (operator) read seven bytes from `0x02` and printed
+`rtc y= mo= d= h= mi= s= vl=`. On glass: seconds advanced with the
+heartbeat, **`vl=0`**. No `init`, no `set_datetime`, no VL clear. The
+wall-clock fields are whatever the chip already held.
+
 ## BQ27220 fuel gauge (`0x55`)
 
 Little-endian standard commands:
@@ -119,6 +124,11 @@ UART learning firmware issued high-precision measure `0xFD` (`sht4x`
 `environment_sensor` init still reports `result=ok` after an `app0` restore.
 PCF8563 `0x51`, BQ27220 `0x55`, and LSM6DS3TR-C `0x6A` ACKed a 1-byte probe
 on the same bus after latch.
+
+simple-debug (operator) printed live `sht t=` / `rh=` from
+`Precision::High` (`0xFD`). On glass, one room: **`t` ~28900** (milli
+°C, ~28.9 °C) and **`rh` ~27900** (milli % RH, ~27.9 %). That is one
+session, not a calibration. Do not print the Sensirion serial.
 
 ## PDM microphone
 

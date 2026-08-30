@@ -2,8 +2,10 @@
 
 Vendor documents are the official source for registers, opcodes, and timings
 of parts **confirmed on this model**. Observed hardware still outranks a
-datasheet default (GT911 `0x14` vs sheet `0x5D`). Wiring authority is the
-board contract in [SKILL.md](../SKILL.md). Precedence:
+datasheet default. Both GT911 7-bit addresses ACK here (Rev.09 §6.1:
+INT=0 → `0x5D` with contacts; INT=1 → `0x14` ACK, no points on an
+init Status-clear path). Wiring authority is the board contract in
+[SKILL.md](../SKILL.md). Precedence:
 [sources.md](../references/sources.md).
 
 This file is the committed catalog. Links below are relative to this skill
@@ -110,9 +112,10 @@ register map**; this PDF is not a source of `0x814E` / command-`0` / bit
   The 7-bit addresses are `0x14` and `0x5D`. INT+Reset during power-on
   selects the pair (diagrams on p.10; extracted markdown has no T2/T3
   numbers — board timings stay the on-glass 20/20/80 ms).
-- **Stay at or below 400 kbps** (§6.1). On-glass 100 kHz is inside that cap.
-- **Up to 5 concurrent touches** (§1). How many this FPC delivers is still
-  [nyc-gt911-contacts](not-yet-confirmed.md).
+- **Stay at or below 400 kbps** (§6.1). embassy-debug uses the cap;
+  simple-debug uses 100 kHz (inside it).
+- **Up to 5 concurrent touches** (§1). This FPC delivers **5**
+  ([touch.md](../references/touch.md#on-glass-embassy-debug)).
 - **Init, including idle-capacitance self-cal, is under 200 ms** (features,
   §8.6).
 - **`/RSTB` is active-low** and wants a 10 kΩ pull-up (pin table).
@@ -143,8 +146,8 @@ details stay in the TRM (not in this cache yet).
   §2.3.4 lists them with GPIO39/40 as the pad JTAG interface (Priority 3).
   Mux to GPIO before using them as GT911 RST / `TOUCH_EN`.
 - **Two I2C controllers** (§4.2.1.2): Standard 100 kbit/s, Fast 400 kbit/s,
-  up to 800 kbit/s limited by pull-up strength. Touch 100 kHz and sensor
-  400 kHz are both in spec.
+  up to 800 kbit/s limited by pull-up strength. Touch ≤400 kHz and
+  sensor 400 kHz are both in spec.
 - **GPIO19/20** default to USB Serial/JTAG (already in the board contract).
 
 ## Gaps, deliberately not filled by guessing
@@ -160,7 +163,7 @@ plausible-looking constant:
 | Four-gray LUT contents for this glass | No default LUT. The Sticky confirmed path is OTP (no 0x32). An MCU table stays optional and attributed; record its source and license here before adding one. |
 | GT911 coordinate / command / status bit encodings | Rev.09 deleted the register map (Rev.07). Remaining encodings are on-glass `GT911_REG_*` names, not a Rev.09 table. Do not invent a 186-byte config. |
 | ESP32-S3 GPIO hold, pad-JTAG eFuse, `ext1` register details | Datasheet v2.2 names the pads. The TRM is catalogued (`esp32-s3-trm`); search the local markdown cache when citing it. |
-| GT911 contacts this FPC actually delivers | Silicon max is 5 (Rev.09 §1). Simultaneous count on glass is [nyc-gt911-contacts](not-yet-confirmed.md). |
+| GT911 contacts this FPC actually delivers | **5** on glass (Rev.09 §1 silicon max). |
 | Glass part number on this FPC | Schematic Rev 01 names analog rails, not a glass PN. [nyc-panel-glass](not-yet-confirmed.md). |
 
 ## Verified against the schematic

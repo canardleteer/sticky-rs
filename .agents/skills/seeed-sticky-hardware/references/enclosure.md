@@ -14,8 +14,11 @@ Do not describe keys as being on the glass.
 ## Front (glass)
 
 The large rectangle is the **e-paper panel** with GT911 capacitive touch under
-the glass. Tapping it is the touch step (`gt911_contacts`), not `btn 4` / `5` /
-`6`. There is no frontlight.
+the glass. Tapping it is the touch step, not `btn 4` / `5` / `6`.
+embassy-debug printed `touch n=` through **5**
+([touch.md](touch.md#on-glass-embassy-debug)).
+simple-debug operator never printed `contacts=` on its own poll path.
+There is no frontlight.
 
 ## Right long edge (three tactile keys)
 

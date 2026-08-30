@@ -704,6 +704,9 @@ dependencies = [
 [[package]]
 name = "embassy-debug"
 version = "0.1.0"
+dependencies = [
+ "seeed-reterminal-sticky",
+]
 
 [[package]]
 name = "embassy-debug-fw"
@@ -727,7 +730,6 @@ dependencies = [
  "esp-println",
  "esp-radio",
  "esp-rtos",
- "gt911",
  "heapless 0.8.0",
  "lsm6ds3tr",
  "seeed-reterminal-sticky",
@@ -2724,6 +2726,9 @@ checksum = "3a219298ac11a56ea9a6d2120044824d6f01aeb034955e7af7bc16858527deea"
 [[package]]
 name = "simple-debug"
 version = "0.1.0"
+dependencies = [
+ "seeed-reterminal-sticky",
+]
 
 [[package]]
 name = "simple-debug-fw"

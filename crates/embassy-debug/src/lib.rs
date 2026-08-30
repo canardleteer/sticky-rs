@@ -2,8 +2,8 @@
 //!
 //! The firmware owns buses, pins, and the Embassy tasks. This crate owns the
 //! **strings** it prints so the log contract can be tested on the host:
-//! timestamped button, touch, IMU, mic-energy, PCM-dump, and radio-scan
-//! lines, and no factory serial / USB serial / MAC fields.
+//! timestamped button, touch, GT911 status, IMU, mic-energy, PCM-dump,
+//! and radio-scan lines, and no factory serial / USB serial / MAC fields.
 
 #![no_std]
 #![forbid(unsafe_code)]
@@ -42,7 +42,7 @@ pub const RADIO_REPORT_SECS: u32 = 10;
 /// Max SSID or BLE local-name characters after sanitize.
 pub const RADIO_LABEL_MAX: usize = 24;
 
-/// Silicon maximum concurrent touches (GT911 Rev.09 §1).
+/// Silicon maximum concurrent touches (GT911 Rev.09 §1). This FPC delivers 5.
 pub const MAX_TOUCH_POINTS: usize = 5;
 
 /// Bytes reserved for any event line, including five touch points.
@@ -171,11 +171,19 @@ pub enum Event {
         /// `true` when the key went low.
         down: bool,
     },
+    /// Read-only GT911 status byte (`Register::Status` / `StatusBits`).
+    /// Printed when board `touch::STATUS_HEARTBEAT` is on.
+    Gt911Status {
+        /// Milliseconds since boot.
+        t_ms: u32,
+        /// Raw status byte.
+        status: u8,
+    },
     /// GT911 contact set, already mapped onto the 800×480 screen.
     Touch {
         /// Milliseconds since boot.
         t_ms: u32,
-        /// How many of [`Event::Touch::points`] are valid (0..=5).
+        /// How many of [`Event::Touch::points`] are valid (0..=5 on this FPC).
         n: u8,
         /// Screen-space points. Only the first `n` entries are printed.
         points: [TouchPoint; MAX_TOUCH_POINTS],
@@ -257,6 +265,10 @@ pub fn format_event<'a>(event: &Event, buf: &'a mut [u8]) -> Result<&'a str, For
                 format_args!("{LOG_PREFIX}: t={t_ms} btn {gpio} {edge}"),
             )
         }
+        Event::Gt911Status { t_ms, status } => write_into(
+            buf,
+            format_args!("{LOG_PREFIX}: t={t_ms} gt911 st={status:#04x}"),
+        ),
         Event::Touch { t_ms, n, points } => format_touch(t_ms, n, &points, buf),
         Event::Imu {
             t_ms,
@@ -547,6 +559,24 @@ mod tests {
     }
 
     #[test]
+    fn gt911_status_is_a_read_only_hex_byte() {
+        assert_eq!(
+            line(&Event::Gt911Status {
+                t_ms: 2100,
+                status: 0x00,
+            }),
+            "embassy-debug: t=2100 gt911 st=0x00"
+        );
+        assert_eq!(
+            line(&Event::Gt911Status {
+                t_ms: 2180,
+                status: 0x81,
+            }),
+            "embassy-debug: t=2180 gt911 st=0x81"
+        );
+    }
+
+    #[test]
     fn touch_zero_contacts_omits_points() {
         assert_eq!(
             line(&Event::Touch {
@@ -725,6 +755,18 @@ mod tests {
         .unwrap();
         assert!(text.len() < LINE_CAPACITY);
         assert!(text.starts_with("embassy-debug:"));
+    }
+
+    #[test]
+    fn touch_capacity_matches_the_board_crate() {
+        assert_eq!(
+            MAX_TOUCH_POINTS,
+            seeed_reterminal_sticky::touch::MAX_TOUCH_POINTS as usize
+        );
+        assert_eq!(
+            seeed_reterminal_sticky::touch::STATUS_HEARTBEAT,
+            seeed_reterminal_sticky::touch::StatusHeartbeat::EverySecs(10)
+        );
     }
 
     #[test]

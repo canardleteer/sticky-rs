@@ -12,5 +12,8 @@ authors.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[dev-dependencies]
+seeed-reterminal-sticky = { path = "../seeed-reterminal-sticky", version = "0.1.0" }
+
 [lints]
 workspace = true

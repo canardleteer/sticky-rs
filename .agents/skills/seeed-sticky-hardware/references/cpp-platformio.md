@@ -196,6 +196,24 @@ is flaky), `NO_FLIP` pending, GT911 `0x5D` alt `0x14`, raw 0–799×0–479,
 swapXY+flip both, `usbDetect` unassigned (GPIO9 as ADC), GPIO40 charge
 status, GPIO4 `DigitalConfirmPowerHold`, PDM mic 19/20/38, SHT40 `0x44`.
 
+GT911 bring-up is `InputManager::beginGt911` (CrossPoint calls the same
+SDK path; there is no second driver):
+
+- `gpio_hold_dis` on `TOUCH_EN` (GPIO42), then rail HIGH, **50 ms**.
+- Wire at **400 kHz**.
+- `resetWithIntLevel`: RST low 10 ms with INT driven, RST high 10 ms,
+  INT still driven 50 ms, INT input 50 ms. Try INT=0 (`0x5D`) first,
+  then INT=1 (`0x14`). Probe both candidate addresses after each dance.
+- **No** write to `0x8040`. **No** status clear at `begin`.
+- `pollGt911` (8 ms): read `0x814E`; if bit 7 clear, return without
+  writing. If ready, read `0x8150` (coords at byte 0 on Sticky), then
+  write `0x814E = 0`.
+
+That combination matched the embassy-debug listen that printed
+`touch n=5`. The numbers above are **this tree’s** evidence, not the
+board contract. Contract facts are Rev.09, schematic Rev 01, and UART
+in [touch.md](touch.md).
+
 CrossPoint inherited `esp32-s3-devkitc1-n16r8` and **16 MB** upload limits —
 wrong for this flash. PSRAM often left off because a 48 KiB 1-bit FB fits in
 DRAM. `holdPowerRails()` is the first `setup()` step (GPIO45/46). Logging is

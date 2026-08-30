@@ -15,8 +15,16 @@ Live-ask, never-erase, and flash I/O: root
   drive it.
 - MicroSD: CS idle-high. Do not mount.
 - Gauge: not used. No unseal, no data-memory writes.
-- Touch: rail on, INT-during-reset, 100 kHz, INT left floating. No
-  config-RAM write.
+- Touch: rail on, then Rev.09 §6.1 INT-during-reset address select
+  (400 kHz cap, INT=low then INT=high, INT driven after RST rises).
+  No config-RAM write. No init `StatusWrite::Clear`. No
+  `Register::Command`. Poll `Register::Points` (coords at byte 0);
+  clear Status only after a ready frame. Read-only `gt911 st=` follows
+  board [`STATUS_HEARTBEAT`](../../crates/seeed-reterminal-sticky)
+  (`EverySecs(10)` or `Off`). On this
+  unit: INT=0 → `0x5d` ACK, `touch n=5`, `st=0x85`
+  ([touch.md](../../.agents/skills/seeed-sticky-hardware/references/touch.md#on-glass-embassy-debug)).
+  INT-high + init Status-clear stayed at `st=0x00`.
 - Panel: splash follows the four in-plane IMU holds (portrait 480×800
   and landscape 800×480). FaceUp / FaceDown keep the last of those.
   Legend, tones, and shapes stay USB-down portrait. OTP gray4 splash /

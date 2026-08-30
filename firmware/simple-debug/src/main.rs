@@ -25,6 +25,7 @@ use bq27220::Bq27220;
 // Shared sensor I2C (gauge + IMU).
 use embedded_hal::delay::DelayNs;
 use embedded_hal::digital::InputPin;
+use embedded_hal::i2c::I2c as I2cBus;
 use embedded_hal_bus::i2c::RefCellDevice;
 
 // esp-hal: GPIO, I2C, blocking main.
@@ -49,14 +50,15 @@ use seeed_reterminal_sticky::touch::{
     RESET_HOLD_MS, RESET_RELEASE_MS,
 };
 #[cfg(feature = "operator")]
-use seeed_reterminal_sticky::touch::{COMMAND_READ_COORDINATES, STATUS_CLEAR};
+use seeed_reterminal_sticky::touch::{StatusWrite, STATUS_HEARTBEAT};
 use seeed_reterminal_sticky::{addresses, display, imu, Latch, I2C_FREQUENCY_HZ};
 
 // Host-tested UART line format.
 use simple_debug::{
-    collect_edges, format_edge, format_git, format_gt911_id, format_heartbeat, Edge, GpioLevels,
-    ImuPose, Snapshot, EDGE_CAPACITY, GIT_CAPACITY, GT911_ID_CAPACITY, HEARTBEAT_CAPACITY,
-    LOG_PREFIX,
+    collect_edges, format_edge, format_git, format_gt911_id, format_heartbeat, format_rtc,
+    format_rtc_none, format_sht, format_sht_none, Edge, GpioLevels, ImuPose, Snapshot,
+    EDGE_CAPACITY, GIT_CAPACITY, GT911_ID_CAPACITY, HEARTBEAT_CAPACITY, LOG_PREFIX, RTC_CAPACITY,
+    SHT_CAPACITY,
 };
 #[cfg(feature = "operator")]
 use simple_debug::{
@@ -249,18 +251,16 @@ fn main() -> ! {
 
     #[cfg(feature = "operator")]
     {
-        // After INT-during-reset: clear Status, then Command = read coordinates.
-        match touch_i2c.write(gt911_addr, &Register::Status.write_u8(STATUS_CLEAR)) {
+        // StatusWrite::Clear only. Do not write
+        // Register::Command (Command::ReadCoordinates).
+        match touch_i2c.write(
+            gt911_addr,
+            &Register::Status.write_u8(StatusWrite::Clear.byte()),
+        ) {
             Ok(()) => println!("{LOG_PREFIX}: gt911 status cleared"),
             Err(_) => println!("{LOG_PREFIX}: gt911 status clear failed"),
         }
-        match touch_i2c.write(
-            gt911_addr,
-            &Register::Command.write_u8(COMMAND_READ_COORDINATES),
-        ) {
-            Ok(()) => println!("{LOG_PREFIX}: gt911 command read-coordinates"),
-            Err(_) => println!("{LOG_PREFIX}: gt911 command failed"),
-        }
+        println!("{LOG_PREFIX}: gt911 no command write");
         // Host `learn-uart` steps: AI Voice, Page Up, Page Down, USB-C,
         // tilt, GPIO7, left-edge card, then a finger on the glass.
         for step in [
@@ -294,7 +294,14 @@ fn main() -> ! {
         int: touch_int,
         addr: gt911_addr,
     };
-    run_poll_loop(&mut delay, &mut gpio, &mut gauge, &mut imu_dev, &mut touch);
+    run_poll_loop(
+        &mut delay,
+        &mut gpio,
+        &sensor_i2c,
+        &mut gauge,
+        &mut imu_dev,
+        &mut touch,
+    );
 }
 
 /// Inputs the poll loop samples each tick.
@@ -399,6 +406,7 @@ fn ack_walk_sensor_bus(sensor_i2c: &mut I2c<'static, Blocking>, delay: &mut Dela
 fn run_poll_loop(
     delay: &mut Delay,
     gpio: &mut PolledGpios,
+    sensor_i2c: &RefCell<I2c<'static, Blocking>>,
     gauge: &mut Bq27220<RefCellDevice<'_, I2c<'static, Blocking>>>,
     imu_dev: &mut LSM6DS3TR<I2cInterface<RefCellDevice<'_, I2c<'static, Blocking>>>>,
     touch: &mut TouchKeep,
@@ -518,16 +526,23 @@ fn run_poll_loop(
             if let Ok(line) = format_heartbeat(&snapshot, &mut buf) {
                 println!("{line}");
             }
+            print_sht_line(sensor_i2c, delay);
+            print_rtc_line(sensor_i2c);
             #[cfg(feature = "operator")]
-            if let Some(status) = last_gt911_status {
-                let mut buf = [0u8; GT911_STATUS_CAPACITY];
-                if let Ok(line) = format_gt911_status(status, &mut buf) {
-                    println!("{line}");
-                }
-                let int_high = touch.int.is_high();
-                let mut buf = [0u8; GT911_INT_CAPACITY];
-                if let Ok(line) = format_gt911_int(int_high, &mut buf) {
-                    println!("{line}");
+            if STATUS_HEARTBEAT
+                .interval_secs()
+                .is_some_and(|secs| t_s.is_multiple_of(secs))
+            {
+                if let Some(status) = last_gt911_status {
+                    let mut buf = [0u8; GT911_STATUS_CAPACITY];
+                    if let Ok(line) = format_gt911_status(status, &mut buf) {
+                        println!("{line}");
+                    }
+                    let int_high = touch.int.is_high();
+                    let mut buf = [0u8; GT911_INT_CAPACITY];
+                    if let Ok(line) = format_gt911_int(int_high, &mut buf) {
+                        println!("{line}");
+                    }
                 }
             }
             t_s = t_s.saturating_add(1);
@@ -536,6 +551,53 @@ fn run_poll_loop(
         delay.delay_ms(POLL_MS);
         polls = polls.saturating_add(1);
     }
+}
+
+/// SHT40 high-precision measure. Do not print the Sensirion serial.
+fn print_sht_line(sensor_i2c: &RefCell<I2c<'static, Blocking>>, delay: &mut Delay) {
+    let mut sht = Sht4x::<_, Delay>::new(RefCellDevice::new(sensor_i2c));
+    let mut buf = [0u8; SHT_CAPACITY];
+    let line = match sht.measure(Precision::High, delay) {
+        Ok(m) => format_sht(
+            m.temperature_milli_celsius(),
+            m.humidity_milli_percent(),
+            &mut buf,
+        ),
+        Err(_) => format_sht_none(&mut buf),
+    };
+    if let Ok(line) = line {
+        println!("{line}");
+    }
+}
+
+/// PCF8563 time read. Start at VL_seconds (`0x02`); no writes.
+///
+/// NXP PCF8563 Rev 11: seconds bit 7 is VL (1 = integrity not
+/// guaranteed). We print that bit. Do not clear it.
+fn print_rtc_line(sensor_i2c: &RefCell<I2c<'static, Blocking>>) {
+    let mut i2c = RefCellDevice::new(sensor_i2c);
+    let mut raw = [0u8; 7];
+    let mut buf = [0u8; RTC_CAPACITY];
+    let line = match i2c.write_read(addresses::PCF8563, &[0x02], &mut raw) {
+        Ok(()) => format_rtc(
+            bcd_digit(raw[6]),
+            bcd_digit(raw[5] & 0x1f),
+            bcd_digit(raw[3] & 0x3f),
+            bcd_digit(raw[2] & 0x3f),
+            bcd_digit(raw[1] & 0x7f),
+            bcd_digit(raw[0] & 0x7f),
+            raw[0] & 0x80 != 0,
+            &mut buf,
+        ),
+        Err(_) => format_rtc_none(&mut buf),
+    };
+    if let Ok(line) = line {
+        println!("{line}");
+    }
+}
+
+fn bcd_digit(bcd: u8) -> u8 {
+    (bcd & 0x0f) + ((bcd >> 4) * 10)
 }
 
 /// One boot ACK/NAK line (`simple-debug: 0x14 ack`).

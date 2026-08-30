@@ -3,17 +3,27 @@
 Vendor document: Goodix GT911 datasheet **Rev.09 (11 Mar 2015)**
 ([catalog](../resources/datasheets.md)). Rev.07 **deleted the register map**;
 this PDF still has I2C addressing, INT/sleep behaviour, and “up to 5”
-contacts. Coordinate registers (`0x8140` / `0x814E` / `0x8150`), the
-command-`0` encoding, and status bit `0x80` are **not** in Rev.09 — those
-numbers come from on-glass `GT911_REG_*` names, not from this datasheet.
+contacts. Discuss the hex as crate enums, not raw ports:
+
+| Hex | Type | What it is |
+| --- | --- | --- |
+| `0x8040` | `Register::Command` | **Address** of the command port. Rev.09 §8.1 still names this port for Gesture (opcode `Command::Gesture` = `8`, also written to `0x8046`). The crate `init()` opcode `Command::ReadCoordinates` = `0` is **not** in Rev.09. |
+| `0x814E` | `Register::Status` | **Address** of the buffer handshake. A host write is `StatusWrite` (`Clear` = `0`). A read is `StatusBits` (bitfield: bit 7 ready, bits 3–0 count) — crate / on-glass, **not** a Rev.09 table. |
+| `0x8150` | `Register::Points` | First contact record (on-glass). Coords are LE at `POINT_X_OFFSET` / `POINT_Y_OFFSET`. |
+
+Rev.07 **deleted the register map** (Rev.09 revision history). Do not treat
+`0x814E` as a mode enum. Local cache: `resources/datasheets/pdf/gt911.pdf`
+(id `gt911`).
 
 ## Wiring
 
+Schematic Rev 01. Speeds are Rev.09 §6.1 (at or below 400 kbps).
+
 | Signal | GPIO | Role |
 | --- | ---: | --- |
-| SDA | 3 | Dedicated I2C, 100 kHz on glass. **ESP32-S3 strapping pin** (v2.2 §3.4). |
+| SDA | 3 | Dedicated I2C. **ESP32-S3 strapping pin** (v2.2 §3.4). |
 | SCL | 2 | Dedicated I2C. After reset: input, no internal pull. |
-| INT | 21 | Address select during reset, then input. **No MCU default pull** (v2.2 Table 2-1). Leave it floating after the dance unless a schematic shows a board pull. |
+| INT | 21 | Address select during reset, then input. **No MCU default pull** (v2.2 Table 2-1). Leave it floating after address select unless the schematic shows a board pull. |
 | RST | 41 | Reset. Default pad function is JTAG `MTDI`; mux to GPIO before the dance. |
 | `TOUCH_EN` | 42 | Active-high power. ~250 ms settle. Default pad function is JTAG `MTMS`; mux to GPIO. |
 
@@ -30,46 +40,53 @@ Rev.09 §6.1: two **8-bit** slave pairs, named in code as
 during power-on / reset (timing diagrams on datasheet p.10; the extracted
 markdown has no T2/T3 numbers).
 
-On-glass mapping (working units at **`0x14`**):
+On-glass mapping (both 7-bit addresses ACK on this unit):
 
 | INT level at RST rising | 8-bit write/read | 7-bit |
 | --- | --- | ---: |
 | 0 | `0xBA`/`0xBB` | `0x5D` |
 | 1 | `0x28`/`0x29` | `0x14` |
 
-Probe `0x14` first, then `0x5D`.
+INT=0 → `0x5D` delivered contacts (`touch n=5`). INT=1 → `0x14`
+ACKed; an init `StatusWrite::Clear` path stayed at `st=0x00`. Probe
+the address the dance selected. Do not silently flip
+`addresses::GT911_PRIMARY` (`0x14`).
 
-I2C must stay at or below **400 kbps** (Rev.09 §6.1). On-glass clocks this
-bus at **100 kHz**.
+I2C must stay at or below **400 kbps** (Rev.09 §6.1). embassy-debug
+uses that cap. simple-debug uses 100 kHz (inside the cap).
 
 `/RSTB` is active-low and wants an external 10 kΩ pull-up (pin table).
 Initialization, including self-calibration of the idle capacitance, finishes
 in **< 200 ms** (features + §8.6). Do not expect a first valid scan before
 that window.
 
-Reset timing that worked on this board (conservative vs the unread
-diagrams):
+Address-select reset (Rev.09 §6.1; extracted markdown has no T2/T3).
+embassy-debug holds that worked on glass, inside the 200 ms window:
 
-1. RST=0, INT=select level, hold **20 ms**.
-2. RST=1, wait **20 ms**.
-3. INT as a **floating** input (no MCU pull-up), wait **80 ms**, then an extra
-   **30 ms**. GPIO21 has no silicon default pull (ESP32-S3 v2.2 Table 2-1).
-4. I2C probe, read ID. Self-cal finishes in **< 200 ms** (Rev.09); this
-   sequence stays inside that window.
+1. RST=0, INT driven at the select level, hold **10 ms**.
+2. RST=1, INT still driven, wait **10 ms**, then **50 ms**.
+3. INT as a **floating** input (no MCU pull-up), wait **50 ms**.
+4. I2C probe, read ID at `Register::Id`.
 
-UART learning firmware ACKed `0x14` after this dance by reading product ID
-at `0x8140`. Bunny on glass
-([limengdu/reTerminal_Sticky_Bunny](https://github.com/limengdu/reTerminal_Sticky_Bunny))
-then **clears status** (`0x814E = 0`) and polls at **30 ms** on a **100 kHz**
-touch bus. `read_points` returns **0** when buffer bit `0x80` is clear (idle,
-not an error) and emits a tap on **finger-up** if the path stayed still —
-that is why it feels a little slow. It does **not** write `0x8040` and does
-**not** rewrite GT911 config RAM; resolution fallback is software mapping only.
+A longer conservative hold (20 / 20 / 80 / 30 ms) ACKed `0x14` after
+INT-high select and is what simple-debug uses.
 
-The `gt911` crate `init()` adds a command-`0` write at `0x8040` before the
-product-ID check and status clear. That encoding is **not** in Rev.09 (the
-map is gone). The PDF still names `0x8040` as a command port for Gesture
-mode (command `8` to `0x8046` then `0x8040`, §8.1). Espressif’s
+Neither path writes `Register::Command` or GT911 config RAM.
+embassy-debug does **not** write `StatusWrite::Clear` at begin. Poll
+`Register::Status`; if bit 7 is set, read `Register::Points`, then
+clear. simple-debug clears Status at init and has not printed a
+contact line.
+
+Third-party C++ sequences that used the same INT-low-first combination
+are wiring evidence only
+([cpp-platformio.md](cpp-platformio.md#freeink--crosspoint)). They
+are not the source of these numbers.
+
+The `gt911` crate `init()` writes `Command::ReadCoordinates` at
+`Register::Command` before the product-ID check and status clear. That
+encoding is **not** in Rev.09 (the map is gone). The PDF still names
+`Register::Command` as a command port for Gesture mode
+(`Command::Gesture` to `0x8046` then `0x8040`, §8.1). Espressif’s
 `ENTER_SLEEP` name for the same address is not a Rev.09 claim. Sleep in
 this datasheet is: drive INT **low**, then the screen-off I2C command; wake
 by driving INT **high** for 2–5 ms, at least 58 ms after screen-off. That
@@ -80,16 +97,32 @@ INT notify polarity is a **config bit** (§8.2): `0` = rising (idle low),
 falling-edge idle, or a chip that never pulses. GPIO21 has **no** reset
 pull on the ESP32-S3 (v2.2 Table 2-1); an MCU `Pull::Up` is firmware, not
 silicon default, and can hold INT high so a rising-edge notify never looks
-like a pulse. After address select, leave INT floating. On-glass also calls
-`gpio_hold_dis` on RST/INT before the dance; GPIO hold itself is an ESP32-S3
-**TRM** topic (that PDF is not in the local cache yet).
+like a pulse. After address select, leave INT floating. GPIO hold on
+RST/INT is an ESP32-S3 **TRM** topic (that PDF is not in the local
+cache yet).
 
 `get_multi_touch` returns `Err(NotReady)` when status bit `0x80` is clear
 (idle in the crate / on-glass drivers; **not** a Rev.09 bit name). The
 operator image prints `gt911 st=0xNN` each heartbeat so a miss is status vs
-count. Silicon allows **up to 5** concurrent touches (Rev.09 §1). How many
-this FPC delivers is still
-[nyc-gt911-contacts](../resources/not-yet-confirmed.md#nyc-gt911-contacts).
+count. embassy-debug prints the same token when
+`touch::STATUS_HEARTBEAT` is on (read-only; it does not write
+`Register::Status` for that line).
+
+## On glass (embassy-debug)
+
+2026-08-30, default embassy-debug. Rev.09 §6.1 INT-low first,
+`I2C_MAX_HZ`, `Register::Points` at `POINT_X_OFFSET`. Boot token:
+`gt911 addr dance`.
+
+- INT=0: `SlaveAddress::PairBaBb` **ACK** (`0x5d`), `Pair28_29` NAK.
+- First heartbeat `gt911 st=0x80` (ready, count 0).
+- Attended taps: `touch n=1` … `touch n=0`, then `n=2`, then **`n=5`**
+  with `gt911 st=0x85`. This FPC delivers the silicon max (Rev.09 §1).
+
+INT-high + init `StatusWrite::Clear` + 100 kHz ACKed `0x14` and stayed
+at `st=0x00` with no `touch n=`. simple-debug operator
+`gt911_contacts` timed out the same way. That was the dance, not a
+dead panel.
 
 Power the rail **before** this dance. Point data starts at **byte 0** (no
 track-id prefix).

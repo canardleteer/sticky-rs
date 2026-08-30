@@ -25,7 +25,7 @@ tools belong to the consuming project.
 | Four-gray LUT / OTP waveform | Sticky: Seeed OTP full / partial / gray4. MCU `0x32` stays optional and attributed. Recorded in [display.md](display.md) | An invented or generic-example 105-byte table; analog 0x03/0x04/0x2C guesses; 40 MHz SPI |
 | BQ27220 gauge | Read-only standard commands and CEDV reads | Unseal, `CFGUPDATE`, Full Charge Capacity writes, OTP writes; crate `bq27xxx` (wrong family) |
 | BQ25616 charge enable (GPIO39) | Active-low; start disabled (inactive / high) | Raw “enable charge” writes; assuming active-high |
-| GT911 touch | Probe `0x14` first, after the INT-during-reset sequence | Assuming `0x5D`; rewriting config RAM to fake a resolution |
+| GT911 touch | INT-during-reset dance, then probe the selected 7-bit address (INT=0 → `0x5D` delivered contacts; INT=1 → `0x14` ACK) | Assuming one address; rewriting config RAM to fake a resolution |
 | Shared SPI (EPD + MicroSD) | One bus mutex; exactly one CS asserted | Overlapping transactions on the two devices |
 | PDM microphone (GPIO38 rail, GPIO19 clock, GPIO20 data) | Hold GPIO38 low when unused. USB-C debug is the CH343 on UART0, so the ESP32-S3 USB pads on 19/20 are free for PDM while that cable is plugged in. An `app0`-only write is the same flash rule as other images. Mute or stuck-max energy (`rms` / `peak`) is a failed experiment, not a destructive fault. | Native USB-Serial/JTAG or `probe-rs` on USB-C while 19/20 are PDM; leaving GPIO38 floating across deep sleep (capsule / load switch can sit half-powered); copying reTerminal E-series PDM pins (GPIO42/41) |
 | Flash images | Partition table mirroring the factory 32 MB layout | 16 MB `n16r8` limits; `probe-rs` on the USB-C connector |

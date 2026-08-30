@@ -34,7 +34,6 @@ a second status column.
 | [nyc-gauge-profile](#nyc-gauge-profile) | BQ27220 CEDV values and chemistry on a factory unit | [sensors.md](../references/sensors.md) |
 | [nyc-mic-pdm](#nyc-mic-pdm) | PDM high-fidelity rate / slot / hole | [sensors.md](../references/sensors.md) |
 | [nyc-panel-glass](#nyc-panel-glass) | Glass part, analog rails, temp LUT | [display.md](../references/display.md) |
-| [nyc-gt911-contacts](#nyc-gt911-contacts) | GT911 simultaneous contacts | [touch.md](../references/touch.md) |
 | [nyc-esphome-orient](#nyc-esphome-orient) | ESPHome `mirror_x` vs on-glass 180° | [display.md](../references/display.md) |
 
 Software knobs (CPU 160 vs 240 MHz, flash DIO vs QIO, partition tables, SKU
@@ -140,22 +139,6 @@ after a bench run.”
   says so.
 - Confirmed with glass PN from those sources — still not a 105-byte
   `0x32` table.
-
-### nyc-gt911-contacts
-
-Controller silicon reports **up to 5** concurrent touches (Goodix GT911
-Rev.09 §1). How many this FPC actually delivers is unmeasured.
-
-- Multi-touch on glass, read point count from the GT911. Confirmed with max
-  contacts the FPC actually delivers (≤ 5).
-
-UART learning firmware ACKed `0x14` after INT-during-reset and a product-ID
-read (`id=911`). Later attended polls still saw `gt911 st=0x00` every second
-and INT stuck high while the MCU enabled an internal pull-up on GPIO21.
-ESP32-S3 v2.2 Table 2-1 gives that pad **no** default pull; on-glass leaves
-INT floating. That software miss is not proof the FPC has no touch. Max
-simultaneous contacts still needs a poll path that prints `contacts=` on
-this image.
 
 ### nyc-esphome-orient
 

@@ -22,8 +22,9 @@
 //! 3. Buttons on [`pins::BUTTON_OK`], [`pins::BUTTON_UP`],
 //!    [`pins::BUTTON_DOWN`] — all active low with external pull-ups.
 //! 4. Two I2C masters. Sensors at [`I2C_FREQUENCY_HZ`] (400 kHz). GT911 at
-//!    [`touch::I2C_HZ`] (100 kHz on glass). Never put [`pins::SENSOR_I2C_SCL`]
-//!    (GPIO0) or [`pins::TOUCH_I2C_SDA`] (GPIO3) on the SPI bus: both are
+//!    [`touch::I2C_HZ`] or [`touch::I2C_MAX_HZ`] (Rev.09 §6.1 cap). Never
+//!    put [`pins::SENSOR_I2C_SCL`] (GPIO0) or [`pins::TOUCH_I2C_SDA`]
+//!    (GPIO3) on the SPI bus: both are
 //!    strapping pins (ESP32-S3 datasheet v2.2 section `3 Boot Configurations`).
 //!    A zero-initialised SPI config that claims GPIO0 kills the sensor bus
 //!    after display init. After the GT911 address dance, leave
@@ -83,18 +84,21 @@ pub mod addresses {
     pub const LSM6DS3TRC: u8 = 0x6a;
     /// Goodix GT911 on the **touch** bus after INT-high reset
     /// ([`crate::touch::SlaveAddress::Pair28_29`]). Rev.09 section `6.1 I2C
-    /// Timing` names the 8-bit pair `0x28`/`0x29`; working units answer at
-    /// 7-bit `0x14`.
+    /// Timing` names the 8-bit pair `0x28`/`0x29` (7-bit `0x14`). That
+    /// pair ACKs here; an init Status-clear path stayed `st=0x00`. Do not
+    /// silently flip this constant.
     pub const GT911_PRIMARY: u8 = crate::touch::SlaveAddress::Pair28_29.seven_bit();
     /// GT911 after INT-low reset ([`crate::touch::SlaveAddress::PairBaBb`]).
-    /// Rev.09 `6.1 I2C Timing` pair `0xBA`/`0xBB` (7-bit `0x5D`).
+    /// Rev.09 `6.1 I2C Timing` pair `0xBA`/`0xBB` (7-bit `0x5D`). On glass
+    /// this pair delivered contacts.
     pub const GT911_ALTERNATE: u8 = crate::touch::SlaveAddress::PairBaBb.seven_bit();
 }
 
 /// Sensor-bus I2C speed, in hertz.
 ///
 /// ESP32-S3 datasheet v2.2 section `4.2.1.2 I2C Interface`: Fast mode is
-/// 400 kbit/s. Touch stays at [`touch::I2C_HZ`] (100 kHz on glass).
+/// 400 kbit/s. Touch: [`touch::I2C_HZ`] or [`touch::I2C_MAX_HZ`]
+/// (Rev.09 §6.1 cap).
 pub const I2C_FREQUENCY_HZ: u32 = 400_000;
 
 #[cfg(test)]

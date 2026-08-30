@@ -13,17 +13,16 @@ specifics stay in `seeed-reterminal-sticky`), or **fail** (write our own).
 
 | Part | Crate | Version audited | Verdict | Basis |
 | --- | --- | --- | --- | --- |
-| GT911 touch | [`gt911`](https://crates.io/crates/gt911) | 0.3.0 | **pass-with-wrapper** | `Gt911Blocking::new(i2c_addr: u8)` and the async `Gt911` take an explicit address, so `0x14` is constructible — the open question from planning. Blocking and async surfaces both exist; multi-touch returns a `heapless::Vec` of up to 5 points (matches Rev.09 §1 silicon max). `init()` writes command `0` at `0x8040` and clears status `0x814E`; it does not write config RAM. `Error::NotReady` means buffer bit `0x80` is clear (idle). **Rev.09 deleted the register map** (Rev.07), so command-`0` and bit `0x80` are crate / on-glass encodings, not a Rev.09 table; Espressif `ENTER_SLEEP` is not a claim of this PDF. Power enable, the INT-during-reset address dance, and the Sticky coordinate transform stay in the board crate. After that dance, leave GPIO21 floating (`Pull::None`; ESP32-S3 v2.2 Table 2-1 has no default pull on that pad). On-glass `begin()` clears `0x814E` only (no `0x8040`), then 100 kHz and 30 ms poll; 100 kHz is inside the datasheet 400 kbps cap. |
+| GT911 touch | [`gt911`](https://crates.io/crates/gt911) | 0.3.0 | **pass-with-wrapper** | `Gt911Blocking::new(i2c_addr: u8)` and the async `Gt911` take an explicit address, so `0x14` is constructible — the open question from planning. Blocking and async surfaces both exist; multi-touch returns a `heapless::Vec` of up to 5 points (matches Rev.09 §1 silicon max). `init()` writes command `0` at `0x8040` and clears status `0x814E`; it does not write config RAM. `Error::NotReady` means buffer bit `0x80` is clear (idle). **Rev.09 deleted the register map** (Rev.07), so command-`0` and bit `0x80` are crate / on-glass encodings, not a Rev.09 table; Espressif `ENTER_SLEEP` is not a claim of this PDF. Power enable, the INT-during-reset address dance, and the Sticky coordinate transform stay in the board crate. After that dance, leave GPIO21 floating (`Pull::None`; ESP32-S3 v2.2 Table 2-1 has no default pull on that pad). simple-debug writes `StatusWrite::Clear` at `Register::Status` only (no `Register::Command`); 100 kHz. embassy-debug poll is board `Register` I2C at `I2C_MAX_HZ` (crate `init()` not used); INT-low (Rev.09 §6.1) delivered `touch n=5`. Read-only `gt911 st=` cadence is board `touch::STATUS_HEARTBEAT` (`EverySecs(10)` or `Off`). 100 kHz is inside the datasheet 400 kbps cap. |
 | LSM6DS3TR-C IMU | [`lsm6ds3tr`](https://crates.io/crates/lsm6ds3tr) | 0.2.2 | **pass-with-wrapper** | `interface` module provides **both** `i2c` and `spi` back ends, so the SPI-only examples were misleading; I2C at `0x6A` is supported. Enclosure axis mapping and the 0.70 g placement threshold stay in the board crate. Do not touch GPIO7. |
 | SHT40 | [`sht4x`](https://crates.io/crates/sht4x) | 0.2.0 | **pass** | `embedded-hal` 1.0, address `0x44`. Command bytes match the Sensirion SHT4x datasheet (`Precision::High` → `0xFD` high-precision measure, `0xF6` / `0xE0` medium/low, `0x94` soft reset, `0x89` serial number). Used on silicon: a high-precision measure ACKed at `0x44` where a 1-byte read NAKed. Do not print `serial_number` from this crate. |
-| PCF8563 RTC | [`pcf8563-dd`](https://crates.io/crates/pcf8563-dd) | 0.3.0 | **pass** pending register spot-check | Built on `device-driver` register maps. Confirm the seconds-register VL/integrity flag handling against the NXP datasheet. |
+| PCF8563 RTC | [`pcf8563-dd`](https://crates.io/crates/pcf8563-dd) | 0.3.0 | **pass** for the register map; **do not take the crate in this workspace** (`bisync` 0.3 is yanked) | NXP Rev 11: seconds bit 7 is VL. simple-debug reads `0x02` raw. On glass: seconds tick and **`vl=0`**. |
 | MicroSD | [`embedded-sdmmc`](https://crates.io/crates/embedded-sdmmc) | 0.10.0 | **pass-with-wrapper** | Init at <= 400 kHz then raise. Shares one SPI controller with the panel, so CS arbitration is the application's job via `embedded-hal-bus`. |
 
-The two rows that were “pending register spot-check” are no longer both
-pending: `sht4x` command bytes were checked against the Sensirion SHT4x
-datasheet and a high-precision measure was used on silicon. `pcf8563-dd`
-still needs a seconds-register VL/integrity flag check before first
-hardware use.
+The two rows that were “pending register spot-check” are closed on
+silicon: `sht4x` `0xFD` printed live milli °C / milli % RH; PCF8563
+VL is seconds bit 7 and read **`vl=0`** from `0x02` (no `pcf8563-dd`
+in the lockfile).
 
 ## Rejected
 

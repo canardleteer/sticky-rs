@@ -15,7 +15,13 @@ Live-ask, never-erase, and flash I/O: root
   drive it. Do not enable gauge GPOUT as push-pull.
 - No e-paper LUT or refresh. Panel rail may be up; CS stays idle-high.
 - Gauge: standard-command reads only (`bq27220` without `config-write`).
-- MicroSD: CS idle-high. Do not mount.
+- MicroSD: CS idle-high. Do not mount. `sd_cd` is GPIO only.
+- SHT40 / PCF8563: measure and time **reads** only. Do not print the
+  SHT serial. Do not `init` or set the RTC.
+- GT911: ACK and `id=911` only on this image. Attended
+  `gt911_contacts` has always timed out (`st=0x00`, `int=1`). Do not
+  treat that as a successful touch capture. Contacts closed on
+  embassy-debug INT-low address select (`touch n=5`).
 - No deep sleep. No writes below `0x90000`. No Cargo `runner`.
 
 ## Flash and UART

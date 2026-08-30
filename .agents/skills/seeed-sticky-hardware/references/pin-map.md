@@ -9,8 +9,8 @@ hardware unless marked otherwise.
 | ---: | --- | --- | --- |
 | 0 | OD clock | Sensor I2C SCL | 400 kHz. **Strapping pin** (WPU at reset, boot mode with GPIO46). |
 | 1 | OD data | Sensor I2C SDA | SHT40, PCF8563, BQ27220, LSM6DS3TR-C |
-| 2 | OD clock | GT911 SCL | Dedicated touch bus, 100 kHz on glass. After reset: IE, no internal pull (v2.2 Table 2-1). |
-| 3 | OD data | GT911 SDA | Dedicated touch bus. **Strapping pin** (JTAG source, v2.2 §3.4): floating at reset, then ordinary IO. |
+| 2 | OD clock | GT911 SCL | Dedicated touch bus, ≤400 kHz (Rev.09 §6.1). After reset: IE, no internal pull (v2.2 Table 2-1). Schematic Rev 01. |
+| 3 | OD data | GT911 SDA | Dedicated touch bus. **Strapping pin** (JTAG source, v2.2 §3.4): floating at reset, then ordinary IO. Schematic Rev 01. |
 | 4 | Input | AI / OK / power | Active low, external 10 kΩ. RTC `ext1` wake. Seeed: **AI Voice Button**, right-edge top (glass facing you, USB-C down) |
 | 5 | Input | Up / left | Active low, external 10 kΩ. Seeed: **Page Up Button**, right-edge middle |
 | 6 | Input | Down / right | Active low, external 10 kΩ. Seeed: **Page Down Button**, right-edge bottom |
@@ -66,7 +66,7 @@ charger-driven, not MCU GPIO in these sources.
 
 | Bus | SDA | SCL | Speed | Devices |
 | --- | ---: | ---: | --- | --- |
-| Touch | 3 | 2 | 100 kHz | GT911 `SlaveAddress::Pair28_29` (working units) or `PairBaBb`. ESP32-S3 I2C Standard mode (v2.2 §4.2.1.2). |
+| Touch | 3 | 2 | ≤400 kHz | GT911 `SlaveAddress::PairBaBb` (INT-low, contacts) or `Pair28_29` (INT-high ACK). Rev.09 §6.1. ESP32-S3 I2C Fast mode cap (v2.2 §4.2.1.2). |
 | Sensors | 1 | 0 | 400 kHz | SHT40 `0x44`, PCF8563 `0x51`, BQ27220 `0x55`, LSM6DS3TR-C `0x6A` |
 
 External pull-ups exist on the I2C **SDA/SCL** nets; MCU internal pull-ups

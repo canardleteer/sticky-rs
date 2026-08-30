@@ -23,14 +23,92 @@ On the unit:
   the drawings. `--features radio`: Wi-Fi and BLE scan together on the
   on-board antenna; keys still walk the drawings. Do not combine
   `mic` and `radio` in one image for a desk test.
-- Tap the glass for `touch` lines; tilt the card for `imu=…`. A short
-  beep answers a key-down and the first finger on the glass.
+- Tilt the card for `imu=…`. A short beep answers a key-down. Tap the
+  glass for `touch n=` (Rev.09 INT-low address select; on glass
+  through `n=5`).
 
 Agent / toolchain:
 
 - Agent flash contract and envelope: [AGENTS.md](AGENTS.md).
 - First-time toolchain:
   [docs/getting-started.md](../../docs/getting-started.md).
+
+## Touch Test Instructions
+
+Default `embassy-debug` (no `mic`, no `radio`) already polls the GT911.
+A new contact set should print `touch n=` and beep on first down.
+**On this unit that line has never appeared.** Snapshot first:
+[docs/getting-started.md](../../docs/getting-started.md).
+
+### Step 1: Is the port free?
+
+Same as the microphone test. Only one `monitor` at a time. Ctrl-C an
+old listen. Do not `kill -9`.
+
+Then:
+
+```shell
+cargo xtask detect-connected
+```
+
+You should see a Sticky path. If you do not, and you already killed a
+listen the hard way, unplug the USB-C cable and plug it back in once.
+Run `detect-connected` again.
+
+### Step 2: Build, flash, and listen
+
+```shell
+. $HOME/export-esp.sh
+cargo xtask build-fw embassy-debug
+cargo xtask flash-app --image target/xtensa-esp32s3-none-elf/release-fw/embassy-debug.bin --yes
+cargo xtask monitor
+```
+
+The image is on the chip only after `flash-app` finishes. A successful
+build alone does not flash. If `flash-app` says no QinHeng CH343, go
+back to Step 1.
+
+Ctrl-C when you are done so the next `flash-app` can see the device.
+Do not `kill -9` that listen. If you already did, unplug and replug
+once (same as Step 1).
+
+### Step 3: What you should see
+
+Boot should print `embassy-debug: latched`, then
+`gt911 addr dance`, `gt911 int=0` / `int=1`, address
+`ack`/`nak` lines, `gt911 no init status clear`, and
+`gt911 no command write`. Keys
+and `imu=` should keep working. Tap the **glass** (not the right-edge
+keys). A change in contacts should look like:
+
+```text
+embassy-debug: t=2100 touch n=1 p0=123,456
+embassy-debug: t=2180 touch n=0
+```
+
+`n` is 0–5. A still finger is silent after the first line. About every
+ten seconds a read-only status line should appear even when idle
+(`touch::STATUS_HEARTBEAT`; `Off` silences it):
+
+```text
+embassy-debug: t=2100 gt911 st=0x00
+```
+
+That read does not write `Register::Status` unless a ready frame was
+just consumed. `st=0x00` with no `touch n=` is still a miss. This
+image uses Rev.09 §6.1 address select (400 kHz cap, INT=0 then
+INT=1, no init status-clear, points at `Register::Points`). Look
+for `gt911 addr dance` at boot.
+
+### What we already learned on this unit
+
+2026-08-30, default image (`git=80eaf8f` dirty). INT-high + init
+Status-clear ACKed `0x14` and stayed at `st=0x00` with no
+`touch n=`. INT-low address select: `gt911 int=0`, `0x5d ack`,
+first `st=0x80`. Attended taps printed `touch n=1` / `n=2` /
+**`n=5`** and `gt911 st=0x85`. This FPC delivers five contacts
+(Rev.09 §1). Facts:
+[touch.md](../../.agents/skills/seeed-sticky-hardware/references/touch.md#on-glass-embassy-debug).
 
 ## Microphone Test Instructions
 

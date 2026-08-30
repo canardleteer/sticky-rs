@@ -205,7 +205,7 @@ const WATCHED_ADDRS: [u8; 5] = [0x14, 0x44, 0x51, 0x55, 0x6a];
 /// NYC rows UART cannot close.
 #[must_use]
 pub fn nyc_still_open() -> Vec<String> {
-    ["nyc-gauge-profile", "nyc-gt911-contacts"]
+    ["nyc-gauge-profile"]
         .into_iter()
         .map(str::to_string)
         .collect()

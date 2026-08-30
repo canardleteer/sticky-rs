@@ -47,20 +47,21 @@ that the crate encoding is correct.
 | --- | --- | --- | --- |
 | 3.97" 800×480 mono e-paper (SSD1677, four-gray via dual planes + panel OTP) | `display`: geometry, `SPI_MAX_HZ` (10 MHz, mode 0), `RefreshKind::{Full, Partial, Gray4}`, `controller_config()` (OTP, `lut: None`) | [`ssd1677-gray4`](https://github.com/canardleteer/sticky-rs/tree/main/crates/ssd1677-gray4) for opcodes. Shared SPI with the card (`pins::SPI_SCLK` / `SPI_MOSI` / `SPI_MISO`, `pins::EPD_CS`). This crate does **not** ship a waveform LUT. | yes |
 | Panel 3.3 V rail | `EpdRail` on GPIO47; no unconditional `disable` | After the controller deep-sleep command, pass `PanelParked::after_deep_sleep_command()` into `disable_after_panel_sleep`. | yes |
-| GT911 capacitive touch (portrait 480×800 digitizer under landscape panel) | `TouchRail` (GPIO42), reset timings and addresses in `touch`, `touch::Register`, `touch::SlaveAddress`, `touch::to_screen` / `to_framebuffer` | Dedicated I2C: `pins::TOUCH_I2C_*`. Protocol: [`gt911`](https://crates.io/crates/gt911). Working units answer at `SlaveAddress::Pair28_29` (`addresses::GT911_PRIMARY`). Crate `init()` writes `Register::Command` then clears `Register::Status`. After reset this board path writes `Register::Status` = 0, then command `0`. Neither writes config RAM. Goodix Rev.09 deleted the register map; those encodings are on-glass names, not that PDF. Silicon max is 5 contacts. | yes |
+| GT911 capacitive touch (portrait 480×800 digitizer under landscape panel) | `TouchRail` (GPIO42), reset timings and addresses in `touch`, `touch::Register`, `touch::Command`, `touch::StatusWrite` / `StatusBits`, `touch::SlaveAddress`, `touch::StatusHeartbeat` / `STATUS_HEARTBEAT`, `touch::to_screen` / `to_framebuffer` | Dedicated I2C: `pins::TOUCH_I2C_*` (schematic). Rev.09 §6.1: INT=0 → `SlaveAddress::PairBaBb`, bus ≤ `I2C_MAX_HZ`, `Register::Points`, no init Status/Command write. Crate `init()` still writes `Command::ReadCoordinates`. Neither writes config RAM. This FPC delivers **5** contacts (`touch n=5`, `st=0x85`). INT-high + init Status-clear ACKed `Pair28_29` and stayed `st=0x00`. Do not silently flip `addresses::GT911_PRIMARY` (`0x14`). Read-only `gt911 st=` cadence is `STATUS_HEARTBEAT` (`EverySecs(10)` or `Off`). | yes |
 
 ### Sensors (sensor I2C, 400 kHz)
 
-Sensor bus: `I2C_FREQUENCY_HZ`. Touch bus: `touch::I2C_HZ` (100 kHz on glass).
-`pins::SENSOR_I2C_SCL` is GPIO0 and `pins::TOUCH_I2C_SDA` is GPIO3: both are
-**strapping pins**. Never assign them to the SPI controller. After the
-INT-during-reset dance, leave `pins::TOUCH_INT` (GPIO21) as a floating input
-— the ESP32-S3 pad has no default pull.
+Sensor bus: `I2C_FREQUENCY_HZ`. Touch bus: `touch::I2C_HZ` (100 kHz)
+or `touch::I2C_MAX_HZ` (Rev.09 §6.1 cap). `pins::SENSOR_I2C_SCL` is
+GPIO0 and `pins::TOUCH_I2C_SDA` is GPIO3: both are **strapping
+pins**. Never assign them to the SPI controller. After the
+INT-during-reset dance, leave `pins::TOUCH_INT` (GPIO21) as a
+floating input — the ESP32-S3 pad has no default pull.
 
 | Feature | This crate | Rest of the stack | On glass |
 | --- | --- | --- | --- |
-| SHT40-AD1B-R2 humidity / temperature | `addresses::SHT40` (`0x44`) | [`sht4x`](https://crates.io/crates/sht4x). Four-pin DFN; no ALERT. | no |
-| PCF8563M/TR real-time clock | `addresses::PCF8563` (`0x51`) | [`pcf8563-dd`](https://crates.io/crates/pcf8563-dd). INT (`RTC_INTn`) is NC to the ESP32. | no |
+| SHT40-AD1B-R2 humidity / temperature | `addresses::SHT40` (`0x44`) | [`sht4x`](https://crates.io/crates/sht4x). Four-pin DFN; no ALERT. simple-debug prints `sht t=` / `rh=` (milli °C / milli % RH). | yes |
+| PCF8563M/TR real-time clock | `addresses::PCF8563` (`0x51`) | Time at `0x02`; VL is seconds bit 7. INT (`RTC_INTn`) is NC to the ESP32. simple-debug prints `rtc` (read only). | yes |
 | LSM6DS3TR-C IMU | `addresses::LSM6DS3TRC` (`0x6A`); `imu::classify` maps a raw sample onto this enclosure | [`lsm6ds3tr`](https://crates.io/crates/lsm6ds3tr) over I2C. Do not drive GPIO7 as output (see below). | yes |
 
 ### Audio, storage, UI, debug

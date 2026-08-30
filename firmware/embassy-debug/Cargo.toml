@@ -65,7 +65,6 @@ embassy-debug = { path = "../../crates/embassy-debug" }
 bq25616 = { path = "../../crates/bq25616" }
 
 lsm6ds3tr = "0.2.2"
-gt911 = "0.3.0"
 
 embedded-hal = "1.0.0"
 embedded-hal-async = "1.0.0"

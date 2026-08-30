@@ -189,9 +189,9 @@ Firmware, not host tools:
 1. GPIO45 then GPIO46 high **before** the executor / `main` work.
 2. UART0 through the CH343P.
 3. Buttons GPIO4/5/6 active-low.
-4. Two I2C masters: sensors at 400 kHz, GT911 at 100 kHz (Bunny on-glass);
-   probe the listed addresses. GPIO0 and GPIO3 are straps; leave GPIO21
-   (GT911 INT) floating after the address dance.
+4. Two I2C masters: sensors at 400 kHz; GT911 at ≤400 kHz (Rev.09
+   §6.1). Probe the address the dance selected. GPIO0 and GPIO3 are
+   straps; leave GPIO21 (GT911 INT) floating after address select.
 5. SPI at 10 MHz; never GPIO0 or GPIO3 on that bus.
 6. SSD1677 1-bit full refresh, then gray4 +
    [display.md](../../seeed-sticky-hardware/references/display.md).
@@ -224,7 +224,7 @@ the exact literature revision a driver was typed against.
 | `lsm6ds3tr-c` | `lsm6ds3tr` + `seeed-reterminal-sticky` | Orientation classification in the board crate |
 | `gt911` | `gt911` + `seeed-reterminal-sticky` | Addresses and transform in the board crate |
 | `sht4x` | `sht4x` 0.2.0 | `Precision::{High,Medium,Low}` → `0xFD` / `0xF6` / `0xE0`; do not print `0x89` serial |
-| `pcf8563` | `pcf8563-dd` | **pass** pending seconds-register VL / integrity check ([CRATES.md](../../../../docs/CRATES.md)) |
+| `pcf8563` | raw `0x02` read in simple-debug; `pcf8563-dd` not in the lockfile (`bisync` 0.3 yanked) | On glass: `rtc` ticks, `vl=0` ([CRATES.md](../../../../docs/CRATES.md)) |
 | `esp32-s3-datasheet` / `esp32-s3-trm` | board crate / firmware | Strapping, GPIO21, JTAG pads, `ext1` |
 
 ## Crates vs parts
@@ -236,9 +236,9 @@ In this repository, prefer the workspace crates and the verdicts in
 | --- | --- | --- |
 | Board pins / latch / rails | `seeed-reterminal-sticky` | This repo. Keep chip drivers MCU-agnostic |
 | SSD1677 | `ssd1677-gray4` (this repo) | Dual-plane four-gray; Sticky uses **OTP** (no default MCU LUT). 10 MHz SPI. Wait on BUSY with `embedded-hal-async` `Wait`, not a spin loop. Not crates.io `ssd1677` |
-| GT911 | `gt911` | Own EN/RST/INT + Sticky transform in the board crate. Mux GPIO41/42 off JTAG F0 before driving. Crate `init()` writes command `0` at `0x8040` then clears `0x814E` — not a config-RAM write. On-glass `begin()` clears `0x814E` only (no `0x8040`). `NotReady` is idle (count 0). **Rev.09 deleted the register map**; those encodings are on-glass / crate, not that PDF. Bus **100 kHz** (datasheet cap 400 kbps), 30 ms poll, taps on finger-up. Silicon max 5 contacts. INT after reset: floating input (`Pull::None`; ESP32-S3 GPIO21 has no default pull) |
-| SHT40 | `sht4x` | Sensor I2C `0x44` |
-| PCF8563 | `pcf8563-dd` | Sensor I2C `0x51` |
+| GT911 | board `touch` + embassy-debug `Register` poll | Own EN/RST/INT + Sticky transform. Mux GPIO41/42 off JTAG F0. `Register` / `Command` / `StatusWrite` / `StatusBits` / `StatusHeartbeat`. Crate `init()` writes `Command::ReadCoordinates` — embassy does not call it. On glass: INT=0 → `PairBaBb`, `I2C_MAX_HZ`, `Register::Points` byte 0, **`touch n=5`**. `STATUS_HEARTBEAT` is `EverySecs(10)` or `Off`. INT-high + init Status-clear stayed `st=0x00`. INT after reset: floating (`Pull::None`) |
+| SHT40 | `sht4x` | Sensor I2C `0x44`. On glass: `sht t=` / `rh=` (~28.9 °C / ~27.9 % RH) |
+| PCF8563 | raw `0x02` in simple-debug | Sensor I2C `0x51`. On glass: `rtc` ticks, `vl=0` |
 | LSM6DS3TR-C | `lsm6ds3tr` | Mutex the shared sensor I2C. Do not drive GPIO7 |
 | BQ27220 | `bq27220` (this repo) | Not `bq27xxx` (wrong family: CEDV vs Impedance Track). Reads by default; gate data-memory writes |
 | BQ25616 | `bq25616` (this repo) | GPIO39 low; GPIO9 digital. No I2C |

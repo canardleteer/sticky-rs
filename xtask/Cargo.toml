@@ -1,0 +1,19 @@
+[package]
+name = "xtask"
+version = "0.1.0"
+description = "Host CLI for Sticky UART detect, factory backup/confirm/restore, host-only build-fw, app0 flash-app, learn-uart, learn-uart-only, and no-reset monitor"
+publish = false
+edition.workspace = true
+# Matches cargo-espflash / espflash 4.5. Workspace crates stay 1.85.
+rust-version = "1.88"
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+clap = { version = "4.5.41", features = ["derive", "env"] }
+env_logger = "0.11.8"
+sticky-host = { path = "../host/sticky-host" }
+
+[lints]
+workspace = true

@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
-members = ["crates/*", "host/*"]
-default-members = ["crates/*", "host/*"]
+members = ["crates/*", "host/*", "xtask"]
+default-members = ["crates/*", "host/*", "xtask"]
 
 [workspace.package]
 edition = "2021"

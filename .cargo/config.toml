@@ -1,5 +1,11 @@
-# There is deliberately no [target.*.runner]: cargo run must not flash a
-# device. No workspace [build] target and no [unstable] build-std: those
-# would break host `std` crates. Xtensa rustflags wait for firmware members.
+# Alias only. There is deliberately no [target.*.runner]: cargo run must not
+# flash a device. Detect / factory backup / restore / confirm / flash-app /
+# monitor is `cargo xtask …` and is not invoked by agents unless a human
+# explicitly asks.
+#
+# No workspace [build] target and no [unstable] build-std: those would
+# break host `std` crates. Device builds (when firmware members exist)
+# pass `--target xtensa-esp32s3-none-elf -Zbuild-std=core,alloc`.
 
-# `xtask` alias is added when the xtask package lands.
+[alias]
+xtask = "run --package xtask --"

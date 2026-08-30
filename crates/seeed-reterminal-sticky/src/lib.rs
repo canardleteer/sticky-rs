@@ -7,11 +7,11 @@
 //! crate depends on `embedded-hal` 1.0 only and is fully host-testable.
 //!
 //! It is deliberately thin. It is not a second abstraction layer over
-//! `esp-hal`. The crate README inventories every known board feature (display,
-//! touch, sensors, PDM microphone, MicroSD, buzzer, radios, …) and says which
-//! of those this crate types versus which you drive from a chip driver or the
-//! MCU HAL. There is no microphone sample API here: [`rails::MicRail`] and
-//! [`pins::MIC_CLK`] / [`pins::MIC_DATA`] only.
+//! `esp-hal`. The crate README maps Seeed / community claims onto crate
+//! types versus chip drivers and the MCU HAL, and marks which rows this
+//! project has confirmed on glass. There is no microphone sample API
+//! here: [`rails::MicRail`] and [`pins::MIC_CLK`] / [`pins::MIC_DATA`]
+//! only. PDM capture is untested.
 //!
 //! # Bring-up order
 //!

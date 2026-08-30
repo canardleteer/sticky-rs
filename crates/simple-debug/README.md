@@ -21,5 +21,3 @@ plus `simple-debug: gt911 int=0` each heartbeat. Boot may print
 Host-tested formatters: `format_prompt`, `format_contacts`,
 `format_git`, `format_gt911_status`, `format_gt911_id`,
 `format_gt911_int`.
-
-License: MIT

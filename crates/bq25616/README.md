@@ -17,5 +17,3 @@ rather than documented.
 `#![no_std]`, `embedded-hal` 1.0 only, no MCU dependency.
 
 Part: [TI SLUSDF7](https://www.ti.com/lit/ds/symlink/bq25616.pdf).
-
-License: MIT

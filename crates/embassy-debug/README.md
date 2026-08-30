@@ -16,5 +16,3 @@ embassy-debug: t=5000 imu=FaceUp x=12 y=-30 z=16300
 
 IMU reports use [`IMU_REPORT_SECS`] (5). A pose that does not classify
 is the token `imu=none`; the raw sample is still printed.
-
-License: MIT

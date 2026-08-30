@@ -64,5 +64,3 @@ path and no Sticky OTP sequences.
   `wait_until_idle_async` (feature `async`).
 - Deep sleep as a **type state**: `Asleep` has no command methods, and `wake`
   performs the hardware reset the datasheet requires.
-
-License: MIT

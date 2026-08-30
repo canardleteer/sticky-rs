@@ -41,17 +41,17 @@ pub enum FormatError {
 /// a `Debug` dump.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ImuPose {
-    /// Gravity dominant on +X.
+    /// USB-C on the bottom short edge.
     Portrait0,
-    /// Gravity dominant on -X.
+    /// USB-C on the top short edge.
     Portrait180,
-    /// Gravity dominant on -Y.
+    /// USB-C on the right short edge.
     Landscape0,
-    /// Gravity dominant on +Y.
+    /// USB-C on the left short edge.
     Landscape180,
-    /// Gravity dominant on +Z.
+    /// Lying face up. Embassy-debug still draws the USB-down portrait page.
     FaceUp,
-    /// Gravity dominant on -Z.
+    /// Lying face down. Embassy-debug still draws the USB-down portrait page.
     FaceDown,
 }
 
@@ -84,6 +84,7 @@ pub struct TouchPoint {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Scene {
     /// Cold-boot title card: Ferris, `sticky-rs`, then a smaller hint.
+    /// Drawn USB-down portrait (also used for FaceUp / FaceDown).
     Splash,
     /// Geometric shapes.
     Shapes,

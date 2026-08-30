@@ -44,7 +44,8 @@ exclude = [
 
 # MD004 would restyle every `-` list to `*` (first-pass noise).
 # MD059 would rename link labels. MD034 would rewrite autolinks.
-disable = ["MD004", "MD059", "MD034"]
+# MD033: GitHub Flavored Markdown has no center syntax; READMEs use HTML.
+disable = ["MD004", "MD059", "MD034", "MD033"]
 
 [MD010]
 spaces-per-tab = 2

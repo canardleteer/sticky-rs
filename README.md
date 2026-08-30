@@ -33,6 +33,12 @@
 
 ## Firmware Examples
 
+<div align="center">
+  <img src="docs/assets/first-ferris.png"
+       alt="embassy-debug splash on glass, USB-C down"
+       width="360">
+</div>
+
 - [plain](./firmware/simple-debug)
   - [quick install](./docs/getting-started.md#path-a--without-embassy-simple-debug)
 - [embassy-rs](./firmware/embassy-debug)

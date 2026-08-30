@@ -51,17 +51,17 @@ pub enum FormatError {
 /// classifier names and are not a `Debug` dump.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ImuPose {
-    /// Gravity dominant on +X.
+    /// USB-C on the bottom short edge.
     Portrait0,
-    /// Gravity dominant on -X.
+    /// USB-C on the top short edge.
     Portrait180,
-    /// Gravity dominant on -Y.
+    /// USB-C on the right short edge.
     Landscape0,
-    /// Gravity dominant on +Y.
+    /// USB-C on the left short edge.
     Landscape180,
-    /// Gravity dominant on +Z.
+    /// Lying face up.
     FaceUp,
-    /// Gravity dominant on -Z.
+    /// Lying face down.
     FaceDown,
 }
 

@@ -1,8 +1,8 @@
 //! reTerminal Sticky Embassy event-logger image.
 //!
-//! On the unit: the glass shows Ferris and `sticky-rs` first; right-edge
-//! keys change the drawing; taps and tilts print on UART0; a short beep
-//! answers a key or the first finger on the glass.
+//! On the unit: USB-C at the bottom, Ferris and `sticky-rs` read
+//! upright; right-edge keys change the drawing; taps and tilts print on
+//! UART0; a short beep answers a key or the first finger on the glass.
 //!
 //! In the MCU: latch power, park the charger and unused rails, bring up
 //! the two I2C buses and the panel OTP path. No invented LUT.

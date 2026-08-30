@@ -18,20 +18,23 @@ A working accelerometer-only setup:
 
 Scale at ±2 g: `0.000061 g/LSB`.
 
-**Enclosure axes (calibrated on a unit):**
+**Enclosure axes** (USB-C positions match the appearance diagram:
+glass facing you, USB-C on the bottom short edge is portrait):
 
-| Gravity-dominant axis | Orientation |
-| --- | --- |
-| +X | Portrait 0 |
-| −X | Portrait 180 |
-| −Y | Landscape 0 |
-| +Y | Landscape 180 |
-| +Z | Face up |
-| −Z | Face down |
+| Gravity-dominant axis | USB-C | Orientation |
+| --- | --- | --- |
+| −Y | Bottom short edge | Portrait 0 |
+| +Y | Top short edge | Portrait 180 |
+| −X | Right short edge | Landscape 0 |
+| +X | Left short edge | Landscape 180 |
+| +Z | — | Face up |
+| −Z | — | Face down |
 
 A ~0.70 g threshold on the dominant axis classified placement. UART learning
-firmware classified **FaceUp** while sitting still, then **Landscape0** after
-the operator lifted or rotated and held (~0.70 g map). Gyro and FIFO wiring
+firmware classified **FaceUp** while sitting still, then an in-plane pose
+after the operator lifted or rotated and held (~0.70 g map). An earlier
+token named USB-down **Landscape0**; the table above is the enclosure
+map (USB-down = Portrait 0). Gyro and FIFO wiring
 are undocumented. Stock firmware drives explicit low-power enter/exit
 transitions on this part around sleep, so expect a mode change rather than a
 single fixed ODR. **INT is GPIO7 in Seeed’s overview and is also named

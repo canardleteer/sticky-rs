@@ -15,10 +15,33 @@ use ssd1677_gray4::sequence::{
 };
 use ssd1677_gray4::{Config, PlaneMapping, Window};
 
-/// Panel width in pixels, landscape.
+/// Panel width in pixels, landscape scan.
 pub const WIDTH: u16 = 800;
-/// Panel height in pixels, landscape.
+/// Panel height in pixels, landscape scan.
 pub const HEIGHT: u16 = 480;
+
+/// USB-down portrait page width (short edge, keys on the right).
+///
+/// Matches the enclosure diagram: glass facing you, USB-C on the bottom
+/// short edge. Embassy-debug draws this page for Portrait, FaceUp, and
+/// FaceDown.
+pub const PAGE_WIDTH: u16 = HEIGHT;
+/// USB-down portrait page height (long edge).
+pub const PAGE_HEIGHT: u16 = WIDTH;
+
+/// Maps a USB-down portrait pixel onto the pre-rotation 800×480 canvas.
+///
+/// Portrait (0, 0) is the top-left with USB-C at the bottom. `px` is
+/// flipped so text is not mirrored on glass. Embassy-debug does not
+/// `mirror_x_plane` after this (that reverse_bits 8-pixel vertical bands
+/// on this page).
+#[must_use]
+pub const fn portrait_to_framebuffer(px: u16, py: u16) -> Option<(u16, u16)> {
+    if px >= PAGE_WIDTH || py >= PAGE_HEIGHT {
+        return None;
+    }
+    Some((WIDTH - 1 - py, HEIGHT - 1 - px))
+}
 
 /// Last RAM X address unit for a full-width window (`8.3` address units).
 pub const RAM_X_END: u16 = WIDTH - 1;
@@ -180,6 +203,18 @@ mod tests {
         assert_eq!(GRAY4_FRAME_BYTES, 96_000);
         assert_eq!(PLANE_BYTES, 48_000);
         assert_eq!(GRAY4_FRAME_BYTES, PLANE_BYTES * 2);
+        assert_eq!(PAGE_WIDTH, 480);
+        assert_eq!(PAGE_HEIGHT, 800);
+    }
+
+    #[test]
+    fn usb_down_portrait_corners_land_on_the_landscape_canvas() {
+        assert_eq!(portrait_to_framebuffer(0, 0), Some((799, 479)));
+        assert_eq!(portrait_to_framebuffer(479, 0), Some((799, 0)));
+        assert_eq!(portrait_to_framebuffer(0, 799), Some((0, 479)));
+        assert_eq!(portrait_to_framebuffer(479, 799), Some((0, 0)));
+        assert_eq!(portrait_to_framebuffer(480, 0), None);
+        assert_eq!(portrait_to_framebuffer(0, 800), None);
     }
 
     #[test]

@@ -1,11 +1,10 @@
 //! Enclosure orientation from the LSM6DS3TR-C accelerometer.
 //!
-//! The axis-to-orientation mapping was calibrated on a unit and belongs to this
-//! enclosure, not to the sensor, which is why it lives in the board crate.
-//!
-//! Face-up and face-down are **not** aliases for portrait and landscape: a
-//! flat device has no meaningful portrait or landscape reading, and pretending
-//! otherwise produces UI that rotates on a desk.
+//! Labels follow the enclosure diagram (glass facing you, USB-C on the
+//! bottom short edge is portrait), then the gravity axis seen on a unit.
+//! Face-up and face-down are **not** aliases for portrait and landscape:
+//! a flat device has no meaningful in-plane reading. Embassy-debug still
+//! draws the USB-down portrait page for those two poses.
 
 /// Accelerometer sensitivity at +/-2 g, in g per LSB.
 pub const SENSITIVITY_G_PER_LSB: f32 = 0.000_061;
@@ -20,17 +19,17 @@ pub const DOMINANT_AXIS_THRESHOLD_LSB: i32 =
 /// Enclosure orientation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Orientation {
-    /// Gravity dominant on +X.
+    /// USB-C on the bottom short edge. Gravity dominant on −Y.
     Portrait0,
-    /// Gravity dominant on -X.
+    /// USB-C on the top short edge. Gravity dominant on +Y.
     Portrait180,
-    /// Gravity dominant on -Y.
+    /// USB-C on the right short edge. Gravity dominant on −X.
     Landscape0,
-    /// Gravity dominant on +Y.
+    /// USB-C on the left short edge. Gravity dominant on +X.
     Landscape180,
     /// Gravity dominant on +Z: lying face up.
     FaceUp,
-    /// Gravity dominant on -Z: lying face down.
+    /// Gravity dominant on −Z: lying face down.
     FaceDown,
 }
 
@@ -52,16 +51,16 @@ pub fn classify(x: i16, y: i16, z: i16) -> Option<Orientation> {
     }
 
     Some(if x.abs() == dominant {
-        if x > 0 {
-            Orientation::Portrait0
-        } else {
-            Orientation::Portrait180
-        }
-    } else if y.abs() == dominant {
-        if y < 0 {
+        if x < 0 {
             Orientation::Landscape0
         } else {
             Orientation::Landscape180
+        }
+    } else if y.abs() == dominant {
+        if y < 0 {
+            Orientation::Portrait0
+        } else {
+            Orientation::Portrait180
         }
     } else if z > 0 {
         Orientation::FaceUp
@@ -84,11 +83,12 @@ mod tests {
     }
 
     #[test]
-    fn each_axis_maps_to_its_calibrated_orientation() {
-        assert_eq!(classify(ONE_G, 0, 0), Some(Orientation::Portrait0));
-        assert_eq!(classify(-ONE_G, 0, 0), Some(Orientation::Portrait180));
-        assert_eq!(classify(0, -ONE_G, 0), Some(Orientation::Landscape0));
-        assert_eq!(classify(0, ONE_G, 0), Some(Orientation::Landscape180));
+    fn each_axis_maps_to_the_enclosure_pose() {
+        // USB-C down / up are the Y axis; USB-C right / left are X.
+        assert_eq!(classify(0, -ONE_G, 0), Some(Orientation::Portrait0));
+        assert_eq!(classify(0, ONE_G, 0), Some(Orientation::Portrait180));
+        assert_eq!(classify(-ONE_G, 0, 0), Some(Orientation::Landscape0));
+        assert_eq!(classify(ONE_G, 0, 0), Some(Orientation::Landscape180));
         assert_eq!(classify(0, 0, ONE_G), Some(Orientation::FaceUp));
         assert_eq!(classify(0, 0, -ONE_G), Some(Orientation::FaceDown));
     }

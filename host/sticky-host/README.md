@@ -10,7 +10,8 @@ hardcoded repo path. Live methods that reset or listen take the UART session loc
 internally.
 
 Do not open a port unless a human explicitly asked. Inventory without probe
-and host-only import / `diff-learn-uart` / `build-fw` do not take the lock.
+and host-only import / `diff-learn-uart` / `build-fw` / `ci` do not take
+the lock.
 
 Safety and live-ask rules:
 [AGENTS.md](https://github.com/canardleteer/sticky-rs/blob/main/AGENTS.md).

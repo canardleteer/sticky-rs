@@ -60,10 +60,12 @@ cargo clippy --locked --all-targets -- -D warnings
 cargo fmt --check
 ```
 
-This is the whole story for `crates/*` and the host tools: they are
+This is the default host trio for `crates/*` and the host tools: they are
 host-testable, so no target hardware, cross toolchain, or serial port is
 involved. Firmware packages are workspace members but not default-members,
 so these commands skip them. Do not pass `--workspace` (that pulls Xtensa).
+`cargo xtask ci` is the full gate (that trio plus feature variants,
+firmware clippy, rumdl, machete, and audit).
 
 ## The firmware (Xtensa)
 

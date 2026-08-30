@@ -321,8 +321,6 @@ fn main() -> ! {
     const POLL_MS: u32 = 1_000;
     #[cfg(feature = "operator")]
     const POLL_MS: u32 = 20;
-    #[cfg(not(feature = "operator"))]
-    const HEARTBEAT_EVERY: u32 = 1;
     #[cfg(feature = "operator")]
     const HEARTBEAT_EVERY: u32 = 1_000 / POLL_MS;
 
@@ -364,7 +362,7 @@ fn main() -> ! {
                 // Crate: no new buffer (`STATUS_BUFFER_READY` clear). Not a bus error.
                 Err(gt911::Error::NotReady) => last_contacts,
                 Err(_) => {
-                    if gt911_fail_polls == 0 || gt911_fail_polls % 250 == 0 {
+                    if gt911_fail_polls.is_multiple_of(250) {
                         println!("{LOG_PREFIX}: gt911 poll failed");
                     }
                     gt911_fail_polls = gt911_fail_polls.saturating_add(1);
@@ -382,7 +380,11 @@ fn main() -> ! {
             }
         }
 
-        if polls % HEARTBEAT_EVERY == 0 {
+        #[cfg(not(feature = "operator"))]
+        let heartbeat = true;
+        #[cfg(feature = "operator")]
+        let heartbeat = polls.is_multiple_of(HEARTBEAT_EVERY);
+        if heartbeat {
             let voltage_mv = gauge.voltage_mv().unwrap_or_default();
             let current_ma = gauge.current_ma().unwrap_or_default();
             let soc_pct = gauge.state_of_charge_pct().unwrap_or_default();

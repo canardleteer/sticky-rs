@@ -1,7 +1,7 @@
 [package]
 name = "xtask"
 version = "0.1.0"
-description = "Host CLI for Sticky UART detect, factory backup/confirm/restore, host-only build-fw, app0 flash-app, learn-uart, learn-uart-only, and no-reset monitor"
+description = "Host CLI for Sticky UART detect, factory backup/confirm/restore, host-only build-fw and ci, app0 flash-app, learn-uart, learn-uart-only, and no-reset monitor"
 publish = false
 edition.workspace = true
 # Matches cargo-espflash / espflash 4.5. Workspace crates stay 1.85.

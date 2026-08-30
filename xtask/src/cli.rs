@@ -48,6 +48,9 @@ we don't see a response ask whether you tried (with a retry). \
 learn-uart-only STEP… runs the same session but only the named groups \
 (touch, buttons, vbus, imu, sd) and skips the rest of the briefing. \
 diff-learn-uart compares two reports on the host (serials redacted unless --show-serials). \
+ci is host-only: fmt, host clippy/test (default-members, --all-features, \
+ssd1677-gray4 --no-default-features), cargo +esp clippy for both firmware \
+images, then rumdl / cargo machete / cargo audit. It does not open a UART. \
 monitor reads UART0 at 115200 via USB CDC (no ACM TTY, so no EN pulse). \
 Optional --acm-tty opens the TTY anyway (POWERON). Optional --for SECS \
 and --lines N stop with success; --output FILE tees the stream (--quiet \
@@ -98,6 +101,17 @@ Needs the esp toolchain (source the script `espup` printed, often \
 `$HOME/export-esp.sh`) and espflash on PATH. Does not \
 open a UART and does not flash.";
 
+const CI_ABOUT: &str = "\
+Host-only CI gate. Runs cargo fmt --check --all; host clippy and test on \
+default-members (default features, then --all-features), then \
+-p ssd1677-gray4 --no-default-features; cargo +esp clippy for \
+simple-debug-fw (default and operator) and embassy-debug-fw (default and \
+epd); then rumdl check, cargo machete, and cargo audit. Needs the esp \
+toolchain (source the script `espup` printed, often `$HOME/export-esp.sh`) \
+for the firmware clippy steps. If rumdl, cargo-machete, or cargo-audit is \
+missing, prints `cargo install …` and fails that step. Does not open a \
+UART. Does not use --workspace (that pulls Xtensa on host rustc).";
+
 /// Factory-firmware operations.
 #[derive(Debug, Subcommand)]
 pub enum Command {
@@ -124,6 +138,9 @@ pub enum Command {
     /// Xtensa `cargo +esp` build plus host-only `save-image` (no UART).
     #[command(long_about = BUILD_FW_ABOUT)]
     BuildFw(BuildFwCliArgs),
+    /// Host-only CI gate (fmt, host clippy/test, firmware clippy, extra tools).
+    #[command(long_about = CI_ABOUT)]
+    Ci,
     /// Read UART0 at 115200 via USB CDC (no ACM TTY / EN pulse).
     Monitor(MonitorArgs),
 }
@@ -346,9 +363,13 @@ impl Cli {
     /// Run against the repo's `developer-data/backups/` using the in-process `espflash` library.
     pub fn run(self) -> Result<(), Error> {
         let repo = repo_root();
+        if matches!(self.command, Command::Ci) {
+            return crate::ci::run(&repo);
+        }
         refuse_if_legacy_backups_at_repo_root(&repo)?;
         let layout = Layout::from_repo_root(repo);
         match self.command {
+            Command::Ci => unreachable!("ci returns before leftover-backup refuse"),
             Command::DetectConnected(args) => {
                 detect_connected(args.probe, args.port, args.all_devices)
             }
@@ -650,6 +671,17 @@ mod tests {
                 assert!(args.session.yes);
             }
             other => panic!("expected LearnUartOnly, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn ci_parses() {
+        use clap::Parser;
+
+        let cli = Cli::try_parse_from(["xtask", "ci"]).expect("ci");
+        match cli.command {
+            super::Command::Ci => {}
+            other => panic!("expected Ci, got {other:?}"),
         }
     }
 

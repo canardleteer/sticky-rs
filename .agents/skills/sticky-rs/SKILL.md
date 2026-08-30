@@ -1,7 +1,7 @@
 ---
 name: sticky-rs
 description: >-
-  Use when working in the sticky-rs repository: cargo xtask, build-fw,
+  Use when working in the sticky-rs repository: cargo xtask, build-fw, ci,
   flash-app, learn-uart, learn-uart-only, monitor, backup / confirm / restore,
   the UART session lock, crate layout, clap / espflash host CLI rules, or
   this repository's Rust path on the Seeed reTerminal Sticky. Board pins,
@@ -47,7 +47,8 @@ that live command:
   `confirm-factory-firmware`, `restore-factory-firmware`, `flash-app`,
   `learn-uart`, `learn-uart-only`, `monitor`
 - Host-only (no UART): `detect-connected` without `--probe`,
-  `backup-factory-firmware --import`, `diff-learn-uart`, `build-fw`
+  `backup-factory-firmware --import`, `diff-learn-uart`, `build-fw`,
+  `ci`
 
 When a live ask is present, the **only** in-repo device I/O is `cargo xtask`
 as catalogued in [xtask.md](references/xtask.md). `flash-app` does not

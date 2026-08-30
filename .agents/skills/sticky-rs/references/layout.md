@@ -56,10 +56,14 @@ transforms — belong in `seeed-reterminal-sticky`. Keep that split.
   `UartSession::status` / `output` so the flock covers the child.
 - Verify with `cargo test --locked`,
   `cargo clippy --locked --all-targets -- -D warnings`, and
-  `cargo fmt --check`. Do not advertise `cargo test --workspace` (that
-  pulls Xtensa firmware members). rust-analyzer excludes those packages
-  via [rust-analyzer.toml](../../../../rust-analyzer.toml). Owned
-  Markdown is checked with `rumdl check` (config
+  `cargo fmt --check` (the default host trio). `cargo xtask ci` is the
+  full gate: that trio, host `--all-features` and
+  `ssd1677-gray4 --no-default-features`, firmware `cargo +esp` clippy,
+  `rumdl check`, `cargo machete`, and `cargo audit`. Do not advertise
+  `cargo test --workspace` (that pulls Xtensa firmware members).
+  rust-analyzer excludes those packages via
+  [rust-analyzer.toml](../../../../rust-analyzer.toml). Owned Markdown
+  is checked with `rumdl check` (config
   [`.rumdl.toml`](../../../../.rumdl.toml)). Do not run rumdl on vendor
   PDF extracts under the hardware skill `resources/datasheets/md/`.
 - One workspace lockfile is committed. Pass `--locked` and keep the claimed

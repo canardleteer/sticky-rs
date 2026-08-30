@@ -22,7 +22,7 @@ how-to:
 The pin map, rails, and source precedence live in
 [`.agents/skills/seeed-sticky-hardware/`](.agents/skills/seeed-sticky-hardware/SKILL.md).
 Host I/O is `cargo xtask` only. Do not open a UART unless a human asked.
-`build-fw` is host-only. Flag
+`build-fw` and `ci` are host-only. Flag
 catalog: [`.agents/skills/sticky-rs/references/xtask.md`](.agents/skills/sticky-rs/references/xtask.md).
 
 ## cargo xtask
@@ -42,6 +42,7 @@ exactly one QinHeng CH343 (`1a86:55d3`). Safety: [docs/SAFETY.md](docs/SAFETY.md
 | `learn-uart-only` | yes | Same session, only named groups |
 | `diff-learn-uart` | no | Host-only compare of two reports or factory serials |
 | `build-fw` | no | Host-only. `cargo +esp` + `save-image` for `simple-debug` or `embassy-debug` |
+| `ci` | no | Host-only CI gate (fmt, host clippy/test, firmware clippy, rumdl, machete, audit) |
 | `monitor` | yes | UART0 at 115200 |
 
 ## License

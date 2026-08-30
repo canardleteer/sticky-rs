@@ -22,9 +22,7 @@ destructive sequence should not be reachable by autocomplete.
 Typed accessors cover `Control`, `Voltage`, `Current`, `StateOfCharge`, and
 `MACData`. Other offsets go through `read_u16`, and the CEDV data-memory block
 layout is not implemented pending a page-by-page read of TI's technical
-reference manual. A plausible-looking constant is worse than an honest gap —
-see the hardware skill
-[datasheet catalog](https://github.com/canardleteer/sticky-rs/blob/main/.agents/skills/seeed-sticky-hardware/resources/datasheets.md).
+reference manual. A plausible-looking constant is worse than an honest gap.
 
 `#![no_std]`, `embedded-hal` 1.0 only. The bus is never locked internally, so
 the caller arbitrates the shared sensor bus.

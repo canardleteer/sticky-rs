@@ -1,17 +1,12 @@
 //! reTerminal Sticky Embassy event-logger image.
 //!
 //! Latch, then UART0 lines for buttons, GT911, and IMU, plus the panel
-//! (OTP 1-bit scenes and a four-tone gray4 page). Flash only via
-//! `cargo xtask flash-app` after a matching snapshot exists (original or
-//! capture).
+//! (OTP 1-bit scenes and a four-tone gray4 page).
 //!
 //! # Before flashing anything
 //!
-//! 1. Take a full-chip original (`cargo xtask backup-factory-firmware`) and
-//!    keep it out of git.
-//! 2. Flash `app0` only with `cargo xtask flash-app`. Never erase, never write
-//!    below `0x90000`.
-//! 3. `espflash save-image` needs [`esp_bootloader_esp_idf::esp_app_desc`].
+//! Agent flash contract and envelope: the sibling `AGENTS.md`.
+//! `espflash save-image` needs [`esp_bootloader_esp_idf::esp_app_desc`].
 
 #![no_std]
 #![no_main]
@@ -43,7 +38,8 @@ use esp_hal::Blocking;
 use esp_println::println;
 use lsm6ds3tr::interface::i2c::I2cInterface;
 use lsm6ds3tr::{AccelSampleRate, AccelScale, AccelSettings, LsmSettings, LSM6DS3TR};
-use seeed_reterminal_sticky::rails::{Enabled, MicRail, Rail, SdRail, TouchRail};
+use seeed_reterminal_sticky::power::Latched;
+use seeed_reterminal_sticky::rails::{Disabled, Enabled, MicRail, Rail, SdRail, TouchRail};
 use seeed_reterminal_sticky::touch::{
     Register, SlaveAddress, COMMAND_READ_COORDINATES, I2C_HZ as TOUCH_I2C_HZ, INT_SETTLE_MS,
     POST_RESET_SETTLE_MS, RESET_HOLD_MS, RESET_RELEASE_MS, STATUS_CLEAR,
@@ -74,85 +70,87 @@ fn ask_beep() {
     let _ = BEEPS.try_send(());
 }
 
-#[esp_hal::main]
-async fn main(spawner: Spawner) {
-    let peripherals = esp_hal::init(esp_hal::Config::default());
-    esp_alloc::heap_allocator!(size: 8 * 1024);
+struct ParkedHazards {
+    _charger: Charger<Output<'static>, bq25616::Disabled>,
+    _gpio7: Input<'static>,
+    _sd_cs: Output<'static>,
+    _sd_rail: SdRail<Output<'static>, Disabled>,
+    _mic_rail: MicRail<Output<'static>, Disabled>,
+}
 
-    let mut delay = Delay::new();
-    let latch = Latch::acquire(
-        Output::new(peripherals.GPIO45, Level::Low, OutputConfig::default()),
-        Output::new(peripherals.GPIO46, Level::Low, OutputConfig::default()),
-        &mut delay,
+/// Latch before any rail. PWR_HOLD then PWR_LOCK; never pulse PWR_LOCK.
+fn acquire_latch(
+    hold: esp_hal::peripherals::GPIO45<'static>,
+    lock: esp_hal::peripherals::GPIO46<'static>,
+    delay: &mut Delay,
+) -> Latch<Output<'static>, Output<'static>> {
+    Latch::acquire(
+        Output::new(hold, Level::Low, OutputConfig::default()),
+        Output::new(lock, Level::Low, OutputConfig::default()),
+        delay,
     )
-    .expect("driving the latch pins cannot fail");
+    .expect("driving the latch pins cannot fail")
+}
 
-    {
-        let mut buf = [0u8; LATCHED_CAPACITY];
-        if let Ok(line) = format_latched(&mut buf) {
-            println!("{line}");
-        }
-        let mut buf = [0u8; GIT_CAPACITY];
-        if let Ok(line) = format_git(
-            env!("EMBASSY_DEBUG_GIT"),
-            env!("EMBASSY_DEBUG_GIT_DIRTY") == "1",
-            &mut buf,
-        ) {
-            println!("{line}");
-        }
-    }
-
-    let _charger = Charger::new(Output::new(
-        peripherals.GPIO39,
-        Level::High,
-        OutputConfig::default(),
-    ))
-    .expect("driving /CE cannot fail");
-
-    let _gpio7 = Input::new(
-        peripherals.GPIO7,
-        InputConfig::default().with_pull(Pull::Up),
-    );
-
-    let _sd_cs = Output::new(peripherals.GPIO8, Level::High, OutputConfig::default());
-    let _sd_rail: SdRail<_, _> = Rail::new(
-        Output::new(peripherals.GPIO10, Level::Low, OutputConfig::default()),
-        latch.witness(),
+/// Park /CE disabled, GPIO7 input-only, and unused CS/rails idle.
+fn park_charger_and_unused(
+    ce: esp_hal::peripherals::GPIO39<'static>,
+    gpio7: esp_hal::peripherals::GPIO7<'static>,
+    sd_cs: esp_hal::peripherals::GPIO8<'static>,
+    sd_en: esp_hal::peripherals::GPIO10<'static>,
+    mic_en: esp_hal::peripherals::GPIO38<'static>,
+    latch: &Latched,
+) -> ParkedHazards {
+    let charger = Charger::new(Output::new(ce, Level::High, OutputConfig::default()))
+        .expect("driving /CE cannot fail");
+    // Do not drive GPIO7: owner is unconfirmed (IMU INT vs gauge GPOUT).
+    let gpio7 = Input::new(gpio7, InputConfig::default().with_pull(Pull::Up));
+    // CS idle-high. Do not mount the card.
+    let sd_cs = Output::new(sd_cs, Level::High, OutputConfig::default());
+    let sd_rail: SdRail<_, _> = Rail::new(
+        Output::new(sd_en, Level::Low, OutputConfig::default()),
+        latch,
     )
     .expect("driving the SD rail cannot fail");
-    let _mic_rail: MicRail<_, _> = Rail::new(
-        Output::new(peripherals.GPIO38, Level::Low, OutputConfig::default()),
-        latch.witness(),
+    let mic_rail: MicRail<_, _> = Rail::new(
+        Output::new(mic_en, Level::Low, OutputConfig::default()),
+        latch,
     )
     .expect("driving the mic rail cannot fail");
+    ParkedHazards {
+        _charger: charger,
+        _gpio7: gpio7,
+        _sd_cs: sd_cs,
+        _sd_rail: sd_rail,
+        _mic_rail: mic_rail,
+    }
+}
 
-    let sensor_i2c = I2c::new(
-        peripherals.I2C0,
-        I2cConfig::default().with_frequency(Rate::from_hz(I2C_FREQUENCY_HZ)),
-    )
-    .expect("I2C0 configuration")
-    .with_sda(peripherals.GPIO1)
-    .with_scl(peripherals.GPIO0);
-
-    let mut touch_i2c = I2c::new(
-        peripherals.I2C1,
-        I2cConfig::default().with_frequency(Rate::from_hz(TOUCH_I2C_HZ)),
-    )
-    .expect("I2C1 configuration")
-    .with_sda(peripherals.GPIO3)
-    .with_scl(peripherals.GPIO2);
-
+/// Touch rail, then INT-during-reset. Do not write GT911 config RAM.
+fn touch_i2c_after_int_reset(
+    mut touch_i2c: I2c<'static, Blocking>,
+    rst: esp_hal::peripherals::GPIO41<'static>,
+    int: esp_hal::peripherals::GPIO21<'static>,
+    rail: esp_hal::peripherals::GPIO42<'static>,
+    latch: &Latched,
+    delay: &mut Delay,
+) -> (
+    I2c<'static, Blocking>,
+    Output<'static>,
+    Flex<'static>,
+    TouchRail<Output<'static>, Enabled>,
+) {
     let touch_rail: TouchRail<_, _> = Rail::new(
-        Output::new(peripherals.GPIO42, Level::Low, OutputConfig::default()),
-        latch.witness(),
+        Output::new(rail, Level::Low, OutputConfig::default()),
+        latch,
     )
     .expect("driving the touch rail cannot fail");
     let touch_rail = touch_rail
-        .enable(&mut delay)
+        .enable(delay)
         .expect("driving the touch rail cannot fail");
 
-    let mut touch_rst = Output::new(peripherals.GPIO41, Level::Low, OutputConfig::default());
-    let mut touch_int = Flex::new(peripherals.GPIO21);
+    let mut touch_rst = Output::new(rst, Level::Low, OutputConfig::default());
+    let mut touch_int = Flex::new(int);
     touch_int.apply_output_config(&OutputConfig::default());
     touch_int.set_output_enable(true);
     touch_int.set_high();
@@ -161,6 +159,7 @@ async fn main(spawner: Spawner) {
     touch_rst.set_high();
     delay.delay_ms(RESET_RELEASE_MS);
     touch_int.set_output_enable(false);
+    // GPIO21 has no reset pull. Leave INT floating.
     touch_int.apply_input_config(&InputConfig::default().with_pull(Pull::None));
     touch_int.set_input_enable(true);
     delay.delay_ms(INT_SETTLE_MS);
@@ -190,6 +189,113 @@ async fn main(spawner: Spawner) {
         Err(_) => println!("{LOG_PREFIX}: gt911 command failed"),
     }
 
+    (touch_i2c, touch_rst, touch_int, touch_rail)
+}
+
+/// Panel rail after the latch witness. OTP refresh lives in the display task.
+fn enable_epd_rail(
+    pin: esp_hal::peripherals::GPIO47<'static>,
+    latch: &Latched,
+    delay: &mut Delay,
+) -> seeed_reterminal_sticky::rails::EpdRail<Output<'static>, Enabled> {
+    use seeed_reterminal_sticky::rails::EpdRail;
+    let rail: EpdRail<_, _> =
+        Rail::new(Output::new(pin, Level::Low, OutputConfig::default()), latch)
+            .expect("driving the panel rail cannot fail");
+    rail.enable(delay)
+        .expect("driving the panel rail cannot fail")
+}
+
+struct SpawnParts {
+    btn4: Input<'static>,
+    btn5: Input<'static>,
+    btn6: Input<'static>,
+    touch_i2c: I2c<'static, Blocking>,
+    touch_rst: Output<'static>,
+    touch_int: Flex<'static>,
+    touch_rail: TouchRail<Output<'static>, Enabled>,
+    sensor_i2c: I2c<'static, Blocking>,
+    ledc: esp_hal::peripherals::LEDC<'static>,
+    buzzer: esp_hal::peripherals::GPIO48<'static>,
+    panel: crate::display::PanelParts,
+    epd_rail: seeed_reterminal_sticky::rails::EpdRail<Output<'static>, Enabled>,
+}
+
+fn spawn_tasks(spawner: &Spawner, parts: SpawnParts) {
+    spawner.spawn(log_task().expect("log task"));
+    spawner.spawn(button_task(parts.btn4, parts.btn5, parts.btn6).expect("button task"));
+    spawner.spawn(
+        touch_task(
+            parts.touch_i2c,
+            parts.touch_rst,
+            parts.touch_int,
+            parts.touch_rail,
+        )
+        .expect("touch task"),
+    );
+    spawner.spawn(imu_task(parts.sensor_i2c).expect("imu task"));
+    spawner.spawn(buzzer_task(parts.ledc, parts.buzzer).expect("buzzer task"));
+    spawner.spawn(crate::display::display_task(parts.panel, parts.epd_rail).expect("display task"));
+    SCENE.signal(Scene::Splash);
+}
+
+#[esp_hal::main]
+async fn main(spawner: Spawner) {
+    let peripherals = esp_hal::init(esp_hal::Config::default());
+    esp_alloc::heap_allocator!(size: 8 * 1024);
+
+    let mut delay = Delay::new();
+    let latch = acquire_latch(peripherals.GPIO45, peripherals.GPIO46, &mut delay);
+
+    {
+        let mut buf = [0u8; LATCHED_CAPACITY];
+        if let Ok(line) = format_latched(&mut buf) {
+            println!("{line}");
+        }
+        let mut buf = [0u8; GIT_CAPACITY];
+        if let Ok(line) = format_git(
+            env!("EMBASSY_DEBUG_GIT"),
+            env!("EMBASSY_DEBUG_GIT_DIRTY") == "1",
+            &mut buf,
+        ) {
+            println!("{line}");
+        }
+    }
+
+    let _parked = park_charger_and_unused(
+        peripherals.GPIO39,
+        peripherals.GPIO7,
+        peripherals.GPIO8,
+        peripherals.GPIO10,
+        peripherals.GPIO38,
+        latch.witness(),
+    );
+
+    let sensor_i2c = I2c::new(
+        peripherals.I2C0,
+        I2cConfig::default().with_frequency(Rate::from_hz(I2C_FREQUENCY_HZ)),
+    )
+    .expect("I2C0 configuration")
+    .with_sda(peripherals.GPIO1)
+    .with_scl(peripherals.GPIO0);
+
+    let touch_i2c = I2c::new(
+        peripherals.I2C1,
+        I2cConfig::default().with_frequency(Rate::from_hz(TOUCH_I2C_HZ)),
+    )
+    .expect("I2C1 configuration")
+    .with_sda(peripherals.GPIO3)
+    .with_scl(peripherals.GPIO2);
+
+    let (touch_i2c, touch_rst, touch_int, touch_rail) = touch_i2c_after_int_reset(
+        touch_i2c,
+        peripherals.GPIO41,
+        peripherals.GPIO21,
+        peripherals.GPIO42,
+        latch.witness(),
+        &mut delay,
+    );
+
     let btn4 = Input::new(
         peripherals.GPIO4,
         InputConfig::default().with_pull(Pull::Up),
@@ -203,29 +309,25 @@ async fn main(spawner: Spawner) {
         InputConfig::default().with_pull(Pull::Up),
     );
 
-    let epd_rail = {
-        use seeed_reterminal_sticky::rails::EpdRail;
-        let rail: EpdRail<_, _> = Rail::new(
-            Output::new(peripherals.GPIO47, Level::Low, OutputConfig::default()),
-            latch.witness(),
-        )
-        .expect("driving the panel rail cannot fail");
-        rail.enable(&mut delay)
-            .expect("driving the panel rail cannot fail")
-    };
+    let epd_rail = enable_epd_rail(peripherals.GPIO47, latch.witness(), &mut delay);
 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
     esp_rtos::start(timg0.timer0, peripherals.FROM_CPU_INTR0);
 
-    spawner.spawn(log_task().expect("log task"));
-    spawner.spawn(button_task(btn4, btn5, btn6).expect("button task"));
-    spawner.spawn(touch_task(touch_i2c, touch_rst, touch_int, touch_rail).expect("touch task"));
-    spawner.spawn(imu_task(sensor_i2c).expect("imu task"));
-    spawner.spawn(buzzer_task(peripherals.LEDC, peripherals.GPIO48).expect("buzzer task"));
-
-    spawner.spawn(
-        crate::display::display_task(
-            crate::display::PanelParts {
+    spawn_tasks(
+        &spawner,
+        SpawnParts {
+            btn4,
+            btn5,
+            btn6,
+            touch_i2c,
+            touch_rst,
+            touch_int,
+            touch_rail,
+            sensor_i2c,
+            ledc: peripherals.LEDC,
+            buzzer: peripherals.GPIO48,
+            panel: crate::display::PanelParts {
                 spi: peripherals.SPI2,
                 sclk: peripherals.GPIO13,
                 mosi: peripherals.GPIO14,
@@ -235,10 +337,8 @@ async fn main(spawner: Spawner) {
                 busy: peripherals.GPIO18,
             },
             epd_rail,
-        )
-        .expect("display task"),
+        },
     );
-    SCENE.signal(Scene::Splash);
 
     let _keep_latched = latch;
     loop {

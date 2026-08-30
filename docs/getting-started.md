@@ -127,7 +127,8 @@ cargo xtask learn-uart \
 
 Omit `--features operator` for the quieter 1 s heartbeat image. Or flash
 and watch without prompts: `flash-app` then `monitor`. Envelope, UART
-lines, and restore: [firmware/simple-debug/README.md](../firmware/simple-debug/README.md).
+lines, and restore:
+[firmware/simple-debug/AGENTS.md](../firmware/simple-debug/AGENTS.md).
 
 ### Path B — with Embassy (`embassy-debug`)
 
@@ -145,7 +146,7 @@ Unattended you should see `embassy-debug: latched`, a GT911 ACK, then an
 IMU line about every 5 s. Buttons, glass, and tilt add `btn` / `touch` /
 pose lines and a short beep. Page Down reaches the four-tone boxes
 (`scene=tones`). Full sequence and restore:
-[firmware/embassy-debug/README.md](../firmware/embassy-debug/README.md).
+[firmware/embassy-debug/AGENTS.md](../firmware/embassy-debug/AGENTS.md).
 
 `flash-app` writes a `.bin`; it does not compile. If the build fails, do
 not flash a leftover ELF. (`esp_app_desc!()` is required; do not
@@ -176,10 +177,10 @@ The `no_std` crates are tested against `embedded-hal-mock` transaction
 scripts and datasheet register tables. They have **not** been exercised on
 the buses.
 
-`firmware/simple-debug` cross-compiles for `xtensa-esp32s3-none-elf`. Its
-predecessors (`firmware/bringup`, `firmware/learn`) were loaded into
-factory `app0` with `cargo xtask flash-app` (latch, UART0; **no** panel
-refresh). The image heartbeats raw GPIO, gauge, and IMU levels.
+`firmware/simple-debug` cross-compiles for `xtensa-esp32s3-none-elf`.
+`cargo xtask flash-app` loads it into factory `app0` (latch, UART0;
+**no** panel refresh). The image heartbeats raw GPIO, gauge, and IMU
+levels.
 
 `firmware/embassy-debug` is a separate Embassy image (workspace member, not
 a default-member): latch, timestamped button / touch / IMU lines, a

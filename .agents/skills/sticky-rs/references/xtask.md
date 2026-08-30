@@ -175,11 +175,8 @@ has not refreshed the panel.
 
 `firmware/simple-debug` is the in-repo proof-of-life image.
 `firmware/embassy-debug` is a separate Embassy event-logger (panel always
-on). Earlier `firmware/bringup` and
-`firmware/learn` images were flashed the same way; after each,
-`restore --part app0` returned stock `reterminal_template` 1.1.0.
-`learn-uart` with the operator image has been run (right-edge `btn 4` /
-`5` / `6`, USB-C unplug, IMU poses). Attended polls have not yet printed
-`contacts=`. Those runs do not close measurement-backlog electrical
-items — see
+on). `learn-uart` with the operator image has been run (right-edge
+`btn 4` / `5` / `6`, USB-C unplug, IMU poses). Attended polls have not
+yet printed `contacts=`. Those runs do not close measurement-backlog
+electrical items — see
 [not-yet-confirmed.md](../../seeed-sticky-hardware/resources/not-yet-confirmed.md).

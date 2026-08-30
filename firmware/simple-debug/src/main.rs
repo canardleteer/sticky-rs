@@ -2,16 +2,12 @@
 //!
 //! Blocking `esp-hal` `#[main]`: latch, park hazardous pins, print boot-time
 //! bus facts, then a UART heartbeat of raw GPIO/gauge/IMU levels. No Embassy,
-//! no RTOS, no panel LUT. Flash only via `cargo xtask flash-app` after a
-//! matching snapshot exists (original or capture).
+//! no RTOS, no panel LUT.
 //!
 //! # Before flashing anything
 //!
-//! 1. Take a full-chip original (`cargo xtask backup-factory-firmware`) and
-//!    keep it out of git.
-//! 2. Flash `app0` only with `cargo xtask flash-app`. Never erase, never write
-//!    below `0x90000`.
-//! 3. `espflash save-image` needs [`esp_bootloader_esp_idf::esp_app_desc`].
+//! Agent flash contract and envelope: the sibling `AGENTS.md`.
+//! `espflash save-image` needs [`esp_bootloader_esp_idf::esp_app_desc`].
 
 #![no_std]
 #![no_main]
@@ -29,6 +25,7 @@ use esp_hal::gpio::{Flex, Input, InputConfig, Level, Output, OutputConfig, Pull}
 use esp_hal::i2c::master::{Config as I2cConfig, I2c};
 use esp_hal::main;
 use esp_hal::time::Rate;
+use esp_hal::Blocking;
 use esp_println::println;
 use lsm6ds3tr::interface::i2c::I2cInterface;
 use lsm6ds3tr::{AccelSampleRate, AccelScale, AccelSettings, LsmSettings, LSM6DS3TR};
@@ -96,27 +93,27 @@ fn main() -> ! {
         external_power.is_present()
     );
 
-    let mut gpio7 = Input::new(
+    let gpio7 = Input::new(
         peripherals.GPIO7,
         InputConfig::default().with_pull(Pull::Up),
     );
-    let mut charge_status = ChargeStatus::new(Input::new(
+    let charge_status = ChargeStatus::new(Input::new(
         peripherals.GPIO40,
         InputConfig::default().with_pull(Pull::None),
     ));
-    let mut sd_cd = Input::new(
+    let sd_cd = Input::new(
         peripherals.GPIO11,
         InputConfig::default().with_pull(Pull::Up),
     );
-    let mut btn4 = Input::new(
+    let btn4 = Input::new(
         peripherals.GPIO4,
         InputConfig::default().with_pull(Pull::Up),
     );
-    let mut btn5 = Input::new(
+    let btn5 = Input::new(
         peripherals.GPIO5,
         InputConfig::default().with_pull(Pull::Up),
     );
-    let mut btn6 = Input::new(
+    let btn6 = Input::new(
         peripherals.GPIO6,
         InputConfig::default().with_pull(Pull::Up),
     );
@@ -175,53 +172,14 @@ fn main() -> ! {
         .enable(&mut delay)
         .expect("driving the panel rail cannot fail");
 
-    let mut touch_rst = Output::new(peripherals.GPIO41, Level::Low, OutputConfig::default());
-    let mut touch_int = Flex::new(peripherals.GPIO21);
-    touch_int.apply_output_config(&OutputConfig::default());
-    touch_int.set_output_enable(true);
-    touch_int.set_high();
-    touch_rst.set_low();
-    delay.delay_ms(RESET_HOLD_MS);
-    touch_rst.set_high();
-    delay.delay_ms(RESET_RELEASE_MS);
-    touch_int.set_output_enable(false);
-    // GPIO21 has no reset pull (ESP32-S3 v2.2 Table 2-1). Leave INT floating.
-    touch_int.apply_input_config(&InputConfig::default().with_pull(Pull::None));
-    touch_int.set_input_enable(true);
-    delay.delay_ms(INT_SETTLE_MS);
-    delay.delay_ms(POST_RESET_SETTLE_MS);
+    let (touch_rst, touch_int, gt911_addr) = reset_and_probe_gt911(
+        &mut touch_i2c,
+        peripherals.GPIO41,
+        peripherals.GPIO21,
+        &mut delay,
+    );
 
-    // Product ID (`Register::Id`). Read, do not write config RAM.
-    let gt911_addr = SlaveAddress::Pair28_29.seven_bit();
-    let mut id = [0u8; 4];
-    let gt911_ack = touch_i2c
-        .write_read(gt911_addr, &Register::Id.addr_bytes(), &mut id)
-        .is_ok();
-    log_ack(gt911_addr, gt911_ack);
-    if gt911_ack {
-        let mut buf = [0u8; GT911_ID_CAPACITY];
-        if let Ok(line) = format_gt911_id(&id, &mut buf) {
-            println!("{line}");
-        }
-    }
-
-    // Sensirion SHT4x: 0xFD is high-precision measure (`Precision::High` in
-    // sht4x 0.2.0). A 1-byte I2C read is not a valid command and NAKs.
-    // Do not call serial_number: that value must not hit UART.
-    let sht40_ack = {
-        let mut sht = Sht4x::<_, Delay>::new(&mut sensor_i2c);
-        sht.measure(Precision::High, &mut delay).is_ok()
-    };
-    log_ack(addresses::SHT40, sht40_ack);
-
-    for address in [
-        addresses::PCF8563,
-        addresses::BQ27220,
-        addresses::LSM6DS3TRC,
-    ] {
-        let mut probe = [0u8; 1];
-        log_ack(address, sensor_i2c.read(address, &mut probe).is_ok());
-    }
+    ack_walk_sensor_bus(&mut sensor_i2c, &mut delay);
 
     let sensor_i2c = RefCell::new(sensor_i2c);
     let mut gauge = Bq27220::new(RefCellDevice::new(&sensor_i2c));
@@ -257,26 +215,10 @@ fn main() -> ! {
     #[cfg(feature = "operator")]
     println!("{LOG_PREFIX}: operator (gpio poll 20ms, gt911 contacts)");
 
-    let mut prev = read_levels(
-        &mut btn4,
-        &mut btn5,
-        &mut btn6,
-        &mut external_power,
-        &mut gpio7,
-        &mut charge_status,
-        &mut sd_cd,
-    );
-    let mut t_s = 0_u32;
     let _ = (charger, mic_rail);
     // RST stays driven high and INT stays input for the whole run.
     let _keep_touch_rst = &touch_rst;
-    #[cfg(not(feature = "operator"))]
-    let _keep_touch_int = &touch_int;
-    #[cfg(not(feature = "operator"))]
-    let _ = touch_i2c;
 
-    #[cfg(feature = "operator")]
-    let touch = gt911::Gt911Blocking::new(gt911_addr);
     #[cfg(feature = "operator")]
     {
         // After INT-during-reset: clear Status, then Command = read coordinates.
@@ -291,15 +233,6 @@ fn main() -> ! {
             Ok(()) => println!("{LOG_PREFIX}: gt911 command read-coordinates"),
             Err(_) => println!("{LOG_PREFIX}: gt911 command failed"),
         }
-    }
-    #[cfg(feature = "operator")]
-    let mut last_contacts: Option<u8> = None;
-    #[cfg(feature = "operator")]
-    let mut last_gt911_status: Option<u8> = None;
-    #[cfg(feature = "operator")]
-    let mut gt911_fail_polls: u32 = 0;
-    #[cfg(feature = "operator")]
-    {
         for step in [
             "buttons_ok",
             "buttons_up",
@@ -317,6 +250,131 @@ fn main() -> ! {
         }
     }
 
+    let mut gpio = PolledGpios {
+        btn4,
+        btn5,
+        btn6,
+        external_power,
+        gpio7,
+        charge_status,
+        sd_cd,
+    };
+    let mut touch = TouchKeep {
+        i2c: touch_i2c,
+        int: touch_int,
+        addr: gt911_addr,
+    };
+    run_poll_loop(&mut delay, &mut gpio, &mut gauge, &mut imu_dev, &mut touch);
+}
+
+struct PolledGpios {
+    btn4: Input<'static>,
+    btn5: Input<'static>,
+    btn6: Input<'static>,
+    external_power: ExternalPower<Input<'static>>,
+    gpio7: Input<'static>,
+    charge_status: ChargeStatus<Input<'static>>,
+    sd_cd: Input<'static>,
+}
+
+/// Held for the whole poll so INT stays an input after reset.
+struct TouchKeep {
+    #[cfg_attr(not(feature = "operator"), allow(dead_code))]
+    i2c: I2c<'static, Blocking>,
+    #[cfg_attr(not(feature = "operator"), allow(dead_code))]
+    int: Flex<'static>,
+    #[cfg_attr(not(feature = "operator"), allow(dead_code))]
+    addr: u8,
+}
+
+/// INT-during-reset, then product-ID read. Do not write config RAM.
+fn reset_and_probe_gt911(
+    touch_i2c: &mut I2c<'static, Blocking>,
+    rst: esp_hal::peripherals::GPIO41<'static>,
+    int: esp_hal::peripherals::GPIO21<'static>,
+    delay: &mut Delay,
+) -> (Output<'static>, Flex<'static>, u8) {
+    let mut touch_rst = Output::new(rst, Level::Low, OutputConfig::default());
+    let mut touch_int = Flex::new(int);
+    touch_int.apply_output_config(&OutputConfig::default());
+    touch_int.set_output_enable(true);
+    touch_int.set_high();
+    touch_rst.set_low();
+    delay.delay_ms(RESET_HOLD_MS);
+    touch_rst.set_high();
+    delay.delay_ms(RESET_RELEASE_MS);
+    touch_int.set_output_enable(false);
+    // GPIO21 has no reset pull (ESP32-S3 v2.2 Table 2-1). Leave INT floating.
+    touch_int.apply_input_config(&InputConfig::default().with_pull(Pull::None));
+    touch_int.set_input_enable(true);
+    delay.delay_ms(INT_SETTLE_MS);
+    delay.delay_ms(POST_RESET_SETTLE_MS);
+
+    let gt911_addr = SlaveAddress::Pair28_29.seven_bit();
+    let mut id = [0u8; 4];
+    let gt911_ack = touch_i2c
+        .write_read(gt911_addr, &Register::Id.addr_bytes(), &mut id)
+        .is_ok();
+    log_ack(gt911_addr, gt911_ack);
+    if gt911_ack {
+        let mut buf = [0u8; GT911_ID_CAPACITY];
+        if let Ok(line) = format_gt911_id(&id, &mut buf) {
+            println!("{line}");
+        }
+    }
+    (touch_rst, touch_int, gt911_addr)
+}
+
+/// Boot-time ACKs only. Do not print SHT serial; a 1-byte read NAKs.
+fn ack_walk_sensor_bus(sensor_i2c: &mut I2c<'static, Blocking>, delay: &mut Delay) {
+    // Sensirion SHT4x: 0xFD is high-precision measure (`Precision::High` in
+    // sht4x 0.2.0). A 1-byte I2C read is not a valid command and NAKs.
+    let sht40_ack = {
+        let mut sht = Sht4x::<_, Delay>::new(&mut *sensor_i2c);
+        sht.measure(Precision::High, delay).is_ok()
+    };
+    log_ack(addresses::SHT40, sht40_ack);
+
+    for address in [
+        addresses::PCF8563,
+        addresses::BQ27220,
+        addresses::LSM6DS3TRC,
+    ] {
+        let mut probe = [0u8; 1];
+        log_ack(address, sensor_i2c.read(address, &mut probe).is_ok());
+    }
+}
+
+fn run_poll_loop(
+    delay: &mut Delay,
+    gpio: &mut PolledGpios,
+    gauge: &mut Bq27220<RefCellDevice<'_, I2c<'static, Blocking>>>,
+    imu_dev: &mut LSM6DS3TR<I2cInterface<RefCellDevice<'_, I2c<'static, Blocking>>>>,
+    touch: &mut TouchKeep,
+) -> ! {
+    #[cfg(not(feature = "operator"))]
+    let _ = touch;
+
+    let mut prev = read_levels(
+        &mut gpio.btn4,
+        &mut gpio.btn5,
+        &mut gpio.btn6,
+        &mut gpio.external_power,
+        &mut gpio.gpio7,
+        &mut gpio.charge_status,
+        &mut gpio.sd_cd,
+    );
+    let mut t_s = 0_u32;
+
+    #[cfg(feature = "operator")]
+    let gt911 = gt911::Gt911Blocking::new(touch.addr);
+    #[cfg(feature = "operator")]
+    let mut last_contacts: Option<u8> = None;
+    #[cfg(feature = "operator")]
+    let mut last_gt911_status: Option<u8> = None;
+    #[cfg(feature = "operator")]
+    let mut gt911_fail_polls: u32 = 0;
+
     #[cfg(not(feature = "operator"))]
     const POLL_MS: u32 = 1_000;
     #[cfg(feature = "operator")]
@@ -327,13 +385,13 @@ fn main() -> ! {
     let mut polls: u32 = 0;
     loop {
         let now = read_levels(
-            &mut btn4,
-            &mut btn5,
-            &mut btn6,
-            &mut external_power,
-            &mut gpio7,
-            &mut charge_status,
-            &mut sd_cd,
+            &mut gpio.btn4,
+            &mut gpio.btn5,
+            &mut gpio.btn6,
+            &mut gpio.external_power,
+            &mut gpio.gpio7,
+            &mut gpio.charge_status,
+            &mut gpio.sd_cd,
         );
         let mut edges = [Edge::ButtonDown { gpio: 0 }; 7];
         let n = collect_edges(&prev, &now, &mut edges);
@@ -348,13 +406,14 @@ fn main() -> ! {
         #[cfg(feature = "operator")]
         {
             let mut st = [0u8];
-            if touch_i2c
-                .write_read(gt911_addr, &Register::Status.addr_bytes(), &mut st)
+            if touch
+                .i2c
+                .write_read(touch.addr, &Register::Status.addr_bytes(), &mut st)
                 .is_ok()
             {
                 last_gt911_status = Some(st[0]);
             }
-            let count = match touch.get_multi_touch(&mut touch_i2c) {
+            let count = match gt911.get_multi_touch(&mut touch.i2c) {
                 Ok(points) => {
                     gt911_fail_polls = 0;
                     Some(points.len() as u8)
@@ -414,7 +473,7 @@ fn main() -> ! {
                 if let Ok(line) = format_gt911_status(status, &mut buf) {
                     println!("{line}");
                 }
-                let int_high = touch_int.is_high();
+                let int_high = touch.int.is_high();
                 let mut buf = [0u8; GT911_INT_CAPACITY];
                 if let Ok(line) = format_gt911_int(int_high, &mut buf) {
                     println!("{line}");

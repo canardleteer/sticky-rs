@@ -43,8 +43,7 @@ table from another SSD1677 module can drive this film outside its envelope.
 Seeed’s driver never sends `0x32`; stock firmware does not contain FreeInk’s
 105-byte file.
 
-Do not extract waveform bytes from vendor firmware. See
-[docs/SAFETY.md](https://github.com/canardleteer/sticky-rs/blob/main/docs/SAFETY.md).
+Do not extract waveform bytes from vendor firmware.
 
 ## Why not crates.io `ssd1677`
 

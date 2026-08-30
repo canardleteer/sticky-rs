@@ -16,8 +16,6 @@ rather than documented.
 
 `#![no_std]`, `embedded-hal` 1.0 only, no MCU dependency.
 
-See [docs/SAFETY.md](https://github.com/canardleteer/sticky-rs/blob/main/docs/SAFETY.md)
-for the board-level hazards and
-[TI SLUSDF7](https://www.ti.com/lit/ds/symlink/bq25616.pdf) for the part.
+Part: [TI SLUSDF7](https://www.ti.com/lit/ds/symlink/bq25616.pdf).
 
 License: MIT

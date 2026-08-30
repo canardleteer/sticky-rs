@@ -65,7 +65,7 @@ INT-during-reset dance, leave `pins::TOUCH_INT` (GPIO21) as a floating input
 | Passive buzzer | Pin only: `pins::BUZZER` (GPIO48) | PWM (LEDC) in the HAL. Hold low in sleep. No helper in this crate. |
 | MicroSD | `SdRail` (GPIO10), `pins::SD_CS`, `pins::SD_CARD_DETECT` (polarity unmeasured) | Same SPI as the panel; one CS at a time. Filesystem: [`embedded-sdmmc`](https://crates.io/crates/embedded-sdmmc) (init ≤ 400 kHz, then raise). Card-detect pull-up is the application's job. |
 | Right-edge buttons (AI Voice / Page Up / Page Down) | `pins::BUTTON_OK`, `BUTTON_UP`, `BUTTON_DOWN` — active low, external pull-ups. OK (GPIO4) is the `ext1` wake source. | GPIO input in the HAL. Seeed names and locations: [enclosure.md](https://github.com/canardleteer/sticky-rs/blob/main/.agents/skills/seeed-sticky-hardware/references/enclosure.md). Recessed **Reset** on the bottom edge is a hardware reset net, not a GPIO. |
-| UART0 via WCH CH343P | `pins::UART0_TX` / `UART0_RX` (GPIO43/44) | MCU UART driver at 115200. This is not native USB-Serial/JTAG. Host flash/monitor in this repository goes through `cargo xtask`, not this crate. |
+| UART0 via WCH CH343P | `pins::UART0_TX` / `UART0_RX` (GPIO43/44) | MCU UART driver at 115200. This is not native USB-Serial/JTAG. |
 
 ### On-chip (ESP32-S3), not board-crate types
 
@@ -75,7 +75,7 @@ These are real product capabilities. This crate does not wrap them:
 | --- | --- |
 | Wi-Fi 802.11 and Bluetooth LE | Radio on the ESP32-S3. Use the firmware stack (`esp-hal` / `esp-idf`); no pin map entry. |
 | 8 MB in-package octal PSRAM | MCU/HAL init. |
-| 32 MB external quad flash | MCU/HAL. **Never full-chip erase**; factory NVS is per-unit and not regenerable. Custom images in this repository go through `cargo xtask flash-app` into factory `app0` only. |
+| 32 MB external quad flash | MCU/HAL. Factory NVS is per-unit. |
 | Deep sleep | Hold documented GPIO levels across entry (see this crate's rustdoc). Wake on `BUTTON_OK`. Sequencing is firmware. |
 | Enclosure magnets / IP40 glass | Mechanical only. Orientation for UI is `imu::classify`. |
 
@@ -116,26 +116,5 @@ loudspeaker. Access is:
 Factory firmware acknowledges the PDM clock/data nets; this crate only names
 them and switches the load switch. Pin mux, USB-pad disable, and sample
 format are firmware.
-
-## Unmeasured / unconfirmed
-
-Treat these as open, not as defaults:
-
-- GPIO7 owner (IMU INT vs gauge `GPOUT`)
-- BQ25616 `CHARGE_STATUS` polarity
-- MicroSD card-detect polarity
-- `MicRail` / `SdRail` settle times (the values in source are labelled guesses)
-- Whether GPIO9 can be an ADC as well as a digital VBUS sense
-
-Settle times labelled unmeasured in the source really are guesses.
-
-## Further reading
-
-- Hardware contract (pin map, hazards, product snapshot):
-  [seeed-sticky-hardware skill](https://github.com/canardleteer/sticky-rs/blob/main/.agents/skills/seeed-sticky-hardware/SKILL.md)
-- Board-level safety (flash, waveforms, gauge OTP, latch):
-  [docs/SAFETY.md](https://github.com/canardleteer/sticky-rs/blob/main/docs/SAFETY.md)
-- Why four-gray e-paper uses OTP versus an MCU LUT:
-  [docs/ssd1677.md](https://github.com/canardleteer/sticky-rs/blob/main/docs/ssd1677.md)
 
 License: MIT

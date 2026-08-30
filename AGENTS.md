@@ -38,6 +38,8 @@ Host verify uses default-members. rust-analyzer excludes the two firmware
 packages via [rust-analyzer.toml](rust-analyzer.toml). Full path table:
 [sticky-rs layout.md](.agents/skills/sticky-rs/references/layout.md).
 Fresh-start how-to: [docs/getting-started.md](docs/getting-started.md).
+Some directories also have a topical `AGENTS.md`; the nearest file wins
+on conflict with this one.
 
 ## Do not connect to a physical device
 
@@ -77,6 +79,7 @@ conflicts in the hardware skill instead of flattening them.
 | Pin, rail, display, touch, sensor, enclosure, measurement backlog, or datasheet catalog | [seeed-sticky-hardware](.agents/skills/seeed-sticky-hardware/SKILL.md) (and a [sources.md](.agents/skills/seeed-sticky-hardware/references/sources.md) conflict row if sources disagree) |
 | `cargo xtask` CLI, `sticky-host` API, UART lock, `flash-app` / backup / restore contract, firmware packages, crate layout | [sticky-rs](.agents/skills/sticky-rs/SKILL.md) (especially [xtask.md](.agents/skills/sticky-rs/references/xtask.md) and [layout.md](.agents/skills/sticky-rs/references/layout.md)) **and** the root [README.md](README.md) xtask list |
 | Hardware safety, live-ask set, or “never erase” | this file **and** both skills if they restate it |
+| Agent rules that belong to one directory | that directory’s `AGENTS.md` (nearest file wins on conflict) |
 
 Do not treat `cargo xtask --help` as a substitute for the sticky-rs catalog
 and the README list.
@@ -138,9 +141,10 @@ Project-local skills exist under `.agents/skills/` and should remain
 discoverable by agents working in this repository. Maintain those skills
 according to the [Agent Skills specification](https://agentskills.io/specification),
 and maintain this file according to the
-[AGENTS.md standard](https://agents.md/). Keep both portable
-across compatible agent clients, without assumptions about user-specific paths
-or session state.
+[AGENTS.md standard](https://agents.md/). Some directories have their
+own topical `AGENTS.md`; maintain those the same way. Keep both
+portable across compatible agent clients, without assumptions about
+user-specific paths or session state.
 
 Two skills:
 

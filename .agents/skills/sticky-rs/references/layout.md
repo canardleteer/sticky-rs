@@ -8,9 +8,9 @@
 | `host/` | Default-members. Host libraries and future host CLIs (not `xtask`) |
 | `host/sticky-host/` | Host library (`publish = true`, not crates.io yet). Detect, factory backup / confirm / restore, `build-fw`, `flash-app`, learn-uart, monitor. Callers pass `Layout`; live methods take the UART lock |
 | `xtask/` | Clap front-end at the repo root (`cargo xtask`). Maps flags to `sticky-host`; `repo_root()` is the parent of this package |
-| `backups/` | Gitignored per-unit originals and `learn-uart/` YAML plus sidecar UART logs. Not in git |
-| `firmware/*` | Not migrated yet. When they land: workspace members, not default-members; ELFs in workspace `target/` |
-| `docs/` | [SAFETY.md](../../../../docs/SAFETY.md), [API-RULES.md](../../../../docs/API-RULES.md), [CRATES.md](../../../../docs/CRATES.md), [ssd1677.md](../../../../docs/ssd1677.md) |
+| `backups/` | Gitignored per-unit `original/<serial>/` and `captures/<unit-id>/<slug>/` plus `learn-uart/` YAML. Not in git |
+| `firmware/*` | Workspace members, not default-members. ELFs in workspace `target/` |
+| `docs/` | [SAFETY.md](../../../../docs/SAFETY.md), [firmware-snapshot-management.md](../../../../docs/firmware-snapshot-management.md), [API-RULES.md](../../../../docs/API-RULES.md), [CRATES.md](../../../../docs/CRATES.md), [ssd1677.md](../../../../docs/ssd1677.md) |
 | `.agents/skills/seeed-sticky-hardware/` | Board contract |
 | `.agents/skills/sticky-rs/` | This skill |
 
@@ -62,7 +62,7 @@ transforms — belong in `seeed-reterminal-sticky`. Keep that split.
 - Silicon discovery and device I/O use `cargo xtask`. Do not add a parallel
   `esptool` / `espflash` CLI recipe when xtask already answers. Host-only
   `cargo xtask build-fw` wraps `cargo +esp` and `espflash save-image` (no
-  port) for a `flash-app` payload; it fails until firmware members exist.
+  port) for a `flash-app` payload.
 - When the `cargo xtask` CLI changes (new or removed subcommand, renamed
   flag, host-vs-live split, or safety contract), update
   [xtask.md](xtask.md) **and** the xtask command list in

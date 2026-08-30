@@ -8,6 +8,7 @@
 pub mod backup;
 pub mod build_fw;
 pub mod cdc_listen;
+pub mod classify;
 pub mod confirm;
 pub mod detect;
 pub mod device;
@@ -23,6 +24,7 @@ pub mod manifest;
 #[path = "monitor.rs"]
 pub mod monitor_impl;
 pub mod original;
+pub mod partition_layouts;
 pub mod partitions;
 #[path = "restore.rs"]
 pub mod restore_impl;
@@ -30,11 +32,13 @@ pub mod uart_lock;
 
 use std::path::{Path, PathBuf};
 
+pub use backup::BackupRequest;
 pub use build_fw::{build_fw, BuildFwArgs, BuildFwOutput, FirmwareImage};
 pub use confirm::DivergenceReport;
 pub use device::{DeviceIo, RealDevice};
 pub use error::Error;
 pub use learn_uart_impl::LearnUartArgs;
+pub use manifest::SnapshotKind;
 pub use monitor_impl::MonitorOptions;
 pub use original::{load_manifest, Layout};
 pub use uart_lock::{try_acquire, UartSession, UART_LOCK_ENV};
@@ -53,35 +57,59 @@ pub fn detect_connected(probe: bool, port: Option<String>, all_devices: bool) ->
     detect::run(&RealDevice, probe, port, all_devices)
 }
 
-/// Live capture: UART serial, board-info, chunked 32 MiB read, write-once dir.
-pub fn backup_live(layout: &Layout, port: Option<String>) -> Result<PathBuf, Error> {
+/// Live capture: UART sample, board-info, chunked 32 MiB read, write-once dir.
+///
+/// `ask_name` is invoked when classification needs a slug and `request.name`
+/// is empty (xtask prompts on a TTY).
+pub fn backup_live<F>(
+    layout: &Layout,
+    port: Option<String>,
+    request: &BackupRequest,
+    ask_name: F,
+) -> Result<PathBuf, Error>
+where
+    F: FnOnce(&str) -> Result<Option<String>, Error>,
+{
     let port = detect::resolve_sticky_port(port)?;
     let _uart = uart_lock::try_acquire(&port, "backup-factory-firmware")?;
-    backup::backup_live(&RealDevice, layout, &port)
+    backup::backup_live(&RealDevice, layout, &port, request, ask_name)
 }
 
 /// Host-only copy of an already-taken 32 MiB dump tree. Still write-once.
-pub fn backup_import(layout: &Layout, source: &Path) -> Result<PathBuf, Error> {
-    backup::backup_import(layout, source)
+pub fn backup_import<F>(
+    layout: &Layout,
+    source: &Path,
+    request: &BackupRequest,
+    ask_name: F,
+) -> Result<PathBuf, Error>
+where
+    F: FnOnce(&str) -> Result<Option<String>, Error>,
+{
+    backup::backup_import(layout, source, request, ask_name)
 }
 
-/// Read live flash, compare to the matching original, write a divergence JSON.
-pub fn confirm_live(layout: &Layout, port: Option<String>) -> Result<DivergenceReport, Error> {
+/// Read live flash, compare to the matching original (or `--capture`).
+pub fn confirm_live(
+    layout: &Layout,
+    port: Option<String>,
+    capture: Option<&str>,
+) -> Result<DivergenceReport, Error> {
     let port = detect::resolve_sticky_port(port)?;
     let _uart = uart_lock::try_acquire(&port, "confirm-factory-firmware")?;
-    confirm::confirm_live(&RealDevice, layout, &port)
+    confirm::confirm_live(&RealDevice, layout, &port, capture)
 }
 
-/// Restore that unit's original via `write-bin` only.
+/// Restore that unit's original (or `--capture`) via `write-bin` only.
 pub fn restore(
     layout: &Layout,
     port: Option<String>,
     yes: bool,
     part: Option<&str>,
+    capture: Option<&str>,
 ) -> Result<(), Error> {
     let port = detect::resolve_sticky_port(port)?;
     let _uart = uart_lock::try_acquire(&port, "restore-factory-firmware")?;
-    restore_impl::restore(&RealDevice, layout, &port, yes, part)
+    restore_impl::restore(&RealDevice, layout, &port, yes, part, capture)
 }
 
 /// `write_bin` of `image` at this unit's `app0` offset.
@@ -90,10 +118,20 @@ pub fn flash_app(
     port: Option<String>,
     image: &Path,
     yes: bool,
+    allow_unknown_layout: bool,
+    capture: Option<&str>,
 ) -> Result<(), Error> {
     let port = detect::resolve_sticky_port(port)?;
     let _uart = uart_lock::try_acquire(&port, "flash-app")?;
-    flash_app_impl::flash_app(&RealDevice, layout, &port, image, yes)
+    flash_app_impl::flash_app(
+        &RealDevice,
+        layout,
+        &port,
+        image,
+        yes,
+        allow_unknown_layout,
+        capture,
+    )
 }
 
 /// UART learn session. Takes the session lock for the whole call, including

@@ -4,8 +4,18 @@
 # explicitly asks.
 #
 # No workspace [build] target and no [unstable] build-std: those would
-# break host `std` crates. Device builds (when firmware members exist)
-# pass `--target xtensa-esp32s3-none-elf -Zbuild-std=core,alloc`.
+# break host `std` crates. Device builds pass
+# `--target xtensa-esp32s3-none-elf -Zbuild-std=core,alloc` (see
+# `cargo xtask build-fw`).
 
 [alias]
 xtask = "run --package xtask --"
+
+[target.xtensa-esp32s3-none-elf]
+# esp-hal's build script emits the chip's linker scripts into OUT_DIR;
+# without -Tlinkall.x the xtensa-lx-rt vectors are undefined at link.
+# Still no runner, on purpose.
+rustflags = ["-C", "link-arg=-Tlinkall.x"]
+
+[env]
+ESP_LOG = "info"

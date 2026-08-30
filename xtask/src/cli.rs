@@ -6,8 +6,8 @@ use std::process::ExitCode;
 use clap::{Args, Parser, Subcommand};
 use sticky_host::{
     backup_import, backup_live, build_fw, confirm_live, detect_connected, diff_learn_uart,
-    flash_app, learn_uart, load_manifest, monitor, restore, BuildFwArgs, Error, FirmwareImage,
-    Layout, LearnUartArgs, MonitorOptions, FLASH_SIZE,
+    flash_app, learn_uart, load_manifest, monitor, restore, BackupRequest, BuildFwArgs, Error,
+    FirmwareImage, Layout, LearnUartArgs, MonitorOptions, SnapshotKind, FLASH_SIZE,
 };
 
 /// Sticky factory-firmware originals (gitignored `backups/original/{serial}/`).
@@ -26,15 +26,17 @@ const LONG_ABOUT: &str = "\
 detect-connected lists Sticky CH343 UART nodes (no DTR). --all-devices includes \
 other USB-serial adapters. --probe opens UART (DTR reset) for stock \
 serial_number and board-info. backup, confirm, restore, flash-app, learn-uart, \
-and monitor share that same QinHeng port pick. Capture each Sticky once under \
-backups/original/<factory-serial>/ (write-once, gitignored). confirm measures \
-drift. restore write-bins that unit's original (never erase). Live UART \
-commands take an exclusive flock so a second xtask cannot reset the chip \
-during a dump, restore, etc. Subprocesses that might pulse DTR must run under \
-that same session (UartSession::status). build-fw is host-only: cargo +esp \
-build plus espflash save-image into workspace target/ (no UART). flash-app \
-write-bins a custom image into factory app0 only (requires a matching original \
-and --yes; never the espflash 'flash' subcommand). \
+and monitor share that same QinHeng port pick. Capture each Sticky under \
+backups/original/<factory-serial>/ (known factory, write-once) or \
+backups/captures/<unit-id>/<slug>/ (named snapshot of what is on the chip). \
+Both are gitignored. confirm measures drift against the original, or \
+--capture SLUG. restore write-bins that unit's original or --capture (never \
+erase). Live UART commands take an exclusive flock so a second xtask cannot \
+reset the chip during a dump, restore, etc. Subprocesses that might pulse DTR \
+must run under that same session (UartSession::status). build-fw is host-only: \
+cargo +esp build plus espflash save-image into workspace target/ (no UART). \
+flash-app write-bins a custom image into factory app0 only (requires a matching \
+original or capture, --yes; never the espflash 'flash' subcommand). \
 learn-uart vets UART heartbeats and optional human steps, then writes YAML \
 under backups/original/<factory-serial>/learn-uart/ (gitignored; records \
 factory serial, not MAC). A completed session also copies learn-uart-latest.yaml \
@@ -100,13 +102,14 @@ open a UART and does not flash.";
 pub enum Command {
     /// List Sticky CH343 UART nodes (QinHeng `1a86:55d3`). No DTR unless `--probe`.
     DetectConnected(DetectArgs),
-    /// First capture while stock firmware still prints serial_number.
+    /// Capture this unit: known factory → `original/`, otherwise a named capture.
+    #[command(visible_alias = "backup-firmware")]
     BackupFactoryFirmware(BackupArgs),
-    /// Compare live flash to the matching original; do not change original/.
-    ConfirmFactoryFirmware(PortArgs),
-    /// write-bin this unit's original (full image or --part). Requires --yes.
+    /// Compare live flash to the matching original (or `--capture`).
+    ConfirmFactoryFirmware(ConfirmArgs),
+    /// write-bin this unit's original or `--capture` (full image or --part). Requires --yes.
     RestoreFactoryFirmware(RestoreArgs),
-    /// write-bin a custom image into factory `app0` only. Requires `--yes` and a matching original.
+    /// write-bin a custom image into factory `app0` only. Requires `--yes` and a snapshot.
     FlashApp(FlashAppArgs),
     /// UART heartbeat vet plus skippable human steps; YAML under `backups/original/<serial>/learn-uart/`.
     #[command(long_about = LEARN_UART_ABOUT)]
@@ -147,17 +150,26 @@ pub struct BackupArgs {
     /// Serial device. Also `ESPFLASH_PORT`. Optional if exactly one Sticky CH343 is present.
     #[arg(long, env = "ESPFLASH_PORT")]
     pub port: Option<String>,
-    /// Host-only: copy an existing 32 MiB dump tree into `original/{serial}/`.
+    /// Host-only: copy an existing 32 MiB dump tree (YAML or JSON manifest).
     #[arg(long, value_name = "DIR")]
     pub import: Option<PathBuf>,
+    /// Named capture slug (`backups/captures/<unit-id>/<slug>/`).
+    #[arg(long)]
+    pub name: Option<String>,
+    /// Store an uncertain-stock dump under `original/` (does not add to the catalog).
+    #[arg(long)]
+    pub as_original: bool,
 }
 
-/// Port for live confirm/restore.
+/// Live confirm.
 #[derive(Debug, Args)]
-pub struct PortArgs {
+pub struct ConfirmArgs {
     /// Serial device. Also `ESPFLASH_PORT`. Optional if exactly one Sticky CH343 is present.
     #[arg(long, env = "ESPFLASH_PORT")]
     pub port: Option<String>,
+    /// Compare against this capture slug instead of `original/`.
+    #[arg(long, value_name = "SLUG")]
+    pub capture: Option<String>,
 }
 
 /// UART0 listen (USB CDC by default).
@@ -195,6 +207,9 @@ pub struct RestoreArgs {
     /// Restore one partition (`nvs`, `app0`, …) instead of the full 32 MiB image.
     #[arg(long)]
     pub part: Option<String>,
+    /// Restore this capture slug instead of `original/`.
+    #[arg(long, value_name = "SLUG")]
+    pub capture: Option<String>,
 }
 
 /// App0-only custom image write.
@@ -209,6 +224,12 @@ pub struct FlashAppArgs {
     /// Required. flash-app writes `app0`.
     #[arg(long)]
     pub yes: bool,
+    /// Allow `app0` write when the bound snapshot table is unknown or mismatched.
+    #[arg(long)]
+    pub allow_unknown_layout: bool,
+    /// Use this capture slug instead of the preferred original / unique capture.
+    #[arg(long, value_name = "SLUG")]
+    pub capture: Option<String>,
 }
 
 /// Flags shared by `learn-uart` and `learn-uart-only`.
@@ -328,26 +349,9 @@ impl Cli {
             Command::DetectConnected(args) => {
                 detect_connected(args.probe, args.port, args.all_devices)
             }
-            Command::BackupFactoryFirmware(args) => {
-                if let Some(source) = args.import {
-                    let dest = backup_import(&layout, &source)?;
-                    println!("imported original {}", dest.display());
-                    Ok(())
-                } else {
-                    let dest = backup_live(&layout, args.port)?;
-                    let manifest = load_manifest(&dest)?;
-                    println!(
-                        "wrote original {} serial={} sha256={} ({} bytes)",
-                        dest.display(),
-                        manifest.factory_serial,
-                        manifest.dump_sha256,
-                        FLASH_SIZE,
-                    );
-                    Ok(())
-                }
-            }
+            Command::BackupFactoryFirmware(args) => run_backup(&layout, args),
             Command::ConfirmFactoryFirmware(args) => {
-                let report = confirm_live(&layout, args.port)?;
+                let report = confirm_live(&layout, args.port, args.capture.as_deref())?;
                 let drifted: Vec<_> = report
                     .regions
                     .iter()
@@ -366,12 +370,25 @@ impl Cli {
                 Ok(())
             }
             Command::RestoreFactoryFirmware(args) => {
-                restore(&layout, args.port, args.yes, args.part.as_deref())?;
+                restore(
+                    &layout,
+                    args.port,
+                    args.yes,
+                    args.part.as_deref(),
+                    args.capture.as_deref(),
+                )?;
                 println!("restore write-bin finished");
                 Ok(())
             }
             Command::FlashApp(args) => {
-                flash_app(&layout, args.port, &args.image, args.yes)?;
+                flash_app(
+                    &layout,
+                    args.port,
+                    &args.image,
+                    args.yes,
+                    args.allow_unknown_layout,
+                    args.capture.as_deref(),
+                )?;
                 println!("flash-app write-bin app0 finished");
                 Ok(())
             }
@@ -415,6 +432,50 @@ impl Cli {
                 },
             ),
         }
+    }
+}
+
+fn run_backup(layout: &Layout, args: BackupArgs) -> Result<(), Error> {
+    let request = BackupRequest {
+        name: args.name,
+        as_original: args.as_original,
+    };
+    let dest = if let Some(source) = args.import {
+        backup_import(layout, &source, &request, prompt_snapshot_name)?
+    } else {
+        backup_live(layout, args.port, &request, prompt_snapshot_name)?
+    };
+    let manifest = load_manifest(&dest)?;
+    let kind = match manifest.kind {
+        SnapshotKind::Original => "original",
+        SnapshotKind::Capture => "capture",
+    };
+    println!(
+        "wrote {kind} {} serial={} sha256={} ({} bytes)",
+        dest.display(),
+        manifest.factory_serial,
+        manifest.dump_sha256,
+        FLASH_SIZE,
+    );
+    Ok(())
+}
+
+fn prompt_snapshot_name(evidence: &str) -> Result<Option<String>, Error> {
+    use std::io::{self, IsTerminal, Write};
+
+    eprintln!("{evidence}");
+    if !io::stdin().is_terminal() {
+        return Ok(None);
+    }
+    eprint!("name this snapshot (directory-safe): ");
+    let _ = io::stderr().flush();
+    let mut line = String::new();
+    io::stdin().read_line(&mut line)?;
+    let name = line.trim();
+    if name.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(name.to_string()))
     }
 }
 
@@ -467,6 +528,51 @@ mod tests {
     #[test]
     fn clap_debug_assert() {
         Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn backup_accepts_name_and_as_original() {
+        use clap::Parser;
+
+        let cli = Cli::try_parse_from([
+            "xtask",
+            "backup-firmware",
+            "--name",
+            "after-flash",
+            "--as-original",
+        ])
+        .expect("backup-firmware alias");
+        match cli.command {
+            super::Command::BackupFactoryFirmware(args) => {
+                assert_eq!(args.name.as_deref(), Some("after-flash"));
+                assert!(args.as_original);
+            }
+            other => panic!("expected BackupFactoryFirmware, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn flash_app_accepts_layout_override_and_capture() {
+        use clap::Parser;
+
+        let cli = Cli::try_parse_from([
+            "xtask",
+            "flash-app",
+            "--image",
+            "app.bin",
+            "--yes",
+            "--allow-unknown-layout",
+            "--capture",
+            "after-flash",
+        ])
+        .expect("flash-app overrides");
+        match cli.command {
+            super::Command::FlashApp(args) => {
+                assert!(args.allow_unknown_layout);
+                assert_eq!(args.capture.as_deref(), Some("after-flash"));
+            }
+            other => panic!("expected FlashApp, got {other:?}"),
+        }
     }
 
     #[test]

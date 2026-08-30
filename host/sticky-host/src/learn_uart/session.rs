@@ -10,8 +10,8 @@ use crate::device::RealDevice;
 use crate::learn_uart_impl::input::{self, SkipWatch};
 use crate::learn_uart_impl::parse::{parse_line, Accumulator, ParsedLine};
 use crate::learn_uart_impl::report::{
-    assemble, default_report_path, now_stamp, publish_latest, uart_log_path, unattended_human,
-    unique_report_path, Briefing, HumanStep, Report, ReportStamp, Status,
+    assemble, now_stamp, publish_latest, uart_log_path, unattended_human, unique_report_path,
+    Briefing, HumanStep, Report, ReportStamp, Status,
 };
 use crate::learn_uart_impl::stamp::utc_rfc3339_millis;
 use crate::learn_uart_impl::steps::{
@@ -51,10 +51,11 @@ pub fn run(layout: &Layout, args: LearnUartArgs) -> Result<(), Error> {
     let port = crate::detect::resolve_sticky_port(args.port)?;
     crate::detect::require_sticky_ch343(&port)?;
 
-    let original = crate::original::require_original_from_port(layout, &port)?;
-    let factory_serial = original.manifest.factory_serial.clone();
+    let net = crate::original::require_safety_net_from_port(layout, &port)?;
+    let factory_serial = net.snapshot.manifest.factory_serial.clone();
     anstream::eprintln!(
-        "learn-uart: bound to backups/original/<factory-serial>/ (report in learn-uart/)"
+        "learn-uart: bound to {} (report in learn-uart/)",
+        net.snapshot.dir.display()
     );
 
     if args.image.is_some() && !args.yes {
@@ -65,7 +66,7 @@ pub fn run(layout: &Layout, args: LearnUartArgs) -> Result<(), Error> {
     }
 
     if let Some(image) = args.image.as_ref() {
-        crate::flash_app_impl::flash_app(&RealDevice, layout, &port, image, args.yes)?;
+        crate::flash_app_impl::flash_app(&RealDevice, layout, &port, image, args.yes, false, None)?;
         anstream::eprintln!(
             "learn-uart: flash-app finished; listening with the board sitting still"
         );
@@ -119,7 +120,9 @@ pub fn run(layout: &Layout, args: LearnUartArgs) -> Result<(), Error> {
     );
 
     let stamp = now_stamp();
-    let canonical = unique_report_path(default_report_path(layout, &factory_serial, &stamp));
+    let canonical = unique_report_path(
+        crate::original::Layout::learn_uart_in(&net.snapshot.dir).join(format!("{stamp}.yaml")),
+    );
     let mut uart_log = UartLog::create(uart_log_path(&canonical))?;
 
     say(
@@ -246,7 +249,14 @@ pub fn run(layout: &Layout, args: LearnUartArgs) -> Result<(), Error> {
                 "Writing factory software now. Put the board down. Do not unplug.",
             )?;
             thread::sleep(Duration::from_millis(500));
-            crate::restore_impl::restore(&RealDevice, layout, &restore_port, true, Some("app0"))?;
+            crate::restore_impl::restore(
+                &RealDevice,
+                layout,
+                &restore_port,
+                true,
+                Some("app0"),
+                None,
+            )?;
             say_ok(&mut uart_log, "Factory software is back.")?;
         } else {
             say(

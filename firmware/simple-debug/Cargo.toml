@@ -1,0 +1,58 @@
+[package]
+name = "simple-debug-fw"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "reTerminal Sticky proof-of-life image. Flash only via cargo xtask flash-app after a matching original exists."
+license = "MIT"
+
+# Workspace member, not a default-member: host `cargo test` skips this
+# package. Build with `cargo xtask build-fw simple-debug` (or
+# `cargo +esp build -p simple-debug-fw --profile release-fw --target
+# xtensa-esp32s3-none-elf -Zbuild-std=core,alloc`). Host-tested UART lines
+# live in crates/simple-debug.
+# Do not inherit [lints] workspace = true (missing_docs / unsafe_code).
+
+[dependencies]
+# Same git tag as embassy-debug-fw. One lockfile cannot hold crates.io
+# `esp-println` 0.18 and the tag's 0.17 (`links` conflict).
+esp-hal = { git = "https://github.com/esp-rs/esp-hal", tag = "esp-hal-v1.2.0-rc.0", features = [
+  "esp32s3",
+  "unstable",
+] }
+esp-println = { git = "https://github.com/esp-rs/esp-hal", tag = "esp-hal-v1.2.0-rc.0", default-features = false, features = [
+  "esp32s3",
+  "uart",
+  "critical-section",
+] }
+esp-backtrace = { git = "https://github.com/esp-rs/esp-hal", tag = "esp-hal-v1.2.0-rc.0", features = [
+  "esp32s3",
+  "panic-handler",
+  "println",
+] }
+esp-bootloader-esp-idf = { git = "https://github.com/esp-rs/esp-hal", tag = "esp-hal-v1.2.0-rc.0", features = [
+  "esp32s3",
+] }
+# lsm6ds3tr pulls `alloc` (`Vec` on the IRQ path). A small internal heap is
+# enough; we never call that path.
+esp-alloc = { git = "https://github.com/esp-rs/esp-hal", tag = "esp-hal-v1.2.0-rc.0", features = [
+  "esp32s3",
+] }
+
+seeed-reterminal-sticky = { path = "../../crates/seeed-reterminal-sticky" }
+simple-debug = { path = "../../crates/simple-debug" }
+bq25616 = { path = "../../crates/bq25616" }
+bq27220 = { path = "../../crates/bq27220" }
+
+lsm6ds3tr = "0.2.2"
+sht4x = "0.2.0"
+
+embedded-hal = "1.0.0"
+embedded-hal-bus = "0.3.0"
+gt911 = { version = "0.3.0", optional = true }
+
+[features]
+default = []
+# Faster GPIO poll, UART prompt lines, GT911 contact count. Same envelope
+# (no LUT, no /CE, GPIO7 input-only). For `cargo xtask learn-uart`.
+operator = ["dep:gt911"]

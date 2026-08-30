@@ -19,8 +19,21 @@ pub enum Error {
     InvalidFactorySerial(String),
     /// `backups/original/{serial}/` already exists (write-once).
     OriginalExists(PathBuf),
+    /// `backups/captures/{unit}/{slug}/` already exists.
+    CaptureExists(PathBuf),
     /// No original directory matches the live unit.
     MissingOriginal,
+    /// `--capture` did not match a snapshot for this unit.
+    MissingCapture(String),
+    /// More than one capture MANIFEST has this MAC (and no original).
+    AmbiguousCapture,
+    /// Classification needs `--name` (or a TTY prompt in xtask).
+    NeedsSnapshotName {
+        /// Project / version / layout / serial evidence.
+        evidence: String,
+    },
+    /// `--as-original` on a dump classified as not factory.
+    NotFactoryAsOriginal,
     /// Live MAC or USB serial does not match the original MANIFEST.
     IdentityMismatch {
         /// Why the bind-check failed.
@@ -73,6 +86,11 @@ pub enum Error {
     },
     /// `app0` offset would write below `0x90000`.
     UnsafeAppOffset(u32),
+    /// Bound snapshot table is unknown or mismatched (needs `--allow-unknown-layout`).
+    UnsafePartitionLayout {
+        /// `unknown` or `mismatch:factory-32mb-v1`.
+        status: String,
+    },
     /// `--part` label is not in the original table.
     UnknownPartition(String),
     /// The `espflash` library or UART sample failed.
@@ -107,9 +125,30 @@ impl fmt::Display for Error {
                 "original already exists (write-once): {}\nrun confirm-factory-firmware to measure drift",
                 path.display()
             ),
+            Self::CaptureExists(path) => write!(
+                f,
+                "capture already exists: {}",
+                path.display()
+            ),
             Self::MissingOriginal => write!(
                 f,
-                "no backups/original/<factory-serial>/ matches this unit; run backup-factory-firmware first"
+                "no snapshot matches this unit; run cargo xtask backup-factory-firmware first \
+                 (originals in backups/original/<serial>/, captures in backups/captures/<unit-id>/<slug>/)"
+            ),
+            Self::MissingCapture(slug) => {
+                write!(f, "no backups/captures/<unit-id>/{slug}/ matches this unit")
+            }
+            Self::AmbiguousCapture => write!(
+                f,
+                "multiple captures match this unit; pass --capture SLUG"
+            ),
+            Self::NeedsSnapshotName { evidence } => write!(
+                f,
+                "this dump is not a known factory image; pass --name SLUG (or --as-original if it is factory). {evidence}"
+            ),
+            Self::NotFactoryAsOriginal => write!(
+                f,
+                "refusing --as-original: this dump is not factory-shaped (in-tree image, git= stamp, or mismatched table)"
             ),
             Self::IdentityMismatch { reason } => write!(f, "identity mismatch: {reason}"),
             Self::AmbiguousOriginal => {
@@ -185,6 +224,10 @@ impl fmt::Display for Error {
             Self::UnsafeAppOffset(offset) => write!(
                 f,
                 "refusing app0 offset {offset:#x}; writes below 0x90000 would land on nvs"
+            ),
+            Self::UnsafePartitionLayout { status } => write!(
+                f,
+                "refusing flash-app: snapshot partition table is {status}; pass --allow-unknown-layout only if you accept writing app0 against that table"
             ),
             Self::UnknownPartition(label) => write!(f, "no partition labelled {label:?}"),
             Self::Device(reason) => write!(f, "{reason}"),

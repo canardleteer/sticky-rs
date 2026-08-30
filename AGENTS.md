@@ -1,7 +1,8 @@
 # sticky-rs
 
 Board contract, host tools, and safety notes for the Seeed Studio
-reTerminal Sticky. Firmware images are not in this tree yet.
+reTerminal Sticky. Xtensa images live under `firmware/` (workspace
+members, not default-members).
 
 ## Hardware safety (read before writing code)
 
@@ -37,8 +38,7 @@ message (`detect-connected --probe`, live `backup-factory-firmware`,
 `diff-learn-uart`, `build-fw`) does not open a UART.
 
 When a live ask is present, the **only** in-repo device I/O is `cargo xtask`.
-`flash-app` does not compile; `cargo xtask build-fw` first (fails until
-firmware members exist). Flag catalog:
+`flash-app` does not compile; `cargo xtask build-fw` first. Flag catalog:
 [sticky-rs xtask.md](.agents/skills/sticky-rs/references/xtask.md).
 `cargo xtask --help` is the flag source of truth.
 
@@ -98,7 +98,7 @@ Two skills:
   precedence). The skill user weighs conflicts.
 - [sticky-rs](.agents/skills/sticky-rs/SKILL.md) — this repository’s host
   tools (`cargo xtask` / `sticky-host`), crate layout, and Rust firmware
-  path. Xtensa images are not migrated yet.
+  path.
 
 Vendor datasheets are official for registers of chips confirmed on this
 model; observed hardware still outranks a datasheet default. See

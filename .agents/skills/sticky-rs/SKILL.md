@@ -25,9 +25,11 @@ copy of that gate is the root `AGENTS.md`.
 
 1. **xtask** — [references/xtask.md](references/xtask.md). Command catalog,
    monitor flags, UART session lock, `ESPFLASH_PORT`, no Cargo runner.
+   Snapshot how-to:
+   [firmware-snapshot-management.md](../../../docs/firmware-snapshot-management.md).
 2. **Rust firmware** — [references/rust.md](references/rust.md). `esp-hal`
    vs `esp-idf-hal`, `build-fw` then `flash-app`, crate verdicts. In-tree
-   Xtensa images are not migrated yet.
+   Xtensa images live under `firmware/`.
 3. **Layout** — [references/layout.md](references/layout.md). Workspace
    paths, clap/espflash/MSRV, lockfiles, crate README URLs.
 
@@ -49,7 +51,7 @@ that live command:
 
 When a live ask is present, the **only** in-repo device I/O is `cargo xtask`
 as catalogued in [xtask.md](references/xtask.md). `flash-app` does not
-compile; `cargo xtask build-fw` first (fails until firmware members exist).
+compile; `cargo xtask build-fw` first.
 
 A device may be attached for unrelated reasons; ignore it.
 
@@ -61,7 +63,7 @@ A device may be attached for unrelated reasons; ignore it.
 | `host/sticky-host/` | Host library (`publish = true`, not crates.io yet). Live methods take the UART lock; callers pass `Layout` |
 | `xtask/` | Clap front-end at the repo root (`cargo xtask`, `publish = false`) |
 | `backups/` | Gitignored per-unit originals and `learn-uart/` YAML. Not in git |
-| `firmware/*` | Xtensa images — **not migrated yet**. `build-fw` looks them up by package name |
+| `firmware/*` | Xtensa images. Workspace members, not default-members. `build-fw` looks them up by package name |
 
 Chip drivers (`bq25616`, `bq27220`, `ssd1677-gray4`) stay MCU-agnostic.
 Board pins, latch, rails, and transforms belong in

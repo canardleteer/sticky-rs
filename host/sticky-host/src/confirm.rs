@@ -3,16 +3,16 @@
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::device::DeviceIo;
 use crate::dump::sha256_hex;
-use crate::original::{require_original_backup, Layout, OriginalBackup};
+use crate::original::{require_capture_backup, require_original_backup, Layout, OriginalBackup};
 use crate::partitions::{BOOTLOADER_LEN, PARTITION_TABLE_LEN, PARTITION_TABLE_OFFSET};
 use crate::Error;
 
 /// One region compared during confirm.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RegionDiff {
     /// `bootloader`, `partition-table`, or a partition label.
     pub name: String,
@@ -25,7 +25,7 @@ pub struct RegionDiff {
 }
 
 /// Confirm report written next to the original (gitignored with `backups/`).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DivergenceReport {
     /// Factory serial of the original.
     pub factory_serial: String,
@@ -42,13 +42,18 @@ pub fn confirm_live<D: DeviceIo>(
     device: &D,
     layout: &Layout,
     port: &str,
+    capture: Option<&str>,
 ) -> Result<DivergenceReport, Error> {
     let (_, board) = crate::detect::read_live_board(device, port)?;
-    let original = require_original_backup(layout, &board.identity)?;
+    let snapshot = if let Some(slug) = capture {
+        require_capture_backup(layout, &board.identity, slug)?
+    } else {
+        require_original_backup(layout, &board.identity)?
+    };
     let live = crate::backup::read_full_flash(device, port)?;
-    let original_dump = fs::read(original.dir.join("flash-32mb.bin"))?;
-    let report = compare_dumps(&original, &original_dump, &live)?;
-    write_report(&original, &report)?;
+    let original_dump = fs::read(snapshot.dir.join("flash-32mb.bin"))?;
+    let report = compare_dumps(&snapshot, &original_dump, &live)?;
+    write_report(&snapshot, &report)?;
     Ok(report)
 }
 
@@ -119,8 +124,9 @@ fn push_region(regions: &mut Vec<RegionDiff>, name: &str, original: &[u8], live:
 }
 
 fn write_report(original: &OriginalBackup, report: &DivergenceReport) -> Result<(), Error> {
-    let name = format!("divergence-{}.json", report.compared_at_unix);
-    fs::write(original.dir.join(name), serde_json::to_vec_pretty(report)?)?;
+    let name = format!("divergence-{}.yaml", report.compared_at_unix);
+    let yaml = noyalib::to_string(report).map_err(|error| Error::Yaml(error.to_string()))?;
+    fs::write(original.dir.join(name), yaml)?;
     Ok(())
 }
 

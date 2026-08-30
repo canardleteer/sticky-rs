@@ -5,8 +5,8 @@ Hardware stays in
 is how to drive that hardware from **Rust** in this repository, including
 the Cargo host toolchain. Command catalog: [xtask.md](xtask.md).
 
-Two stacks are valid. In-tree Xtensa images are **not migrated yet**.
-When they land, `firmware/simple-debug` is **`no_std` / `esp-hal`**:
+Two stacks are valid. This repository’s in-tree image
+(`firmware/simple-debug`) is **`no_std` / `esp-hal`**:
 
 | Stack | When |
 | --- | --- |
@@ -151,7 +151,7 @@ Do not flash this stack with `pio run` or `idf.py`.
 - `esp-println` + `log` on UART0 (not RTT)
 
 Pin `Cargo.lock`. PSRAM, LEDC, I2S/PDM, and some sleep APIs have lived behind
-`esp-hal` `unstable`. When firmware members exist, `firmware/simple-debug`
+`esp-hal` `unstable`. `firmware/simple-debug`
 is blocking `esp-hal` only — no Embassy, no RTOS. `firmware/embassy-debug`
 is the Embassy image (`esp-rtos` + executor); the panel is `--features epd`.
 
@@ -200,12 +200,12 @@ Firmware, not host tools:
 
 Load a custom image only after a factory original exists, with
 `cargo xtask flash-app --image FILE --yes` (factory `app0` at `0x90000`).
-`cargo xtask build-fw` fails until firmware members exist. Intended images:
+`cargo xtask build-fw` produces the flash-app payload. In-repo images:
 `firmware/simple-debug` (blocking `esp-hal` latch + I2C facts + UART
 heartbeat of raw levels; host-tested line format in `crates/simple-debug`)
 and `firmware/embassy-debug` (Embassy log task, buttons, GT911, IMU every
 5 s, buzzer; panel only with `--features epd`; host-tested lines in
-`crates/embassy-debug` when that crate lands).
+`crates/embassy-debug`).
 
 ## Datasheet catalog vs crates
 

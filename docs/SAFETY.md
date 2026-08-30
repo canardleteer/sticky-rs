@@ -13,7 +13,7 @@ Precedence: [Authority](../.agents/skills/seeed-sticky-hardware/SKILL.md#authori
 
 | Hazard | Safe default | Forbidden until proven |
 | --- | --- | --- |
-| Factory NVS at `0x9000` | Treat as irreplaceable: Wi-Fi RF calibration, device identity, persisted gauge state. Capture a full-chip original of **that unit** first into gitignored `backups/original/<factory-serial>/` | `erase-flash`, any full-chip erase, writes below `0x90000` except restore of **that unit**, flashing one unit's dump onto another |
+| Factory NVS at `0x9000` | Treat as irreplaceable: Wi-Fi RF calibration, device identity, persisted gauge state. Capture a full-chip snapshot of **that unit** first (factory `original/` or a named capture). Lost `nvs` is not regenerable | `erase-flash`, any full-chip erase, writes below `0x90000` except restore of **that unit**, flashing one unit's dump onto another |
 | Power latch GPIO45 / GPIO46 | Drive high and settle before logs or bus init; restore before releasing GPIO holds on deep-sleep wake | Pulsing GPIO46; dropping the latch while on battery |
 | GPIO0 / GPIO46 straps | GPIO0 is sensor I2C SCL only | GPIO0 on the SPI bus (zero-initialised `quadwp`/`quadhd` claims it) |
 | GPIO7 | Input only; owner is unconfirmed (IMU INT vs gauge GPOUT) | Driving it as an output |
@@ -34,22 +34,29 @@ losing calibration is not something hobby tooling can restore.
 
 If you intend to flash your own firmware:
 
-1. Take a full-chip **original** of **your** unit first. Prefer the unique
-   Sticky CH343 (`1a86:55d3`). That tree is gitignored and write-once. Do
-   not commit it. Confirm drift later against the same original.
+1. Take a full-chip snapshot of **your** unit first. Prefer the unique
+   Sticky CH343 (`1a86:55d3`). Factory-classified trees are write-once
+   under `original/`; already-flashed units go under `captures/`. Both are
+   gitignored. Do not commit them. If `nvs` was already overwritten, snapshot
+   anyway — this repo cannot regenerate RF calibration.
 2. Write only factory `app0`. Leave `nvs`, `otadata`, `phy_init`, `app1`,
    and the LittleFS partitions alone on that first custom write. Do not
    flip `otadata` (that is a write below `0x90000`). Do not use a tool that
    installs a default bootloader and partition table (plain `espflash flash`
-   does). This repository has no flash helper yet.
-3. Ship a 32 MB-aware partition table that mirrors the factory offsets, so a
-   mistake in image size cannot land on `nvs`.
-4. Restore settings or the whole chip only from **that unit's** original.
+   does). In-repo writes use `cargo xtask flash-app`.
+3. Use the host-known layout id `factory-32mb-v1` (see the snapshot
+   manual). A later factory table is `v2`, not a silent overwrite.
+4. Restore only from **that unit's** snapshot (original, or `--capture`).
    Never `erase-flash`. Never flash one unit's dump onto another.
 
-`backups/original/<factory-serial>/` is the recommended host layout for
-`flash-32mb.bin`, split `part-*.bin`, `partitions.csv`, and a manifest
-(identity, hashes, OTA slot). Do not commit it.
+Operator how-to (classify, YAML trees, copy-paste xtask recipes):
+[firmware-snapshot-management.md](firmware-snapshot-management.md).
+
+`backups/original/<factory-serial>/` and
+`backups/captures/<unit-id>/<slug>/` hold `flash-32mb.bin`, split
+`part-*.bin`, and `MANIFEST.yaml` (identity, hashes, layout id, OTA slot).
+Older trees may still have `MANIFEST.json` / `partitions.csv` (read
+fallback only). Do not commit them.
 
 ## Why gauge writes stay off
 

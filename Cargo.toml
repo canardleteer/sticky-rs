@@ -1,6 +1,15 @@
 [workspace]
 resolver = "3"
-members = ["crates/*", "host/*", "xtask"]
+members = [
+    "crates/*",
+    "host/*",
+    "xtask",
+    "firmware/simple-debug",
+    "firmware/embassy-debug",
+]
+# Firmware members target xtensa-esp32s3-none-elf. They are in the
+# workspace (one lockfile, one target/) but not default-members, so
+# host `cargo test` / `cargo clippy` never pull Xtensa.
 default-members = ["crates/*", "host/*", "xtask"]
 
 [workspace.package]
@@ -33,3 +42,13 @@ unsafe_code = "forbid"
 
 [workspace.lints.clippy]
 undocumented_unsafe_blocks = "warn"
+
+# Firmware size/debug settings. Cargo forbids `lto` on
+# `[profile.release.package.*]`, and a workspace `[profile.release]`
+# would fat-LTO host tools. `cargo xtask build-fw` uses this profile.
+[profile.release-fw]
+inherits = "release"
+opt-level = "s"
+lto = "fat"
+codegen-units = 1
+debug = 2

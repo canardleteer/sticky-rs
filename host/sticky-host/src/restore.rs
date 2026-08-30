@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use crate::device::DeviceIo;
 use crate::identity::LiveIdentity;
-use crate::original::{require_original_backup, Layout};
+use crate::original::{require_capture_backup, require_original_backup, Layout};
 use crate::Error;
 
 /// Restore the full 32 MiB image or one named partition.
@@ -14,12 +14,17 @@ pub fn restore<D: DeviceIo>(
     port: &str,
     yes: bool,
     part: Option<&str>,
+    capture: Option<&str>,
 ) -> Result<(), Error> {
     if !yes {
         return Err(Error::RestoreNotConfirmed);
     }
     let live = live_identity(device, port)?;
-    let original = require_original_backup(layout, &live)?;
+    let original = if let Some(slug) = capture {
+        require_capture_backup(layout, &live, slug)?
+    } else {
+        require_original_backup(layout, &live)?
+    };
     match part {
         None => {
             let image = original.dir.join("flash-32mb.bin");
@@ -97,7 +102,7 @@ mod tests {
             backups_root: tmp.path().join("backups"),
         };
         let mock = RefCell::new(MockDevice::default());
-        let err = restore(&mock, &layout, "PORT", false, None).unwrap_err();
+        let err = restore(&mock, &layout, "PORT", false, None, None).unwrap_err();
         assert!(matches!(err, Error::RestoreNotConfirmed));
     }
 
@@ -125,7 +130,7 @@ mod tests {
             board_info: info,
             ..MockDevice::default()
         });
-        restore(&mock, &layout, "PORT", true, Some("nvs")).unwrap();
+        restore(&mock, &layout, "PORT", true, Some("nvs"), None).unwrap();
         let writes = &mock.borrow().writes;
         assert_eq!(writes.len(), 1);
         assert_eq!(writes[0].0, 0x9000);
@@ -189,7 +194,7 @@ mod tests {
             ..MockDevice::default()
         });
         assert!(matches!(
-            restore(&mock, &layout, "PORT", true, Some("nvs")),
+            restore(&mock, &layout, "PORT", true, Some("nvs"), None),
             Err(Error::MissingOriginal)
         ));
     }
@@ -222,7 +227,7 @@ mod tests {
             ..MockDevice::default()
         });
         assert!(matches!(
-            restore(&mock, &layout, &port, true, Some("nvs")),
+            restore(&mock, &layout, &port, true, Some("nvs"), None),
             Err(Error::IdentityMismatch { .. })
         ));
     }

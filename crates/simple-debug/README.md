@@ -1,7 +1,7 @@
 # simple-debug
 
-Host-tested UART log contract for the Sticky proof-of-life image. Firmware
-that prints these lines is not in this tree yet.
+Host-tested UART log contract for the Sticky proof-of-life image
+(`firmware/simple-debug`).
 
 This crate owns the line format and GPIO edge rules: a heartbeat of raw
 levels, extra lines only on edges, and no identifier fields. Board wiring

@@ -85,6 +85,25 @@ fn serial_from_line(line: &str) -> Option<String> {
     None
 }
 
+/// `mac-<hex>` directory name from a board-info MAC (colons stripped).
+pub fn mac_unit_id(mac: &str) -> Result<String, Error> {
+    let hex: String = mac.chars().filter(|c| c.is_ascii_hexdigit()).collect();
+    let id = format!("mac-{}", hex.to_ascii_lowercase());
+    validate_factory_serial(&id)?;
+    Ok(id)
+}
+
+/// Factory serial when UART had one, otherwise [`mac_unit_id`].
+pub fn unit_id(factory_serial: Option<&str>, mac: &str) -> Result<String, Error> {
+    match factory_serial {
+        Some(serial) => {
+            validate_factory_serial(serial)?;
+            Ok(serial.to_string())
+        }
+        None => mac_unit_id(mac),
+    }
+}
+
 /// Directory names: no slashes, no `..`, printable ASCII.
 pub fn validate_factory_serial(serial: &str) -> Result<(), Error> {
     if serial.is_empty()

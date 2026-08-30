@@ -45,7 +45,7 @@ hardware use.
 | [`bq25616`](../crates/bq25616) | A GPIO-only charger has no I2C driver to adopt; the value is making active-low `/CE` impossible to get wrong. |
 | [`seeed-reterminal-sticky`](../crates/seeed-reterminal-sticky) | No board crate exists for this product. |
 | [`simple-debug`](../crates/simple-debug) | UART heartbeat and GPIO edge line format; host-tested because the Xtensa simple-debug image cannot run `cargo test` on the host compiler. |
-| `embassy-debug` | Not in this tree yet. Timestamped button / touch / IMU UART lines for the Embassy image. |
+| [`embassy-debug`](../crates/embassy-debug) | Timestamped button / touch / IMU UART lines for the Embassy image; host-tested because the Xtensa embassy-debug image cannot run `cargo test` on the host compiler. |
 
 ## Infrastructure
 
@@ -81,5 +81,4 @@ operator TTY in cbreak so `learn-uart` can skip a wait on `s` without Enter
 
 ## Counts
 
-5 adopted from crates.io, 6 explicitly rejected, 5 written here
-(`embassy-debug` not migrated yet).
+5 adopted from crates.io, 6 explicitly rejected, 6 written here.

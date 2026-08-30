@@ -14,7 +14,9 @@ and host-only import / `diff-learn-uart` / `build-fw` do not take the lock.
 
 Safety and live-ask rules:
 [AGENTS.md](https://github.com/canardleteer/sticky-rs/blob/main/AGENTS.md).
-Command catalog (after the sticky-rs skill lands):
+Snapshot how-to:
+[firmware-snapshot-management.md](https://github.com/canardleteer/sticky-rs/blob/main/docs/firmware-snapshot-management.md).
+Command catalog:
 [xtask.md](https://github.com/canardleteer/sticky-rs/blob/main/.agents/skills/sticky-rs/references/xtask.md).
 
 License: MIT

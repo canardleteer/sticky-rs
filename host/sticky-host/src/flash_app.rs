@@ -4,7 +4,8 @@ use std::fs;
 use std::path::Path;
 
 use crate::device::DeviceIo;
-use crate::original::{require_original_backup, Layout};
+use crate::original::{require_capture_backup, require_safety_net, Layout};
+use crate::partition_layouts::match_layout;
 use crate::Error;
 
 /// Factory `app0` starts here. Nothing below this is an app-flash target.
@@ -20,13 +21,36 @@ pub fn flash_app<D: DeviceIo>(
     port: &str,
     image: &Path,
     yes: bool,
+    allow_unknown_layout: bool,
+    capture: Option<&str>,
 ) -> Result<(), Error> {
     if !yes {
         return Err(Error::FlashNotConfirmed);
     }
     let (_, board) = crate::detect::read_live_board(device, port)?;
-    let original = require_original_backup(layout, &board.identity)?;
-    let app0 = original
+    let net = if let Some(slug) = capture {
+        let snapshot = require_capture_backup(layout, &board.identity, slug)?;
+        crate::original::SafetyNet {
+            is_original: false,
+            snapshot,
+        }
+    } else {
+        require_safety_net(layout, &board.identity)?
+    };
+    if !net.is_original {
+        eprintln!(
+            "flash-app: using capture {} — this is not a factory restore; lost nvs is not recoverable",
+            net.snapshot.dir.display()
+        );
+    }
+    let layout_status = match_layout(&net.snapshot.manifest.partitions);
+    if !layout_status.is_known() && !allow_unknown_layout {
+        return Err(Error::UnsafePartitionLayout {
+            status: layout_status.evidence_token(),
+        });
+    }
+    let app0 = net
+        .snapshot
         .manifest
         .partitions
         .iter()
@@ -60,9 +84,22 @@ mod tests {
     use crate::backup::persist_original;
     use crate::device::MockDevice;
     use crate::identity::{parse_board_info, test_mac};
+    use crate::manifest::SnapshotKind;
+    use crate::original::load_manifest;
+    use crate::partition_layouts::{partitions_from_layout, FACTORY_32MB_V1};
     use crate::partitions::{test_entry, PARTITION_TABLE_OFFSET};
     use std::cell::RefCell;
     use std::fs;
+
+    fn flash(
+        mock: &RefCell<MockDevice>,
+        layout: &Layout,
+        port: &str,
+        image: &Path,
+        yes: bool,
+    ) -> Result<(), Error> {
+        flash_app(mock, layout, port, image, yes, true, None)
+    }
 
     const APP0_SIZE: u32 = 256;
 
@@ -134,7 +171,7 @@ mod tests {
         };
         let mock = RefCell::new(MockDevice::default());
         let image = payload(tmp.path(), &[0xE9, 0x01]);
-        let err = flash_app(&mock, &layout, "PORT", &image, false).unwrap_err();
+        let err = flash(&mock, &layout, "PORT", &image, false).unwrap_err();
         assert!(matches!(err, Error::FlashNotConfirmed));
     }
 
@@ -150,7 +187,7 @@ mod tests {
             ..MockDevice::default()
         });
         let image = payload(tmp.path(), &[0xE9, 0x01]);
-        let err = flash_app(&mock, &layout, "PORT", &image, true).unwrap_err();
+        let err = flash(&mock, &layout, "PORT", &image, true).unwrap_err();
         assert!(matches!(err, Error::MissingOriginal));
     }
 
@@ -176,7 +213,7 @@ mod tests {
         });
         let image = payload(tmp.path(), &[0xE9, 0x01]);
         assert!(matches!(
-            flash_app(&mock, &layout, "PORT", &image, true),
+            flash(&mock, &layout, "PORT", &image, true),
             Err(Error::MissingOriginal)
         ));
     }
@@ -195,7 +232,7 @@ mod tests {
         });
         let bytes = vec![0xE9, 0x03, 0x02, 0x01];
         let image = payload(tmp.path(), &bytes);
-        flash_app(&mock, &layout, "PORT", &image, true).unwrap();
+        flash(&mock, &layout, "PORT", &image, true).unwrap();
         let writes = &mock.borrow().writes;
         assert_eq!(writes.len(), 1);
         assert_eq!(writes[0].0, APP0_MIN_OFFSET);
@@ -218,7 +255,7 @@ mod tests {
         elf.extend_from_slice(&[1, 2, 3, 4]);
         let image = payload(tmp.path(), &elf);
         assert!(matches!(
-            flash_app(&mock, &layout, "PORT", &image, true),
+            flash(&mock, &layout, "PORT", &image, true),
             Err(Error::ImageNotApp)
         ));
         assert!(mock.borrow().writes.is_empty());
@@ -251,7 +288,7 @@ mod tests {
         });
         let image = payload(tmp.path(), &[0xE9, 0x01]);
         assert!(matches!(
-            flash_app(&mock, &layout, "PORT", &image, true),
+            flash(&mock, &layout, "PORT", &image, true),
             Err(Error::UnknownPartition(label)) if label == "app0"
         ));
     }
@@ -270,12 +307,12 @@ mod tests {
         });
         let empty = payload(tmp.path(), &[]);
         assert!(matches!(
-            flash_app(&mock, &layout, "PORT", &empty, true),
+            flash(&mock, &layout, "PORT", &empty, true),
             Err(Error::ImageNotApp)
         ));
         let huge = payload(tmp.path(), &vec![0xE9; APP0_SIZE as usize + 1]);
         assert!(matches!(
-            flash_app(&mock, &layout, "PORT", &huge, true),
+            flash(&mock, &layout, "PORT", &huge, true),
             Err(Error::ImageTooLarge { size, max }) if size == u64::from(APP0_SIZE) + 1 && max == APP0_SIZE
         ));
         assert!(mock.borrow().writes.is_empty());
@@ -307,7 +344,7 @@ mod tests {
         });
         let image = payload(tmp.path(), &[0xE9, 0x01]);
         assert!(matches!(
-            flash_app(&mock, &layout, &port, &image, true),
+            flash(&mock, &layout, &port, &image, true),
             Err(Error::IdentityMismatch { .. })
         ));
         assert!(mock.borrow().writes.is_empty());
@@ -342,9 +379,109 @@ mod tests {
         });
         let image = payload(tmp.path(), &[0xE9, 0x01]);
         assert!(matches!(
-            flash_app(&mock, &layout, "PORT", &image, true),
+            flash(&mock, &layout, "PORT", &image, true),
             Err(Error::UnsafeAppOffset(offset)) if offset == unsafe_off
         ));
         assert!(mock.borrow().writes.is_empty());
+    }
+
+    fn write_capture_with_parts(
+        layout: &Layout,
+        slug: &str,
+        info: &str,
+        partitions: Vec<crate::partitions::Partition>,
+    ) {
+        let board = parse_board_info(info).unwrap();
+        persist_original(
+            layout,
+            "TESTFACTORY001",
+            &dump_with_app0(),
+            &board,
+            "",
+            info,
+            false,
+        )
+        .unwrap();
+        let original_dir = layout.original_dir("TESTFACTORY001");
+        let mut manifest = load_manifest(&original_dir).unwrap();
+        fs::remove_dir_all(&original_dir).unwrap();
+        manifest.kind = SnapshotKind::Capture;
+        manifest.image_name = Some(slug.into());
+        manifest.partitions = partitions;
+        let dest = layout.capture_dir("TESTFACTORY001", slug);
+        fs::create_dir_all(&dest).unwrap();
+        fs::write(
+            dest.join("MANIFEST.yaml"),
+            noyalib::to_string(&manifest).unwrap(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn flash_refuses_unknown_layout_without_override() {
+        let tmp = tempfile::tempdir().unwrap();
+        let layout = Layout {
+            backups_root: tmp.path().join("backups"),
+        };
+        let board = info();
+        persist(&layout, &board);
+        let mock = RefCell::new(MockDevice {
+            board_info: board,
+            ..MockDevice::default()
+        });
+        let image = payload(tmp.path(), &[0xE9, 0x01]);
+        assert!(matches!(
+            flash_app(&mock, &layout, "PORT", &image, true, false, None),
+            Err(Error::UnsafePartitionLayout { .. })
+        ));
+        assert!(mock.borrow().writes.is_empty());
+    }
+
+    #[test]
+    fn flash_accepts_factory_v1_without_override() {
+        let tmp = tempfile::tempdir().unwrap();
+        let layout = Layout {
+            backups_root: tmp.path().join("backups"),
+        };
+        let board = info();
+        persist(&layout, &board);
+        let dir = layout.original_dir("TESTFACTORY001");
+        let mut manifest = load_manifest(&dir).unwrap();
+        manifest.partitions = partitions_from_layout(&FACTORY_32MB_V1);
+        fs::write(
+            dir.join("MANIFEST.yaml"),
+            noyalib::to_string(&manifest).unwrap(),
+        )
+        .unwrap();
+        let mock = RefCell::new(MockDevice {
+            board_info: board,
+            ..MockDevice::default()
+        });
+        let image = payload(tmp.path(), &[0xE9, 0x01]);
+        flash_app(&mock, &layout, "PORT", &image, true, false, None).unwrap();
+        assert_eq!(mock.borrow().writes.len(), 1);
+        assert_eq!(mock.borrow().writes[0].0, APP0_MIN_OFFSET);
+    }
+
+    #[test]
+    fn flash_uses_capture_as_safety_net() {
+        let tmp = tempfile::tempdir().unwrap();
+        let layout = Layout {
+            backups_root: tmp.path().join("backups"),
+        };
+        let board = info();
+        write_capture_with_parts(
+            &layout,
+            "after-flash",
+            &board,
+            partitions_from_layout(&FACTORY_32MB_V1),
+        );
+        let mock = RefCell::new(MockDevice {
+            board_info: board,
+            ..MockDevice::default()
+        });
+        let image = payload(tmp.path(), &[0xE9, 0x01]);
+        flash_app(&mock, &layout, "PORT", &image, true, false, None).unwrap();
+        assert_eq!(mock.borrow().writes.len(), 1);
     }
 }

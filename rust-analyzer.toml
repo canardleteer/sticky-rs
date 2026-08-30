@@ -1,0 +1,7 @@
+# Firmware members need the Xtensa `esp` toolchain and cannot `check` for the
+# host. Do not set a workspace default Xtensa target.
+[cargo]
+extraArgs = ["--exclude", "simple-debug-fw", "--exclude", "embassy-debug-fw"]
+
+[check]
+extraArgs = ["--exclude", "simple-debug-fw", "--exclude", "embassy-debug-fw"]

@@ -19,14 +19,14 @@ live in
 | Command | UART? | How to use it |
 | --- | --- | --- |
 | `detect-connected` | no, unless `--probe` | USB inventory of Sticky CH343 (sysfs / by-id). `--all-devices` includes other USB-serial adapters. `--probe` opens the UART (DTR reset): stock `serial_number`, then board-info |
-| `backup-factory-firmware` | live dump yes; `--import` no | First capture into `backups/original/<factory-serial>/` (write-once, gitignored). `--import DIR` is host-only: needs `flash-32mb.bin` (32 MiB), `board-info.txt` (`MAC address:` + 32 MB), and a factory serial from an xtask `MANIFEST.json` **or** `uart-sample.txt` / `serial-samples.txt` (`key=serial_number`). A sibling dump `MANIFEST.json` that is not the xtask schema is ignored. Import clears CH343 USB serial |
-| `confirm-factory-firmware` | yes | Compare live flash to the matching original. Writes a divergence report next to that original. Does not rewrite `original/` |
-| `restore-factory-firmware` | yes | `write_bin_to_flash` of **that unit's** original. Requires `--yes`. Full image at `0x0`, or `--part LABEL` (`nvs`, `app0`, …). Never a full-chip erase. Writes in 1 MiB windows (same size as backup `read-flash`); per-window device MD5 can skip a match; reconnects and retries a dropped window. Prints `write-bin window i/n` then chunk `%` (`init`/`update` are **chunk counts**, not bytes) |
-| `flash-app` | yes | `write_bin_to_flash` of `--image FILE` (a `save-image` payload, not an ELF) into factory `app0` only. Requires `--yes` and a matching original. Never `espflash flash`, never a caller-chosen offset |
-| `learn-uart` | yes | Heartbeat vet plus skippable human steps. Needs a matching original. YAML + sidecar `*.uart.log` under `backups/original/<factory-serial>/learn-uart/` (factory serial, not MAC). `--image FILE` flashes `app0` first (needs `--yes`). `--restore-app0` puts factory `app0` back after (UART closed first; one `--yes` covers both writes). `--report FILE` extra YAML copy. `--skip STEP` (`buttons`, `vbus`, `imu`, `sd_detect`, `touch`). `--only STEP` or `--unattended-only`. `--step-timeout-secs N`. Press `s` to skip a wait. Tilt waits for a rest pose after Enter. After each key, a human label (or `unknown`) and optional note. A finished session copies `learn-uart-latest.yaml` (`complete: true`); a crash does not. Firmware / host stamp `git=` / `package_git` |
+| `backup-factory-firmware` | live dump yes; `--import` no | Classify then store. Known factory (`reterminal_template` 1.1.0 + `factory-32mb-v1`) → write-once `backups/original/<factory-serial>/`. Otherwise `--name SLUG` → `backups/captures/<unit-id>/<slug>/` (`unit-id` is factory serial or `mac-<hex>`). Uncertain stock: `--as-original` or `--name`. Alias `backup-firmware`. `--import DIR` is host-only: `flash-32mb.bin` (32 MiB), `board-info.txt` (`MAC address:` + 32 MB), serial from xtask `MANIFEST.yaml` / `MANIFEST.json` **or** `uart-sample.txt` / `serial-samples.txt`. Sibling dump manifests that are not the xtask schema are ignored. Import clears CH343 USB serial. Operator how-to: [firmware-snapshot-management.md](../../../../docs/firmware-snapshot-management.md) |
+| `confirm-factory-firmware` | yes | Compare live flash to the matching original, or `--capture SLUG`. Writes `divergence-<unix>.yaml` next to that snapshot. Does not rewrite the snapshot binaries |
+| `restore-factory-firmware` | yes | `write_bin_to_flash` of **that unit's** original, or `--capture SLUG`. Requires `--yes`. Full image at `0x0`, or `--part LABEL` (`nvs`, `app0`, …). Never a full-chip erase. Writes in 1 MiB windows (same size as backup `read-flash`); per-window device MD5 can skip a match; reconnects and retries a dropped window. Prints `write-bin window i/n` then chunk `%` (`init`/`update` are **chunk counts**, not bytes) |
+| `flash-app` | yes | `write_bin_to_flash` of `--image FILE` (a `save-image` payload, not an ELF) into factory `app0` only. Requires `--yes` and a matching original or unique capture. `--capture SLUG` picks a capture. Refuses an unknown/mismatched snapshot table unless `--allow-unknown-layout`. Never `espflash flash`, never a caller-chosen offset |
+| `learn-uart` | yes | Heartbeat vet plus skippable human steps. Needs a matching original or capture. YAML + sidecar `*.uart.log` under that snapshot's `learn-uart/` (factory serial or unit-id, not MAC). `--image FILE` flashes `app0` first (needs `--yes`). `--restore-app0` puts factory `app0` back after (UART closed first; needs an original; one `--yes` covers both writes). `--report FILE` extra YAML copy. `--skip STEP` (`buttons`, `vbus`, `imu`, `sd_detect`, `touch`). `--only STEP` or `--unattended-only`. `--step-timeout-secs N`. Press `s` to skip a wait. Tilt waits for a rest pose after Enter. After each key, a human label (or `unknown`) and optional note. A finished session copies `learn-uart-latest.yaml` (`complete: true`); a crash does not. Firmware / host stamp `git=` / `package_git` |
 | `learn-uart-only` | yes | Same session as `learn-uart`, only named groups: `touch`, `buttons`, `vbus`, `imu`, `sd` (positional and/or `--only`). Example: `learn-uart-only touch --image FILE --yes --restore-app0` |
 | `diff-learn-uart` | no | Host-only compare of two YAML reports or factory serials. Default paste uses `UNIT_A` / `UNIT_B`; `--show-serials` prints serials locally |
-| `build-fw` | no | Host-only. Looks up firmware members by package name and fails until they exist. When they land: `cargo +esp build -p <fw> --profile release-fw --target xtensa-esp32s3-none-elf -Zbuild-std=core,alloc --locked` then `espflash save-image` (no port). IMAGE is `simple-debug` or `embassy-debug`. `--features operator` / `epd`. ELF and `.bin` under workspace `target/xtensa-esp32s3-none-elf/release-fw/` |
+| `build-fw` | no | Host-only. `cargo +esp build -p <fw> --profile release-fw --target xtensa-esp32s3-none-elf -Zbuild-std=core,alloc --locked` then `espflash save-image` (no port). IMAGE is `simple-debug` or `embassy-debug`. `--features operator` / `epd`. ELF and `.bin` under workspace `target/xtensa-esp32s3-none-elf/release-fw/` |
 | `monitor` | yes | UART0 listen. Flags below; not nested subcommands. Pair with `flash-app` / `restore-factory-firmware` / `confirm-factory-firmware` |
 
 ```shell
@@ -34,10 +34,16 @@ cargo xtask detect-connected
 # cargo xtask detect-connected --all-devices
 # cargo xtask detect-connected --probe
 cargo xtask backup-factory-firmware
+# cargo xtask backup-factory-firmware --name after-flash
+# cargo xtask backup-firmware
 cargo xtask confirm-factory-firmware
+# cargo xtask confirm-factory-firmware --capture after-flash
 # cargo xtask restore-factory-firmware --yes
 # cargo xtask restore-factory-firmware --part app0 --yes
+# cargo xtask restore-factory-firmware --capture after-flash --part app0 --yes
 # after build-fw (no port): cargo xtask flash-app --image FILE --yes
+# cargo xtask flash-app --image FILE --yes --capture after-flash
+# cargo xtask flash-app --image FILE --yes --allow-unknown-layout
 # cargo xtask learn-uart
 # cargo xtask learn-uart-only touch
 # host-only: cargo xtask diff-learn-uart LEFT RIGHT
@@ -54,7 +60,8 @@ are enough for espflash’s UART reset-strategy pick on QinHeng. 32 × 1 MiB
 
 `--import DIR` is host-only (no port). `flash-app` write-bins a custom
 payload into factory `app0` only and refuses without a matching
-`backups/original/<factory-serial>/`.
+original or capture. How-to:
+[firmware-snapshot-management.md](../../../../docs/firmware-snapshot-management.md).
 
 ## `monitor` (listen)
 
@@ -82,7 +89,7 @@ process exits `0`. With neither, listen until Ctrl-C. `--for 0` and
 `--quiet` without `--output` are rejected. Do not commit UART captures
 (they can contain factory serials).
 
-Typical desk check after a matching original exists (human asked):
+Typical desk check after a matching snapshot exists (human asked):
 
 ```shell
 cargo xtask build-fw embassy-debug
@@ -101,11 +108,12 @@ different path (operator YAML, `simple-debug --features operator`), not a
 
 ## Contracts
 
-`flash-app` **must** call `require_original_backup` and refuse when the
-original is missing or the live identity does not match, and **must** take
-the shared UART session lock. Do not add a Cargo `runner`. Do not put a
-device path in anything that can act (`*.toml`, `*.rs`, `*.sh`, workflows,
-`Makefile`); xtask reads `ESPFLASH_PORT`.
+`flash-app` **must** call `require_safety_net` (original preferred, else
+unique capture) and refuse when no snapshot matches or the live identity
+does not match, and **must** take the shared UART session lock. Do not add
+a Cargo `runner`. Do not put a device path in anything that can act
+(`*.toml`, `*.rs`, `*.sh`, workflows, `Makefile`); xtask reads
+`ESPFLASH_PORT`.
 
 There is no Cargo `runner`, so `cargo run` cannot flash. xtask may use the
 `espflash` library for region read/write only; never a full-chip erase,
@@ -161,9 +169,9 @@ underscore by-id, EN/RTS run-mode UART sample, 32 MiB dump at 921600).
 has not. Bring-up has met latch, UART0, sensor I2C, and gauge reads; it
 has not refreshed the panel.
 
-Those runs used firmware packages that are **not in this tree yet**.
-`build-fw` will fail until `firmware/simple-debug` and
-`firmware/embassy-debug` land. Earlier `firmware/bringup` and
+`firmware/simple-debug` is the in-repo proof-of-life image.
+`firmware/embassy-debug` is a separate Embassy event-logger (panel only
+with `--features epd`). Earlier `firmware/bringup` and
 `firmware/learn` images were flashed the same way; after each,
 `restore --part app0` returned stock `reterminal_template` 1.1.0.
 `learn-uart` with the operator image has been run (right-edge `btn 4` /

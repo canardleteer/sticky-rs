@@ -6,30 +6,38 @@
 > I do have a "functioning" Embedded Rust dev environment for the Sticky,
 > but I'm porting it over to clean git history slowly.
 >
-> For now, I'm just going to include the skill and safety information,
-> but am working on moving the rest over as I can.
+> This is an "agent copy from private repo", so needs some polish still.
 
-Hardware notes and a board contract for the Seeed Studio reTerminal Sticky.
-Host tools are: `cargo xtask`
-(clap front-end) over `host/sticky-host`.
+## Seeed Studio reTerminal Sticky in Rust
 
-**Read [docs/SAFETY.md](docs/SAFETY.md) before flashing or probing a unit.**
-A mistake can destroy factory NVS (per-unit RF calibration), the fuel-gauge
-OTP, or the panel. Getting started (host verify, Xtensa, both firmware
-paths): [docs/getting-started.md](docs/getting-started.md). Snapshot
-how-to:
-[docs/firmware-snapshot-management.md](docs/firmware-snapshot-management.md).
-The pin map, rails, and source precedence live in
-[`.agents/skills/seeed-sticky-hardware/`](.agents/skills/seeed-sticky-hardware/SKILL.md).
-Host I/O is `cargo xtask` only. Do not open a UART unless a human asked.
-`build-fw` and `ci` are host-only. Flag
-catalog: [`.agents/skills/sticky-rs/references/xtask.md`](.agents/skills/sticky-rs/references/xtask.md).
+- Host tools are: `cargo xtask` over `host/sticky-host`.
+  - The goal here is that we can create a `sticky-cli`, but for now,
+    `cargo xtask` is more efficient for development.
+- **Read [docs/SAFETY.md](docs/SAFETY.md) before flashing or probing a unit.**
+  - A mistake can destroy factory NVS (per-unit RF calibration), the fuel-gauge OTP, or the panel. 
+- [Getting started](docs/getting-started.md) (host verify, Xtensa, firmware install & run). 
+- [Snapshot HOWTO](docs/firmware-snapshot-management.md).
+  - I highly recommend snapshotting the original firmware, before first use.
+- [Hardware details](.agents/skills/seeed-sticky-hardware/SKILL.md).
+  - The pin map, rails, vendoring of datasheets, etc.
+- All other relevant and useful docs, should live in [`docs/`](./docs)
+
+> [!IMPORTANT]
+>
+> We haven't gotten the touchpanel working yet. Help here is appreciated.
+
+## Firmware Examples
+
+- [plain](./firmware/simple-debug)
+- [embassy-rs](./firmware/embassy-debug)
 
 ## cargo xtask
 
 From the repo root (`cargo xtask <subcommand>`). `cargo xtask --help` lists
-flags. Live commands take `--port` or `ESPFLASH_PORT`; if unset they need
-exactly one QinHeng CH343 (`1a86:55d3`). Safety: [docs/SAFETY.md](docs/SAFETY.md).
+flags. 
+
+Live commands take `--port` or `ESPFLASH_PORT`; if unset they need
+exactly one QinHeng CH343 (`1a86:55d3`).
 
 | Command | UART? | Summary |
 | --- | --- | --- |

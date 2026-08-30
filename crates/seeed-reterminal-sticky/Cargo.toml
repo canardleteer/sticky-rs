@@ -1,0 +1,23 @@
+[package]
+name = "seeed-reterminal-sticky"
+version = "0.1.0"
+description = "Board support for the Seeed Studio reTerminal Sticky: pin map, power latch typestate, rails, and coordinate transforms"
+readme = "README.md"
+publish = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+embedded-hal.workspace = true
+ssd1677-gray4 = { path = "../ssd1677-gray4", version = "0.1.0", default-features = false }
+
+[dev-dependencies]
+embedded-hal-mock.workspace = true
+
+[lints]
+workspace = true

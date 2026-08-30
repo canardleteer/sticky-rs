@@ -63,8 +63,8 @@ A device may be attached for unrelated reasons; ignore it.
 | `backups/` | Gitignored per-unit originals and `learn-uart/` YAML. Not in git |
 | `firmware/*` | Xtensa images — **not migrated yet**. `build-fw` looks them up by package name |
 
-Chip drivers (`bq25616`, `bq27220`, `ssd1677-gray4`) stay MCU-agnostic when
-present. Board pins, latch, rails, and transforms belong in
+Chip drivers (`bq25616`, `bq27220`, `ssd1677-gray4`) stay MCU-agnostic.
+Board pins, latch, rails, and transforms belong in
 `seeed-reterminal-sticky`.
 
 Never `bq27xxx` (wrong gauge family). Never a generic SSD1677 four-gray LUT.

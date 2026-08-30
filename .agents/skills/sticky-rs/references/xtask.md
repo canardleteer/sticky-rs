@@ -19,7 +19,7 @@ live in
 | Command | UART? | How to use it |
 | --- | --- | --- |
 | `detect-connected` | no, unless `--probe` | USB inventory of Sticky CH343 (sysfs / by-id). `--all-devices` includes other USB-serial adapters. `--probe` opens the UART (DTR reset): stock `serial_number`, then board-info |
-| `backup-factory-firmware` | live dump yes; `--import` no | Classify then store. Known factory (`reterminal_template` 1.1.0 + `factory-32mb-v1`) → write-once `backups/original/<factory-serial>/`. Otherwise `--name SLUG` → `backups/captures/<unit-id>/<slug>/` (`unit-id` is factory serial or `mac-<hex>`). Uncertain stock: `--as-original` or `--name`. Alias `backup-firmware`. `--import DIR` is host-only: `flash-32mb.bin` (32 MiB), `board-info.txt` (`MAC address:` + 32 MB), serial from xtask `MANIFEST.yaml` / `MANIFEST.json` **or** `uart-sample.txt` / `serial-samples.txt`. Sibling dump manifests that are not the xtask schema are ignored. Import clears CH343 USB serial. Operator how-to: [firmware-snapshot-management.md](../../../../docs/firmware-snapshot-management.md) |
+| `backup-factory-firmware` | live dump yes; `--import` no | Classify then store. Known factory (`reterminal_template` 1.1.0 + `factory-32mb-v1`) → write-once `developer-data/backups/original/<factory-serial>/`. Otherwise `--name SLUG` → `developer-data/backups/captures/<unit-id>/<slug>/` (`unit-id` is factory serial or `mac-<hex>`). Uncertain stock: `--as-original` or `--name`. Alias `backup-firmware`. `--import DIR` is host-only: `flash-32mb.bin` (32 MiB), `board-info.txt` (`MAC address:` + 32 MB), serial from xtask `MANIFEST.yaml` / `MANIFEST.json` **or** `uart-sample.txt` / `serial-samples.txt`. Sibling dump manifests that are not the xtask schema are ignored. Import clears CH343 USB serial. Operator how-to: [firmware-snapshot-management.md](../../../../docs/firmware-snapshot-management.md) |
 | `confirm-factory-firmware` | yes | Compare live flash to the matching original, or `--capture SLUG`. Writes `divergence-<unix>.yaml` next to that snapshot. Does not rewrite the snapshot binaries |
 | `restore-factory-firmware` | yes | `write_bin_to_flash` of **that unit's** original, or `--capture SLUG`. Requires `--yes`. Full image at `0x0`, or `--part LABEL` (`nvs`, `app0`, …). Never a full-chip erase. Writes in 1 MiB windows (same size as backup `read-flash`); per-window device MD5 can skip a match; reconnects and retries a dropped window. Prints `write-bin window i/n` then chunk `%` (`init`/`update` are **chunk counts**, not bytes) |
 | `flash-app` | yes | `write_bin_to_flash` of `--image FILE` (a `save-image` payload, not an ELF) into factory `app0` only. Requires `--yes` and a matching original or unique capture. `--capture SLUG` picks a capture. Refuses an unknown/mismatched snapshot table unless `--allow-unknown-layout`. Never `espflash flash`, never a caller-chosen offset |
@@ -119,8 +119,9 @@ There is no Cargo `runner`, so `cargo run` cannot flash. xtask may use the
 never `espflash flash`.
 
 Never commit a MAC address, serial number, USB serial string, NVS blob, or
-flash image, and never add a path to an off-repo device capture. `backups/`
-is gitignored on purpose. Facts learned from a stock firmware image are
+flash image, and never add a path to an off-repo device capture.
+`developer-data/` is gitignored on purpose (snapshots under
+`developer-data/backups/`). Facts learned from a stock firmware image are
 recorded unattributed — as "stock firmware does X" — and only when they are
 product-general.
 

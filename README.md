@@ -34,7 +34,7 @@ exactly one QinHeng CH343 (`1a86:55d3`). Safety: [docs/SAFETY.md](docs/SAFETY.md
 | Command | UART? | Summary |
 | --- | --- | --- |
 | `detect-connected` | no, unless `--probe` | List Sticky CH343 nodes. `--probe` opens the UART |
-| `backup-factory-firmware` | live dump yes; `--import` no | Classify then store: known factory → `original/<serial>/` (write-once); else `--name` capture under `captures/<unit-id>/<slug>/`. Alias `backup-firmware`. `--as-original` for uncertain stock |
+| `backup-factory-firmware` | live dump yes; `--import` no | Classify then store: known factory → `developer-data/backups/original/<serial>/` (write-once); else `--name` capture under `developer-data/backups/captures/<unit-id>/<slug>/`. Alias `backup-firmware`. `--as-original` for uncertain stock |
 | `confirm-factory-firmware` | yes | Compare live flash to that unit's original, or `--capture SLUG` |
 | `restore-factory-firmware` | yes | write-bin that unit's original or `--capture` (`--yes`). Never a full-chip erase |
 | `flash-app` | yes | write-bin `--image FILE` into factory `app0` only. Needs a matching original or capture. Does not compile |

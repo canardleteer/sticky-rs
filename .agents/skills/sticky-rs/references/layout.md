@@ -8,7 +8,7 @@
 | `host/` | Default-members. Host libraries and future host CLIs (not `xtask`) |
 | `host/sticky-host/` | Host library (`publish = true`, not crates.io yet). Detect, factory backup / confirm / restore, `build-fw`, `flash-app`, learn-uart, monitor. Callers pass `Layout`; live methods take the UART lock |
 | `xtask/` | Clap front-end at the repo root (`cargo xtask`). Maps flags to `sticky-host`; `repo_root()` is the parent of this package |
-| `backups/` | Gitignored per-unit `original/<serial>/` and `captures/<unit-id>/<slug>/` plus `learn-uart/` YAML. Not in git |
+| `developer-data/` | Gitignored private / personalized files. Per-unit `original/<serial>/` and `captures/<unit-id>/<slug>/` plus `learn-uart/` YAML under `developer-data/backups/`. Not in git. Leftover repo-root `backups/` is also ignored; do not use it |
 | `firmware/*` | Workspace members, not default-members. ELFs in workspace `target/` |
 | `docs/` | [SAFETY.md](../../../../docs/SAFETY.md), [getting-started.md](../../../../docs/getting-started.md), [firmware-snapshot-management.md](../../../../docs/firmware-snapshot-management.md), [API-RULES.md](../../../../docs/API-RULES.md), [CRATES.md](../../../../docs/CRATES.md), [ssd1677.md](../../../../docs/ssd1677.md), [DATASHEETS.md](../../../../docs/DATASHEETS.md) (symlink into the hardware skill) |
 | `rust-analyzer.toml` | Excludes `simple-debug-fw` and `embassy-debug-fw` from host check |

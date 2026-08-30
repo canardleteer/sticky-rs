@@ -24,7 +24,7 @@ pub struct RegionDiff {
     pub live_sha256: String,
 }
 
-/// Confirm report written next to the original (gitignored with `backups/`).
+/// Confirm report written next to the original (gitignored under `developer-data/backups/`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DivergenceReport {
     /// Factory serial of the original.
@@ -149,9 +149,7 @@ mod tests {
     #[test]
     fn confirm_lists_nvs_when_it_differs() {
         let tmp = tempfile::tempdir().unwrap();
-        let layout = Layout {
-            backups_root: tmp.path().join("backups"),
-        };
+        let layout = Layout::from_developer_data_root(tmp.path());
         let mac = test_mac();
         let info = format!(
             "Flash size: 32MB\nMAC address: {mac}\nSecure Boot: Disabled\nFlash Encryption: Disabled\n"

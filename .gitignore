@@ -7,8 +7,13 @@
 # sticky-rs firmware
 /firmware/*/target
 
-# NOTE(canardleteer): Per-unit factory originals: NVS, RF calibration,
-# MAC, serials. Never commit this tree. See docs/SAFETY.md.
+# NOTE(canardleteer): Clone-local private / personalized files. Per-unit
+# factory originals (NVS, RF calibration, MAC, serials) live under
+# developer-data/backups/. Never commit this tree. See docs/SAFETY.md.
+/developer-data/
+
+# Leftover pre-move path. Do not use. Still ignored so a stray dump
+# cannot land in git.
 /backups/
 
 # NOTE(canardleteer): Flash images and device dumps: these contain per-unit

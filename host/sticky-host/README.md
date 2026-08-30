@@ -5,8 +5,8 @@ backup / confirm / restore, host-only `build-fw`, `app0` `flash-app`,
 learn-uart, and no-reset monitor.
 
 `cargo xtask` is the clap front-end; a later standalone CLI will depend
-here too. Callers pass a `Layout` (backups root), not a hardcoded repo
-path. Live methods that reset or listen take the UART session lock
+here too. Callers pass a `Layout` (developer-data / backups root), not a
+hardcoded repo path. Live methods that reset or listen take the UART session lock
 internally.
 
 Do not open a port unless a human explicitly asked. Inventory without probe

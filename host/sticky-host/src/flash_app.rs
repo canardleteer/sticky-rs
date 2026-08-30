@@ -166,9 +166,7 @@ mod tests {
     #[test]
     fn flash_without_yes_refuses() {
         let tmp = tempfile::tempdir().unwrap();
-        let layout = Layout {
-            backups_root: tmp.path().join("backups"),
-        };
+        let layout = Layout::from_developer_data_root(tmp.path());
         let mock = RefCell::new(MockDevice::default());
         let image = payload(tmp.path(), &[0xE9, 0x01]);
         let err = flash(&mock, &layout, "PORT", &image, false).unwrap_err();
@@ -178,9 +176,7 @@ mod tests {
     #[test]
     fn flash_refuses_without_original() {
         let tmp = tempfile::tempdir().unwrap();
-        let layout = Layout {
-            backups_root: tmp.path().join("backups"),
-        };
+        let layout = Layout::from_developer_data_root(tmp.path());
         let board = info();
         let mock = RefCell::new(MockDevice {
             board_info: board,
@@ -194,9 +190,7 @@ mod tests {
     #[test]
     fn flash_refuses_identity_mismatch() {
         let tmp = tempfile::tempdir().unwrap();
-        let layout = Layout {
-            backups_root: tmp.path().join("backups"),
-        };
+        let layout = Layout::from_developer_data_root(tmp.path());
         let board = info();
         persist(&layout, &board);
         let other = [0x11u8, 0x22, 0x33, 0x44, 0x55, 0x66]
@@ -221,9 +215,7 @@ mod tests {
     #[test]
     fn flash_writes_app0_only() {
         let tmp = tempfile::tempdir().unwrap();
-        let layout = Layout {
-            backups_root: tmp.path().join("backups"),
-        };
+        let layout = Layout::from_developer_data_root(tmp.path());
         let board = info();
         persist(&layout, &board);
         let mock = RefCell::new(MockDevice {
@@ -242,9 +234,7 @@ mod tests {
     #[test]
     fn flash_refuses_elf_file() {
         let tmp = tempfile::tempdir().unwrap();
-        let layout = Layout {
-            backups_root: tmp.path().join("backups"),
-        };
+        let layout = Layout::from_developer_data_root(tmp.path());
         let board = info();
         persist(&layout, &board);
         let mock = RefCell::new(MockDevice {
@@ -264,9 +254,7 @@ mod tests {
     #[test]
     fn flash_refuses_when_table_has_no_app0() {
         let tmp = tempfile::tempdir().unwrap();
-        let layout = Layout {
-            backups_root: tmp.path().join("backups"),
-        };
+        let layout = Layout::from_developer_data_root(tmp.path());
         let board = info();
         let nvs_off = 0x9000u32;
         let mut dump = vec![0u8; (nvs_off + 16) as usize];
@@ -296,9 +284,7 @@ mod tests {
     #[test]
     fn flash_refuses_empty_and_oversized_files() {
         let tmp = tempfile::tempdir().unwrap();
-        let layout = Layout {
-            backups_root: tmp.path().join("backups"),
-        };
+        let layout = Layout::from_developer_data_root(tmp.path());
         let board = info();
         persist(&layout, &board);
         let mock = RefCell::new(MockDevice {
@@ -321,9 +307,7 @@ mod tests {
     #[test]
     fn flash_refuses_usb_serial_mismatch() {
         let tmp = tempfile::tempdir().unwrap();
-        let layout = Layout {
-            backups_root: tmp.path().join("backups"),
-        };
+        let layout = Layout::from_developer_data_root(tmp.path());
         let board_text = info();
         let mut board = parse_board_info(&board_text).unwrap();
         board.identity.usb_serial = Some("AAA".into());
@@ -353,9 +337,7 @@ mod tests {
     #[test]
     fn flash_refuses_app0_below_min_offset() {
         let tmp = tempfile::tempdir().unwrap();
-        let layout = Layout {
-            backups_root: tmp.path().join("backups"),
-        };
+        let layout = Layout::from_developer_data_root(tmp.path());
         let board = info();
         let unsafe_off = 0x88000u32;
         let mut dump = vec![0u8; unsafe_off as usize + 16];
@@ -420,9 +402,7 @@ mod tests {
     #[test]
     fn flash_refuses_unknown_layout_without_override() {
         let tmp = tempfile::tempdir().unwrap();
-        let layout = Layout {
-            backups_root: tmp.path().join("backups"),
-        };
+        let layout = Layout::from_developer_data_root(tmp.path());
         let board = info();
         persist(&layout, &board);
         let mock = RefCell::new(MockDevice {
@@ -440,9 +420,7 @@ mod tests {
     #[test]
     fn flash_accepts_factory_v1_without_override() {
         let tmp = tempfile::tempdir().unwrap();
-        let layout = Layout {
-            backups_root: tmp.path().join("backups"),
-        };
+        let layout = Layout::from_developer_data_root(tmp.path());
         let board = info();
         persist(&layout, &board);
         let dir = layout.original_dir("TESTFACTORY001");
@@ -466,9 +444,7 @@ mod tests {
     #[test]
     fn flash_uses_capture_as_safety_net() {
         let tmp = tempfile::tempdir().unwrap();
-        let layout = Layout {
-            backups_root: tmp.path().join("backups"),
-        };
+        let layout = Layout::from_developer_data_root(tmp.path());
         let board = info();
         write_capture_with_parts(
             &layout,

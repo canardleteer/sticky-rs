@@ -6,11 +6,12 @@ use std::process::ExitCode;
 use clap::{Args, Parser, Subcommand};
 use sticky_host::{
     backup_import, backup_live, build_fw, confirm_live, detect_connected, diff_learn_uart,
-    flash_app, learn_uart, load_manifest, monitor, restore, BackupRequest, BuildFwArgs, Error,
-    FirmwareImage, Layout, LearnUartArgs, MonitorOptions, SnapshotKind, FLASH_SIZE,
+    flash_app, learn_uart, load_manifest, monitor, refuse_if_legacy_backups_at_repo_root, restore,
+    BackupRequest, BuildFwArgs, Error, FirmwareImage, Layout, LearnUartArgs, MonitorOptions,
+    SnapshotKind, FLASH_SIZE,
 };
 
-/// Sticky factory-firmware originals (gitignored `backups/original/{serial}/`).
+/// Sticky factory-firmware originals (gitignored `developer-data/backups/original/{serial}/`).
 ///
 /// Live commands need `ESPFLASH_PORT` or exactly one Sticky CH343. Agents
 /// must not invoke it against hardware unless a human explicitly asked.
@@ -27,8 +28,8 @@ detect-connected lists Sticky CH343 UART nodes (no DTR). --all-devices includes 
 other USB-serial adapters. --probe opens UART (DTR reset) for stock \
 serial_number and board-info. backup, confirm, restore, flash-app, learn-uart, \
 and monitor share that same QinHeng port pick. Capture each Sticky under \
-backups/original/<factory-serial>/ (known factory, write-once) or \
-backups/captures/<unit-id>/<slug>/ (named snapshot of what is on the chip). \
+developer-data/backups/original/<factory-serial>/ (known factory, write-once) or \
+developer-data/backups/captures/<unit-id>/<slug>/ (named snapshot of what is on the chip). \
 Both are gitignored. confirm measures drift against the original, or \
 --capture SLUG. restore write-bins that unit's original or --capture (never \
 erase). Live UART commands take an exclusive flock so a second xtask cannot \
@@ -38,7 +39,7 @@ cargo +esp build plus espflash save-image into workspace target/ (no UART). \
 flash-app write-bins a custom image into factory app0 only (requires a matching \
 original or capture, --yes; never the espflash 'flash' subcommand). \
 learn-uart vets UART heartbeats and optional human steps, then writes YAML \
-under backups/original/<factory-serial>/learn-uart/ (gitignored; records \
+under developer-data/backups/original/<factory-serial>/learn-uart/ (gitignored; records \
 factory serial, not MAC). A completed session also copies learn-uart-latest.yaml \
 (trust that file only when complete: true — a crash never publishes it). \
 Interactive sessions name steps by the action you \
@@ -54,7 +55,7 @@ writes the file only).";
 
 const LEARN_UART_ABOUT: &str = "\
 UART heartbeat vet plus skippable human steps. YAML is written under \
-backups/original/<factory-serial>/learn-uart/ (gitignored). The report records \
+developer-data/backups/original/<factory-serial>/learn-uart/ (gitignored). The report records \
 that unit's factory serial_number so later units can be compared. It does not \
 record MAC or CH343 USB serial. Requires a matching original (backup first). \
 QinHeng CH343, UART session lock, no DTR/RTS while listening. Optional --image \
@@ -111,7 +112,7 @@ pub enum Command {
     RestoreFactoryFirmware(RestoreArgs),
     /// write-bin a custom image into factory `app0` only. Requires `--yes` and a snapshot.
     FlashApp(FlashAppArgs),
-    /// UART heartbeat vet plus skippable human steps; YAML under `backups/original/<serial>/learn-uart/`.
+    /// UART heartbeat vet plus skippable human steps; YAML under `developer-data/backups/original/<serial>/learn-uart/`.
     #[command(long_about = LEARN_UART_ABOUT)]
     LearnUart(LearnUartCliArgs),
     /// Same as `learn-uart --only …` (one or more step groups).
@@ -153,7 +154,7 @@ pub struct BackupArgs {
     /// Host-only: copy an existing 32 MiB dump tree (YAML or JSON manifest).
     #[arg(long, value_name = "DIR")]
     pub import: Option<PathBuf>,
-    /// Named capture slug (`backups/captures/<unit-id>/<slug>/`).
+    /// Named capture slug (`developer-data/backups/captures/<unit-id>/<slug>/`).
     #[arg(long)]
     pub name: Option<String>,
     /// Store an uncertain-stock dump under `original/` (does not add to the catalog).
@@ -238,7 +239,7 @@ pub struct LearnUartSessionArgs {
     /// Serial device. Also `ESPFLASH_PORT`. Optional if exactly one Sticky CH343 is present.
     #[arg(long, env = "ESPFLASH_PORT")]
     pub port: Option<String>,
-    /// Extra YAML copy. Canonical file is always `backups/original/<serial>/learn-uart/<stamp>.yaml`.
+    /// Extra YAML copy. Canonical file is always `developer-data/backups/original/<serial>/learn-uart/<stamp>.yaml`.
     #[arg(long, value_name = "FILE")]
     pub report: Option<PathBuf>,
     /// Skip a step: `buttons`, `vbus`, `imu`, `sd_detect`, `touch`.
@@ -342,9 +343,11 @@ impl Cli {
         }
     }
 
-    /// Run against the repo's `backups/` using the in-process `espflash` library.
+    /// Run against the repo's `developer-data/backups/` using the in-process `espflash` library.
     pub fn run(self) -> Result<(), Error> {
-        let layout = Layout::from_repo_root(repo_root());
+        let repo = repo_root();
+        refuse_if_legacy_backups_at_repo_root(&repo)?;
+        let layout = Layout::from_repo_root(repo);
         match self.command {
             Command::DetectConnected(args) => {
                 detect_connected(args.probe, args.port, args.all_devices)

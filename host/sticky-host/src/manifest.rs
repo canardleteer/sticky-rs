@@ -16,10 +16,10 @@ fn default_schema() -> String {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum SnapshotKind {
-    /// Factory-classified or human-confirmed factory (`backups/original/`).
+    /// Factory-classified or human-confirmed factory (`developer-data/backups/original/`).
     #[default]
     Original,
-    /// Named “what is on the chip now” (`backups/captures/`).
+    /// Named “what is on the chip now” (`developer-data/backups/captures/`).
     Capture,
 }
 

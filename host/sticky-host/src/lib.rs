@@ -40,7 +40,7 @@ pub use error::Error;
 pub use learn_uart_impl::LearnUartArgs;
 pub use manifest::SnapshotKind;
 pub use monitor_impl::MonitorOptions;
-pub use original::{load_manifest, Layout};
+pub use original::{load_manifest, refuse_if_legacy_backups_at_repo_root, Layout};
 pub use uart_lock::{try_acquire, UartSession, UART_LOCK_ENV};
 
 /// Full-chip image size (32 MiB).

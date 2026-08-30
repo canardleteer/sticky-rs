@@ -59,8 +59,10 @@ When a live ask is present, the **only** in-repo device I/O is `cargo xtask`.
 
 A device may be attached for unrelated reasons; ignore it. There is no Cargo
 `runner`, so `cargo run` cannot flash. Never commit a MAC address, serial
-number, USB serial string, NVS blob, or flash image. `backups/` is gitignored
-on purpose.
+number, USB serial string, NVS blob, or flash image. `developer-data/` is
+gitignored on purpose. Put per-unit dumps, learn-uart YAML, and any other
+private or personalized files there (`developer-data/backups/` for
+snapshots). Do not use a leftover repo-root `backups/`.
 
 ## Keep skills updated
 

@@ -7,8 +7,10 @@ Hazard rules stay in [SAFETY.md](SAFETY.md). This page is the operator
 manual: what lives on disk, what xtask prints, and which commands to run.
 Flag catalog: [`.agents/skills/sticky-rs/references/xtask.md`](../.agents/skills/sticky-rs/references/xtask.md).
 
-Do not commit `backups/`. Do not print factory serials or MACs in issues
-or chat.
+Do not commit `developer-data/`. Do not print factory serials or MACs in
+issues or chat. A leftover repo-root `backups/` is also gitignored; do
+not use it. Move it with
+`mkdir -p developer-data && mv backups developer-data/backups`.
 
 ## Honest limit
 
@@ -27,8 +29,8 @@ sides have one). It is not a factory-reset image you can share.
 
 | Kind | Path | When |
 | --- | --- | --- |
-| Original | `backups/original/<factory-serial>/` | Known factory catalog match, or you passed `--as-original` on uncertain stock. Write-once. |
-| Capture | `backups/captures/<unit-id>/<slug>/` | Everything else: in-tree images, unknown stock, already-flashed units. Named “what is on the chip now.” |
+| Original | `developer-data/backups/original/<factory-serial>/` | Known factory catalog match, or you passed `--as-original` on uncertain stock. Write-once. |
+| Capture | `developer-data/backups/captures/<unit-id>/<slug>/` | Everything else: in-tree images, unknown stock, already-flashed units. Named “what is on the chip now.” |
 
 `unit-id` is the factory UART `serial_number` when that line was present,
 otherwise `mac-<hex>` (colons stripped). Bind confirm / restore /
@@ -78,7 +80,7 @@ Each snapshot directory has the same binaries as before:
 
 Older gitignored trees may still have `MANIFEST.json` and
 `partitions.csv`. The host **reads** YAML first, then JSON. New writes do
-not emit `partitions.csv` or JSON. Do not convert or commit `backups/`.
+not emit `partitions.csv` or JSON. Do not convert or commit `developer-data/`.
 
 Learn-uart YAML stays under the **bound** snapshot (`learn-uart/`),
 original if present, else the capture used as the safety net.
@@ -110,7 +112,7 @@ cargo xtask backup-factory-firmware
 # alias: cargo xtask backup-firmware
 ```
 
-Known factory → `backups/original/<factory-serial>/`. Write-once.
+Known factory → `developer-data/backups/original/<factory-serial>/`. Write-once.
 
 ### First backup after someone already flashed
 
@@ -182,5 +184,6 @@ cargo xtask backup-factory-firmware --import DIR --as-original
 
 ### What not to commit
 
-`backups/` is gitignored. Never add a MAC, serial, USB serial, NVS blob,
+`developer-data/` is gitignored (snapshots live in
+`developer-data/backups/`). Never add a MAC, serial, USB serial, NVS blob,
 or flash image. Never add a path to an off-repo device capture.

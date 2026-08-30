@@ -108,7 +108,7 @@ cargo xtask backup-factory-firmware
 `flash-app` refuses without a matching original or capture. If more than
 one USB-serial device is present, set `ESPFLASH_PORT` to the Sticky CH343
 (`cargo xtask detect-connected` prints a by-id suggestion). Do not commit
-`backups/`.
+`developer-data/`.
 
 ### Path A — without Embassy (`simple-debug`)
 
@@ -218,7 +218,7 @@ charge enable, latch timing, and sleep current remain human-approved work.
 | `firmware/embassy-debug` | ESP32-S3 Embassy event logger. Same membership; panel is `--features epd` |
 | `host/sticky-host/` | Host library: detect, factory backup, confirm, restore, `build-fw`, `flash-app`, learn-uart, monitor (`Layout` in; UART lock inside live methods) |
 | `xtask/` | Clap front-end at the repo root (`cargo xtask`) over `sticky-host` |
-| `backups/` | Gitignored `original/<factory-serial>/` and `captures/<unit-id>/<slug>/` plus `learn-uart/` YAML; not in git |
+| `developer-data/` | Gitignored private / personalized files. Snapshots in `developer-data/backups/` (`original/<factory-serial>/`, `captures/<unit-id>/<slug>/`, `learn-uart/` YAML); not in git |
 
 The chip drivers are `#![no_std]`, depend only on `embedded-hal` 1.0, and
 know nothing about ESP32-S3. Board specifics live in the board-support

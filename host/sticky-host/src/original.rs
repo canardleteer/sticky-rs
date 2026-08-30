@@ -1,4 +1,5 @@
-//! Snapshots under `backups/original/` and `backups/captures/`.
+//! Snapshots under `developer-data/backups/original/` and
+//! `developer-data/backups/captures/`.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -7,46 +8,58 @@ use crate::identity::{parse_usb_serial_from_port, LiveIdentity};
 use crate::manifest::{Manifest, SnapshotKind};
 use crate::Error;
 
-/// Filesystem layout for gitignored backups.
+/// Filesystem layout for gitignored private / personalized files.
 #[derive(Debug, Clone)]
 pub struct Layout {
-    /// `backups/` directory (usually `{repo}/backups`).
+    /// `{repo}/developer-data` (or a test stand-in).
+    pub developer_data_root: PathBuf,
+    /// `developer-data/backups/` (usually `{repo}/developer-data/backups`).
     pub backups_root: PathBuf,
 }
 
 impl Layout {
-    /// `{repo}/backups`.
+    /// `{root}/backups` as the snapshot tree (tests pass a temp dir).
     #[must_use]
-    pub fn from_repo_root(repo_root: impl Into<PathBuf>) -> Self {
-        let backups_root = repo_root.into().join("backups");
-        Self { backups_root }
+    pub fn from_developer_data_root(developer_data_root: impl Into<PathBuf>) -> Self {
+        let developer_data_root = developer_data_root.into();
+        let backups_root = developer_data_root.join("backups");
+        Self {
+            developer_data_root,
+            backups_root,
+        }
     }
 
-    /// `backups/original/`.
+    /// `{repo}/developer-data/backups`.
+    #[must_use]
+    pub fn from_repo_root(repo_root: impl Into<PathBuf>) -> Self {
+        Self::from_developer_data_root(repo_root.into().join("developer-data"))
+    }
+
+    /// `developer-data/backups/original/`.
     #[must_use]
     pub fn originals_dir(&self) -> PathBuf {
         self.backups_root.join("original")
     }
 
-    /// `backups/original/{factory-serial}/`.
+    /// `developer-data/backups/original/{factory-serial}/`.
     #[must_use]
     pub fn original_dir(&self, factory_serial: &str) -> PathBuf {
         self.originals_dir().join(factory_serial)
     }
 
-    /// `backups/captures/`.
+    /// `developer-data/backups/captures/`.
     #[must_use]
     pub fn captures_dir(&self) -> PathBuf {
         self.backups_root.join("captures")
     }
 
-    /// `backups/captures/{unit-id}/{slug}/`.
+    /// `developer-data/backups/captures/{unit-id}/{slug}/`.
     #[must_use]
     pub fn capture_dir(&self, unit_id: &str, slug: &str) -> PathBuf {
         self.captures_dir().join(unit_id).join(slug)
     }
 
-    /// `backups/original/{factory-serial}/learn-uart/` (session YAML; not the dump).
+    /// `developer-data/backups/original/{factory-serial}/learn-uart/`.
     #[must_use]
     pub fn learn_uart_dir(&self, factory_serial: &str) -> PathBuf {
         self.original_dir(factory_serial).join("learn-uart")
@@ -56,6 +69,16 @@ impl Layout {
     #[must_use]
     pub fn learn_uart_in(snapshot_dir: &Path) -> PathBuf {
         snapshot_dir.join("learn-uart")
+    }
+}
+
+/// Refuse a leftover repo-root `backups/` directory. Do not auto-move it.
+pub fn refuse_if_legacy_backups_at_repo_root(repo_root: &Path) -> Result<(), Error> {
+    let leftover = repo_root.join("backups");
+    if leftover.is_dir() {
+        Err(Error::LegacyBackupsDir(leftover))
+    } else {
+        Ok(())
     }
 }
 
@@ -355,10 +378,32 @@ mod tests {
 
     fn layout_tmp() -> (tempfile::TempDir, Layout) {
         let tmp = tempfile::tempdir().unwrap();
-        let layout = Layout {
-            backups_root: tmp.path().join("backups"),
-        };
+        let layout = Layout::from_developer_data_root(tmp.path());
         (tmp, layout)
+    }
+
+    #[test]
+    fn from_repo_root_joins_developer_data_backups() {
+        let layout = Layout::from_repo_root("/repo");
+        assert_eq!(
+            layout.developer_data_root,
+            PathBuf::from("/repo/developer-data")
+        );
+        assert_eq!(
+            layout.backups_root,
+            PathBuf::from("/repo/developer-data/backups")
+        );
+    }
+
+    #[test]
+    fn refuse_legacy_backups_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        refuse_if_legacy_backups_at_repo_root(tmp.path()).unwrap();
+        fs::create_dir(tmp.path().join("backups")).unwrap();
+        assert!(matches!(
+            refuse_if_legacy_backups_at_repo_root(tmp.path()),
+            Err(Error::LegacyBackupsDir(_))
+        ));
     }
 
     fn stub_manifest(mac: String, usb: Option<String>) -> Manifest {

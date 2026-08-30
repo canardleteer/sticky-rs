@@ -17,10 +17,12 @@ pub enum Error {
     AmbiguousFactorySerial,
     /// Serial is empty or not a safe directory name.
     InvalidFactorySerial(String),
-    /// `backups/original/{serial}/` already exists (write-once).
+    /// `developer-data/backups/original/{serial}/` already exists (write-once).
     OriginalExists(PathBuf),
-    /// `backups/captures/{unit}/{slug}/` already exists.
+    /// `developer-data/backups/captures/{unit}/{slug}/` already exists.
     CaptureExists(PathBuf),
+    /// Leftover repo-root `backups/` must be moved by the operator.
+    LegacyBackupsDir(PathBuf),
     /// No original directory matches the live unit.
     MissingOriginal,
     /// `--capture` did not match a snapshot for this unit.
@@ -130,13 +132,22 @@ impl fmt::Display for Error {
                 "capture already exists: {}",
                 path.display()
             ),
+            Self::LegacyBackupsDir(path) => write!(
+                f,
+                "leftover backups/ at {}; mkdir -p developer-data && mv backups developer-data/backups",
+                path.display()
+            ),
             Self::MissingOriginal => write!(
                 f,
                 "no snapshot matches this unit; run cargo xtask backup-factory-firmware first \
-                 (originals in backups/original/<serial>/, captures in backups/captures/<unit-id>/<slug>/)"
+                 (originals in developer-data/backups/original/<serial>/, captures in \
+                 developer-data/backups/captures/<unit-id>/<slug>/)"
             ),
             Self::MissingCapture(slug) => {
-                write!(f, "no backups/captures/<unit-id>/{slug}/ matches this unit")
+                write!(
+                    f,
+                    "no developer-data/backups/captures/<unit-id>/{slug}/ matches this unit"
+                )
             }
             Self::AmbiguousCapture => write!(
                 f,
@@ -234,7 +245,7 @@ impl fmt::Display for Error {
             Self::Yaml(reason) => write!(f, "yaml: {reason}"),
             Self::MissingLearnReport => write!(
                 f,
-                "no learn-uart YAML under backups/original/<serial>/learn-uart/; run cargo xtask learn-uart first"
+                "no learn-uart YAML under developer-data/backups/original/<serial>/learn-uart/; run cargo xtask learn-uart first"
             ),
             Self::LearnNeedsTty => write!(
                 f,

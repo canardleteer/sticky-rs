@@ -27,7 +27,7 @@ use crate::Error;
 pub struct LearnUartArgs {
     /// `--port` / `ESPFLASH_PORT`.
     pub port: Option<String>,
-    /// Extra YAML copy. Canonical file always goes under `backups/original/<serial>/learn-uart/`.
+    /// Extra YAML copy. Canonical file always goes under `developer-data/backups/original/<serial>/learn-uart/`.
     pub report: Option<PathBuf>,
     /// `--skip` tokens.
     pub skip: Vec<String>,

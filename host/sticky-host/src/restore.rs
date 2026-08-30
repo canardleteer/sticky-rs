@@ -98,9 +98,7 @@ mod tests {
     #[test]
     fn restore_without_yes_refuses() {
         let tmp = tempfile::tempdir().unwrap();
-        let layout = Layout {
-            backups_root: tmp.path().join("backups"),
-        };
+        let layout = Layout::from_developer_data_root(tmp.path());
         let mock = RefCell::new(MockDevice::default());
         let err = restore(&mock, &layout, "PORT", false, None, None).unwrap_err();
         assert!(matches!(err, Error::RestoreNotConfirmed));
@@ -109,9 +107,7 @@ mod tests {
     #[test]
     fn restore_part_nvs_records_write() {
         let tmp = tempfile::tempdir().unwrap();
-        let layout = Layout {
-            backups_root: tmp.path().join("backups"),
-        };
+        let layout = Layout::from_developer_data_root(tmp.path());
         let mac = test_mac();
         let info = format!(
             "Flash size: 32MB\nMAC address: {mac}\nSecure Boot: Disabled\nFlash Encryption: Disabled\n"
@@ -140,9 +136,7 @@ mod tests {
     #[test]
     fn restore_paths_unknown_part() {
         let tmp = tempfile::tempdir().unwrap();
-        let layout = Layout {
-            backups_root: tmp.path().join("backups"),
-        };
+        let layout = Layout::from_developer_data_root(tmp.path());
         let mac = test_mac();
         let info = format!("Flash size: 32MB\nMAC address: {mac}\n");
         let dest = persist_original(
@@ -164,9 +158,7 @@ mod tests {
     #[test]
     fn restore_refuses_unknown_mac() {
         let tmp = tempfile::tempdir().unwrap();
-        let layout = Layout {
-            backups_root: tmp.path().join("backups"),
-        };
+        let layout = Layout::from_developer_data_root(tmp.path());
         let mac = test_mac();
         let info = format!(
             "Flash size: 32MB\nMAC address: {mac}\nSecure Boot: Disabled\nFlash Encryption: Disabled\n"
@@ -202,9 +194,7 @@ mod tests {
     #[test]
     fn restore_refuses_usb_serial_mismatch() {
         let tmp = tempfile::tempdir().unwrap();
-        let layout = Layout {
-            backups_root: tmp.path().join("backups"),
-        };
+        let layout = Layout::from_developer_data_root(tmp.path());
         let mac = test_mac();
         let info = format!(
             "Flash size: 32MB\nMAC address: {mac}\nSecure Boot: Disabled\nFlash Encryption: Disabled\n"

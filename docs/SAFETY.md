@@ -54,8 +54,8 @@ If you intend to flash your own firmware:
 Operator how-to (classify, YAML trees, copy-paste xtask recipes):
 [firmware-snapshot-management.md](firmware-snapshot-management.md).
 
-`backups/original/<factory-serial>/` and
-`backups/captures/<unit-id>/<slug>/` hold `flash-32mb.bin`, split
+`developer-data/backups/original/<factory-serial>/` and
+`developer-data/backups/captures/<unit-id>/<slug>/` hold `flash-32mb.bin`, split
 `part-*.bin`, and `MANIFEST.yaml` (identity, hashes, layout id, OTA slot).
 Older trees may still have `MANIFEST.json` / `partitions.csv` (read
 fallback only). Do not commit them.

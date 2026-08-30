@@ -1,7 +1,7 @@
 //! YAML report for a UART learn session.
 //!
 //! Factory `serial_number` is recorded so a unit can be compared later. The
-//! file lives under gitignored `backups/original/<serial>/learn-uart/`. Do
+//! file lives under gitignored `developer-data/backups/original/<serial>/learn-uart/`. Do
 //! not commit it. Do not put MAC or CH343 USB serial in this document.
 
 use std::collections::BTreeMap;
@@ -108,7 +108,7 @@ pub struct Report {
     pub schema: String,
     /// UTC stamp (`YYYYMMDDThhmmssZ`).
     pub captured_at: String,
-    /// Factory UART `serial_number` (same as `backups/original/<serial>/`).
+    /// Factory UART `serial_number` (same as `developer-data/backups/original/<serial>/`).
     pub factory_serial: String,
     /// No human steps.
     pub unattended_only: bool,
@@ -345,7 +345,7 @@ pub fn button_map_from(human: &BTreeMap<String, HumanStep>) -> BTreeMap<String, 
     map
 }
 
-/// Canonical YAML path: `backups/original/<serial>/learn-uart/<stamp>.yaml`.
+/// Canonical YAML path: `developer-data/backups/original/<serial>/learn-uart/<stamp>.yaml`.
 #[must_use]
 pub fn default_report_path(layout: &Layout, factory_serial: &str, stamp: &str) -> PathBuf {
     layout
@@ -589,18 +589,18 @@ mod tests {
 
     #[test]
     fn default_path_is_under_original_serial() {
-        let layout = Layout {
-            backups_root: PathBuf::from("/repo/backups"),
-        };
+        let layout = Layout::from_repo_root("/repo");
         let path = default_report_path(&layout, "TESTFACTORY001", "20260828T161900Z");
         assert_eq!(
             path,
-            PathBuf::from("/repo/backups/original/TESTFACTORY001/learn-uart/20260828T161900Z.yaml")
+            PathBuf::from(
+                "/repo/developer-data/backups/original/TESTFACTORY001/learn-uart/20260828T161900Z.yaml"
+            )
         );
         assert_eq!(
             uart_log_path(&path),
             PathBuf::from(
-                "/repo/backups/original/TESTFACTORY001/learn-uart/20260828T161900Z.uart.log"
+                "/repo/developer-data/backups/original/TESTFACTORY001/learn-uart/20260828T161900Z.uart.log"
             )
         );
     }

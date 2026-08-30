@@ -226,7 +226,7 @@ where
     }
 }
 
-/// Write `backups/original/{serial}/` via a `.partial` directory then rename.
+/// Write `developer-data/backups/original/{serial}/` via a `.partial` directory then rename.
 pub fn persist_original(
     layout: &Layout,
     factory_serial: &str,
@@ -410,8 +410,8 @@ mod tests {
 
     fn tmp_layout() -> (tempfile::TempDir, Layout) {
         let tmp = tempfile::tempdir().unwrap();
-        let backups_root = tmp.path().join("backups");
-        (tmp, Layout { backups_root })
+        let layout = Layout::from_developer_data_root(tmp.path());
+        (tmp, layout)
     }
 
     fn tiny_dump() -> Vec<u8> {

@@ -114,7 +114,7 @@ populate it rather than guessing.
 | Touch | **GT911** on its own I2C; sensor reports **480×800** (portrait); silicon max **5** contacts (Rev.09) |
 | USB debug | WCH **CH343P** on UART0 (`1a86:55d3`), not native USB-Serial/JTAG; udev by-id uses `_` before the USB serial |
 | Battery | 750 mAh 1S Li-ion, **BQ27220** gauge, **BQ25616** charger |
-| Audio | PDM MEMS mic (GPIO19/20, EN 38; hole on bottom edge); **no loudspeaker** (passive buzzer GPIO48 only) |
+| Audio | PDM MEMS mic (GPIO19/20, EN 38; hole on bottom edge); **no loudspeaker** (passive buzzer GPIO48 only). On glass: 16 kHz / left energy is live; AI Voice 1 kHz dump shows a ~16-sample period. Not high-fidelity ([sensors.md](references/sensors.md#pdm-microphone)) |
 | Enclosure | 106 × 65.5 × 7.3 mm, 70 g, IP40, glass front, N52 corner magnets. Keys on the **right** edge (AI Voice / Page Up / Page Down); SD on the **left**; Reset, mic, lanyard, charge LED, USB-C on the **bottom**. [enclosure.md](references/enclosure.md) |
 
 Xtensa target when using Rust: `xtensa-esp32s3-none-elf` (`no_std`) or the

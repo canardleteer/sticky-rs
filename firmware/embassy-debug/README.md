@@ -106,11 +106,11 @@ Page Up / Page Down still change the drawing and play the short chirp.
 
 ### Step 5: Observe and report
 
-- **Quiet room**: fans and a little background noise are fine. `rms` /
-  `peak` should sit at a stable floor (not zero, not pegged). This is
-  not a silent chamber. Covering the holes can still leave a floor
-  near `rms` 1000 / `peak` 2500 — treat that as the PDM path, not a
-  failed rail.
+- **Quiet (relative)**: one room, one opinion — fans and a little
+  background noise. `rms` / `peak` should sit at a stable floor (not
+  zero, not pegged). Covering the holes can still leave a floor near
+  `rms` 1000 / `peak` 2500 — treat that as the PDM path, not a failed
+  rail, and not a spec for every room.
 - **Make Noise**: Press AI Voice (hear the buzz), or scratch, tap, or
   whistle at the **microphone hole** on the USB-C side/edge.
   - Those numbers should jump. A loud whistle can clip `peak` at 32768
@@ -124,13 +124,14 @@ considered a passing test. Do not treat that result as closing
 
 ### What we already learned on this unit
 
-Desk notes from one session, not a silent-chamber spec.
+Desk notes from one session in one room. “Quiet” here is relative —
+  fans were on — not a chamber measurement.
 
 - A leftover `monitor` can own the CH343. `lsusb` still shows QinHeng
   `1a86:55d3`, but `detect-connected` / `flash-app` see no serial port.
   Ctrl-C that listen. `kill -9` leaves the USB interfaces unbound —
   unplug and replug once.
-- Quiet with fans on and a little background noise sat around
+- In that room, with fans on, energy sat around
   `rms` 1209 / `peak` 2580.
 - Covering as many holes as we could only moved that to about
   `rms` 1040–890 / `peak` 2940–2640. Same band. That leftover floor is
@@ -139,5 +140,6 @@ Desk notes from one session, not a silent-chamber spec.
   at 32768 (16-bit full scale). That is a live capsule, not a stuck
   rail.
 
-`nyc-mic-pdm` still wants a known-tone waveform (rate, slot, hole vs
-the samples). Step 4 is that capture, using the buzzer we can play.
+`nyc-mic-pdm` is still open: we have energy and a ~16-sample period on
+the buzzer dump, not a high-fidelity tone through the hole. Facts:
+[sensors.md](../../.agents/skills/seeed-sticky-hardware/references/sensors.md#on-glass-embassy-debug-mic-feature).

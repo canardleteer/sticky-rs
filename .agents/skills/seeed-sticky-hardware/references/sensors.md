@@ -156,9 +156,29 @@ Firmware that has run this on production Stickys
 3. I2S PDM RX: `i2s_lrclk_pin` GPIO19 (PDM clock), `i2s_din_pin` GPIO20,
    `pdm: true`, **left** channel, **16 kHz**, 16-bit.
 
-That is a **working recipe**, not a close of
-[nyc-mic-pdm](../resources/not-yet-confirmed.md#nyc-mic-pdm). Sample rate,
-slot, and which way the hole faces vs the waveform are still unmeasured.
+That is a **working recipe**. Embassy-debug `--features mic` ran the same
+clock/data/enable and **16 kHz / 16-bit / left** on glass. It is not a
+high-fidelity close of
+[nyc-mic-pdm](../resources/not-yet-confirmed.md#nyc-mic-pdm).
+
+### On glass (embassy-debug mic feature)
+
+Energy (`rms` / `peak`) is live: a whistle jumped and clipped at 32768
+(16-bit full scale). One relative-quiet room (fans on) and covering as
+many holes as we could sat in the same band (`rms` ~900–1200). That
+is one session, not a room spec. The floor is mostly a **DC bias** in
+the PCM (samples sit near +975); `pcm_energy` is not AC-coupled.
+
+AI Voice plays a 1 kHz buzzer (GPIO48) and dumps two 256-sample
+windows. The tail of those windows repeats about every **16 samples**
+(~1 kHz if the PDM clock is 16 kHz). The left slot hears that tone.
+The wiggle is ugly (board / EMI coupling into 19/20, not a clean sine
+through the USB-C-edge hole). Each dump starts `0`, a spike, then the
+DC floor, then the wiggle. Printing the rows at 115200 inserts ~140 ms
+between windows.
+
+Still open: a clean known-tone through the hole, slot A/B, and hole
+vs waveform polarity.
 
 Enabling GPIO38 and attaching I2S PDM RX is **not** a
 [safety.md](safety.md) destroy-the-board row. USB-C

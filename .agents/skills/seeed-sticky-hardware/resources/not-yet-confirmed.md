@@ -37,7 +37,7 @@ a second status column.
 | [nyc-pcf8563-wake](#nyc-pcf8563-wake) | RTC INT / CLKOUT / backup | [sensors.md](../references/sensors.md) |
 | [nyc-gauge-profile](#nyc-gauge-profile) | BQ27220 CEDV values and chemistry on a factory unit | [sensors.md](../references/sensors.md) |
 | [nyc-sht40-package](#nyc-sht40-package) | SHT40 package suffix / alert | [sensors.md](../references/sensors.md) |
-| [nyc-mic-pdm](#nyc-mic-pdm) | PDM rate, channel, acoustics | [sensors.md](../references/sensors.md) |
+| [nyc-mic-pdm](#nyc-mic-pdm) | PDM high-fidelity rate / slot / hole | [sensors.md](../references/sensors.md) |
 | [nyc-buzzer-part](#nyc-buzzer-part) | Buzzer part / resonance | [input-storage.md](../references/input-storage.md) |
 | [nyc-panel-glass](#nyc-panel-glass) | Glass part, analog rails, temp LUT | [display.md](../references/display.md) |
 | [nyc-gt911-contacts](#nyc-gt911-contacts) | GT911 simultaneous contacts | [touch.md](../references/touch.md) |
@@ -193,17 +193,24 @@ ACKs. That is still not a package suffix.
 
 ### nyc-mic-pdm
 
-Pins 19/20/38 work at the HAL-ACK level. Sample rate, channel, and acoustic
-orientation unmeasured.
+Pins 19/20/38 work on glass (embassy-debug `--features mic`). Energy
+jumps on a whistle. AI Voice’s 1 kHz buzzer shows a ~16-sample period
+in the PCM dump (1 kHz if the clock is 16 kHz); left slot hears it.
+That is **not** high-fidelity confirmation. Facts:
+[sensors.md](../references/sensors.md#on-glass-embassy-debug-mic-feature).
 
 ESPHome firmware that has run on production Stickys
 ([sira-fiinikkusu/reterminal-sticky-voice-companion](https://github.com/sira-fiinikkusu/reterminal-sticky-voice-companion))
-uses PDM RX at **16 kHz**, 16-bit, **left**, clock GPIO19, data GPIO20, and
-documents that deep-sleep wake remuxes those pins back to USB-Serial-JTAG
-until the USB pad is disabled. That is a working recipe, not this close.
+uses the same 16 kHz / left / GPIO19/20 recipe and documents that
+deep-sleep wake remuxes those pins back to USB-Serial-JTAG until the
+USB pad is disabled.
 
-- Record a known tone with ESP32-S3 PDM RX; note rate, slot, and which way
-  the hole faces vs the waveform. Confirmed with those three.
+Still open: a clean known-tone through the hole (not board coupling to
+the buzzer), slot A/B, and hole vs waveform polarity.
+
+- Record a known tone with ESP32-S3 PDM RX; note rate, slot, and which
+  way the hole faces vs the waveform. Confirmed with those three at
+  high fidelity.
 
 ### nyc-buzzer-part
 

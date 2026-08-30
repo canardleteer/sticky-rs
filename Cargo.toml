@@ -1,8 +1,7 @@
 [workspace]
 resolver = "3"
-# First crate commits fill these globs.
-members = []
-default-members = []
+members = ["crates/*"]
+default-members = ["crates/*"]
 
 [workspace.package]
 edition = "2021"

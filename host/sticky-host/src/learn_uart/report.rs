@@ -205,19 +205,10 @@ const WATCHED_ADDRS: [u8; 5] = [0x14, 0x44, 0x51, 0x55, 0x6a];
 /// NYC rows UART cannot close.
 #[must_use]
 pub fn nyc_still_open() -> Vec<String> {
-    [
-        "nyc-gpio7",
-        "nyc-gpio9-mode",
-        "nyc-gpio40-polarity",
-        "nyc-gpio43-44",
-        "nyc-sd-detect",
-        "nyc-gauge-profile",
-        "nyc-gt911-contacts",
-        "nyc-sht40-package",
-    ]
-    .into_iter()
-    .map(str::to_string)
-    .collect()
+    ["nyc-gauge-profile", "nyc-gt911-contacts"]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
 }
 
 /// Identity and flags that are not UART-derived.

@@ -33,19 +33,18 @@ pub const BUTTON_UP: u8 = 5;
 /// Seeed: **Page Down Button**, bottom of the three on the right edge.
 pub const BUTTON_DOWN: u8 = 6;
 
-/// Ambiguous interrupt net: IMU INT in Seeed's overview, gauge `GPOUT` in a
-/// community app. **Input only** (`nyc-gpio7`) — see
-/// [`crate::AMBIGUOUS_INTERRUPT_NOTE`].
+/// Shared interrupt net: LSM6DS3TR-C INT1 and BQ27220 GPOUT (schematic
+/// Rev 01). **Input only** — see [`crate::AMBIGUOUS_INTERRUPT_NOTE`].
 pub const AMBIGUOUS_INTERRUPT: u8 = 7;
 
 /// MicroSD chip select, idle high.
 pub const SD_CS: u8 = 8;
 /// External power sense: high means USB/external present. Edge-capable.
-/// Divider / ADC mode is unconfirmed (`nyc-gpio9-mode`).
+/// Schematic: 5.1 kΩ / 5.1 kΩ from `VIN_5V` (`PWR_IN_VOLT`).
 pub const EXTERNAL_POWER_SENSE: u8 = 9;
 /// MicroSD power enable, active high. Hold low in sleep.
 pub const SD_POWER_EN: u8 = 10;
-/// MicroSD card detect. Use a pull-up; polarity unmeasured (`nyc-sd-detect`).
+/// MicroSD card detect. 10 kΩ pull-up; insert = low.
 pub const SD_CARD_DETECT: u8 = 11;
 
 /// Shared SPI MISO (used by the card; the panel is write-only in practice).
@@ -64,13 +63,13 @@ pub const EPD_RST: u8 = 17;
 /// E-paper BUSY, **active high**. Prefer an edge interrupt over polling.
 pub const EPD_BUSY: u8 = 18;
 
-/// PDM microphone clock.
+/// PDM microphone clock (MSM261DDB020).
 ///
 /// Also the ESP32-S3 USB D− / USB-Serial-JTAG pad. After deep sleep that
 /// function reclaims the pin; firmware must disable the USB pad before
 /// attaching PDM RX.
 pub const MIC_CLK: u8 = 19;
-/// PDM microphone data.
+/// PDM microphone data (MSM261DDB020).
 ///
 /// Also the ESP32-S3 USB D+ / USB-Serial-JTAG pad. Same reclaim as
 /// [`MIC_CLK`].
@@ -81,9 +80,9 @@ pub const MIC_DATA: u8 = 20;
 /// ESP32-S3 v2.2 `Table 2-1. Pin Overview`: no default pull at or after reset.
 pub const TOUCH_INT: u8 = 21;
 
-/// Microphone power enable, active high. Hold low when unused and across
-/// sleep. After deep-sleep wake, drive it low briefly before `enable` so the
-/// capsule is not left half-powered.
+/// Microphone power enable, active high (TPS22916CYFPR on `PDM_EN`).
+/// Hold low when unused and across sleep. After deep-sleep wake, drive
+/// it low briefly before `enable` so the capsule is not left half-powered.
 pub const MIC_POWER_EN: u8 = 38;
 
 /// BQ25616 charge enable, **active low**.
@@ -92,9 +91,9 @@ pub const MIC_POWER_EN: u8 = 38;
 /// charging. Default IO MUX is JTAG `MTCK` (ESP32-S3 v2.2 `Table 2-4. IO
 /// MUX Functions`).
 pub const CHARGE_EN: u8 = 39;
-/// BQ25616 charge status. Polarity unmeasured (`nyc-gpio40-polarity`); do
-/// not interpret it. Default IO MUX is JTAG `MTDO` (`Table 2-4. IO MUX
-/// Functions`).
+/// BQ25616 STAT (`CHARGE_STATE`). Low while charging when `/CE` is
+/// enabled; high when done or `/CE` is parked. Default IO MUX is JTAG
+/// `MTDO` (`Table 2-4. IO MUX Functions`).
 pub const CHARGE_STATUS: u8 = 40;
 
 /// GT911 reset.
@@ -125,7 +124,7 @@ pub const PWR_LOCK: u8 = 46;
 /// E-paper power enable, active high. ~100 ms settle.
 pub const EPD_POWER_EN: u8 = 47;
 
-/// Passive buzzer. Drive with PWM; hold low in sleep.
+/// Passive buzzer (FUET-5018 through a CJ2324). PWM; hold low in sleep.
 pub const BUZZER: u8 = 48;
 
 #[cfg(test)]

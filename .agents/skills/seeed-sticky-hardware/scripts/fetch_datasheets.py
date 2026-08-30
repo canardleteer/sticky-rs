@@ -123,6 +123,13 @@ DOCUMENTS: tuple[dict[str, object], ...] = (
             "https://www.espressif.com/documentation/esp32-s3_technical_reference_manual_en.pdf",
         ),
     },
+    {
+        "id": "seeed-sticky-schematic",
+        "title": "Seeed reTerminal Sticky schematic Rev 01",
+        "urls": (
+            "https://files.seeedstudio.com/wiki/reterminal_sticky/res/reTerminal_Sticky_Schematic_diagram_260609.pdf",
+        ),
+    },
 )
 
 

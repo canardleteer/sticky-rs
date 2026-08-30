@@ -50,8 +50,8 @@ path here.
    [references/cpp-platformio.md](references/cpp-platformio.md). Sequences
    from ESP-IDF / PlatformIO trees that ran on glass (third-party unless
    the vendor published them).
-9. **Measurement backlog** — GPIO7 is on the pin map; other open nets and
-   confirmation recipes live in
+9. **Measurement backlog** — remaining open nets and confirmation recipes
+   live in
    [resources/not-yet-confirmed.md](resources/not-yet-confirmed.md).
 10. **External skills and sources** — including
    [varo6/reTerminal-sticky-skill](https://github.com/varo6/reTerminal-sticky-skill)
@@ -114,7 +114,7 @@ populate it rather than guessing.
 | Touch | **GT911** on its own I2C; sensor reports **480×800** (portrait); silicon max **5** contacts (Rev.09) |
 | USB debug | WCH **CH343P** on UART0 (`1a86:55d3`), not native USB-Serial/JTAG; udev by-id uses `_` before the USB serial |
 | Battery | 750 mAh 1S Li-ion, **BQ27220** gauge, **BQ25616** charger |
-| Audio | PDM MEMS mic (GPIO19/20, EN 38; hole on bottom edge); **no loudspeaker** (passive buzzer GPIO48 only). On glass: 16 kHz / left energy is live; AI Voice 1 kHz dump shows a ~16-sample period. Not high-fidelity ([sensors.md](references/sensors.md#pdm-microphone)) |
+| Audio | PDM MEMS **MSM261DDB020** (GPIO19/20, EN 38 / TPS22916; hole on bottom edge); **no loudspeaker** (FUET-5018 on GPIO48). On glass: 16 kHz / left energy is live; AI Voice 1 kHz dump shows a ~16-sample period. Not high-fidelity ([sensors.md](references/sensors.md#pdm-microphone)) |
 | Enclosure | 106 × 65.5 × 7.3 mm, 70 g, IP40, glass front, N52 corner magnets. Keys on the **right** edge (AI Voice / Page Up / Page Down); SD on the **left**; Reset, mic, lanyard, charge LED, USB-C on the **bottom**. [enclosure.md](references/enclosure.md) |
 
 Xtensa target when using Rust: `xtensa-esp32s3-none-elf` (`no_std`) or the
@@ -192,7 +192,9 @@ later IPFS CIDv1.
 1. GPIO45 then GPIO46 high; ~100 ms settle. On deep-sleep wake, restore those
    outputs **before** releasing RTC/GPIO holds.
 2. Charger: GPIO39 **low**. GPIO9 high means external power present (digital,
-   edge-capable: stock firmware runs it as an any-edge interrupt).
+   edge-capable: stock firmware runs it as an any-edge interrupt). The net
+   is a 5.1 kΩ / 5.1 kΩ divider from `VIN_5V` (`PWR_IN_VOLT`); 2.5 V at
+   5 V VBUS still reads high.
 3. Park MicroSD (CS high, power enable high, detect as input).
 4. Sensor I2C at 400 kHz: SDA=1, SCL=0. PCF8563 `0x51`, BQ27220 `0x55`,
    SHT40 `0x44` (a Sensirion measure command; a 1-byte read NAKs),
@@ -272,8 +274,8 @@ Factory firmware also ACKs the PDM microphone and SD slot.
   datasheet cache is missing, ask the user to populate it.
 - Treat a C++ file layout or PIO env as hardware, or treat `esp-hal` as the
   only legal Rust stack.
-- Drive GPIO7 as an output, or assume it is free GPIO. Seeed assigns it to
-  the IMU INT; Playground 2048 assigns it to the gauge. Leave it an input.
+- Drive GPIO7 as an output, or assume it is free GPIO. Schematic: IMU INT1
+  and gauge GPOUT share it. Leave it an input.
 - Treat a key as being on the glass. The three tactile buttons are the right
   edge ([enclosure.md](references/enclosure.md)). Recessed Reset is the bottom
   pinhole, not GPIO4.

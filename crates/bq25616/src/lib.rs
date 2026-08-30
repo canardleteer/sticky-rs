@@ -32,9 +32,9 @@
 //! external power is present. [`StatPinState`] records what SLUSDF7 section
 //! `9.3.8.2 Charging Status Indicator (STAT)` / `Table 9-6. STAT Pin State`
 //! says about the **chip** STAT pin. [`ChargeStatus`] still reports a raw
-//! [`Level`]: on the reTerminal Sticky that net (`nyc-gpio40-polarity`) has
-//! not been measured, and a driver that guesses is worse than one that
-//! makes you look it up.
+//! [`Level`]. On the reTerminal Sticky that net is BQ25616 STAT (schematic
+//! Rev 01): low while charging when `/CE` is enabled. This driver still
+//! does not guess `is_charging()` for you.
 
 #![no_std]
 #![forbid(unsafe_code)]
@@ -168,9 +168,9 @@ impl<CE, S: ChargeState> Charger<CE, S> {
 
 /// External-power sense input. High means external power is present.
 ///
-/// On the reTerminal Sticky this is an edge-capable digital input; whether the
-/// same net is also readable as an ADC divider is unconfirmed, so this wrapper
-/// stays digital.
+/// On the reTerminal Sticky this is GPIO9 (`PWR_IN_VOLT`): a 5.1 kΩ /
+/// 5.1 kΩ divider from `VIN_5V`. ~2.5 V at 5 V VBUS still reads as a
+/// GPIO high. This wrapper stays digital.
 #[derive(Debug)]
 pub struct ExternalPower<P> {
     pin: P,
@@ -226,11 +226,10 @@ pub enum StatPinState {
 /// Charge-status input on a board net.
 ///
 /// This intentionally exposes a [`Level`] and not `is_charging()`. SLUSDF7
-/// `Table 9-6. STAT Pin State` describes the chip STAT pin ([`StatPinState`]);
-/// on the reTerminal Sticky the wired net's polarity is still unmeasured
-/// (`nyc-gpio40-polarity`). Interpreting GPIO40 here would turn an open
-/// question into a silent assumption; read the gauge current instead if you
-/// need to know whether charge is flowing.
+/// `Table 9-6. STAT Pin State` describes the chip STAT pin ([`StatPinState`]).
+/// On the reTerminal Sticky the net is STAT (schematic Rev 01): low while
+/// charging when `/CE` is enabled. Read the gauge current if you need to
+/// know whether charge is flowing.
 #[derive(Debug)]
 pub struct ChargeStatus<P> {
     pin: P,

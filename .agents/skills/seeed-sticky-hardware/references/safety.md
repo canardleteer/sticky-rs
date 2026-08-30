@@ -20,7 +20,7 @@ tools belong to the consuming project.
 | Factory NVS at `0x9000` | Treat as irreplaceable: Wi-Fi RF calibration, device identity, persisted gauge state. Capture a full-chip snapshot of **that unit** first (factory `original/` or a named capture). Lost `nvs` is not regenerable | `erase-flash`, any full-chip erase, writes below `0x90000` except restore of **that unit**, flashing one unit's dump onto another |
 | Power latch GPIO45 / GPIO46 | Drive high and settle before logs or bus init; restore before releasing GPIO holds on deep-sleep wake | Pulsing GPIO46; dropping the latch while on battery |
 | GPIO0 / GPIO46 straps | GPIO0 is sensor I2C SCL only | GPIO0 on the SPI bus (zero-initialised `quadwp`/`quadhd` claims it) |
-| GPIO7 | Input only; owner is unconfirmed (IMU INT vs gauge GPOUT) | Driving it as an output |
+| GPIO7 | Input only. Schematic: IMU INT1 and gauge GPOUT share this pin | Driving it as an output |
 | SSD1677 SPI | 10 MHz, mode 0, BUSY active high | 40 MHz (spec max is 20 MHz); dropping `EPD_EN` before the deep-sleep command |
 | Four-gray LUT / OTP waveform | Sticky: Seeed OTP full / partial / gray4. MCU `0x32` stays optional and attributed. Recorded in [display.md](display.md) | An invented or generic-example 105-byte table; analog 0x03/0x04/0x2C guesses; 40 MHz SPI |
 | BQ27220 gauge | Read-only standard commands and CEDV reads | Unseal, `CFGUPDATE`, Full Charge Capacity writes, OTP writes; crate `bq27xxx` (wrong family) |

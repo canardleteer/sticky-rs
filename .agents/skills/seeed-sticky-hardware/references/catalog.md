@@ -32,9 +32,11 @@ observed silicon or other sources, name both sides
 | Store listing | https://www.seeedstudio.com/reTerminal-Sticky-p-6861.html |
 
 `wiki.seeedstudio.com/reterminal_sticky/` and `/sticky/` have been **404**.
-The Hardware Overview page also links a schematic PDF; treat nets on that PDF
-as evidence when closing items in
-[not-yet-confirmed.md](../resources/not-yet-confirmed.md).
+Hardware Overview Resources publish the board schematic
+([Rev 01 PDF](https://files.seeedstudio.com/wiki/reterminal_sticky/res/reTerminal_Sticky_Schematic_diagram_260609.pdf),
+CC BY-SA 4.0). Cache id `seeed-sticky-schematic` in
+[datasheets.md](../resources/datasheets.md). Nets on that PDF are official
+electrical evidence. There is **no BOM** in this file.
 
 ## Firmware you can actually run
 

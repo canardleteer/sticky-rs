@@ -2,8 +2,8 @@
 //!
 //! The firmware owns buses, pins, and the Embassy tasks. This crate owns the
 //! **strings** it prints so the log contract can be tested on the host:
-//! timestamped button, touch, IMU, mic-energy, and PCM-dump lines, and no factory
-//! serial / USB serial / MAC fields.
+//! timestamped button, touch, IMU, mic-energy, PCM-dump, and radio-scan
+//! lines, and no factory serial / USB serial / MAC fields.
 
 #![no_std]
 #![forbid(unsafe_code)]
@@ -35,6 +35,12 @@ pub const BUZZER_TONE_MS: u32 = 400;
 
 /// PDM windows to dump after the tone starts.
 pub const TONE_DUMP_WINDOWS: u32 = 2;
+
+/// Wi-Fi / BLE scan period, in seconds (`--features radio` image).
+pub const RADIO_REPORT_SECS: u32 = 10;
+
+/// Max SSID or BLE local-name characters after sanitize.
+pub const RADIO_LABEL_MAX: usize = 24;
 
 /// Silicon maximum concurrent touches (GT911 Rev.09 §1).
 pub const MAX_TOUCH_POINTS: usize = 5;
@@ -187,6 +193,22 @@ pub enum Event {
         /// Raw Z LSB.
         z: i16,
     },
+    /// Wi-Fi scan finished (`--features radio` image). `n` is how many
+    /// APs the scan returned, not how many lines follow.
+    Wifi {
+        /// Milliseconds since boot.
+        t_ms: u32,
+        /// Access points the scan returned.
+        n: u8,
+    },
+    /// BLE scan window (`--features radio` image). `n` is reports heard,
+    /// not how many named lines follow. No addresses.
+    Ble {
+        /// Milliseconds since boot.
+        t_ms: u32,
+        /// Advertisements heard in the window.
+        n: u8,
+    },
     /// PDM window energy (`--features mic` image).
     Mic {
         /// Milliseconds since boot.
@@ -249,6 +271,10 @@ pub fn format_event<'a>(event: &Event, buf: &'a mut [u8]) -> Result<&'a str, For
                 format_args!("{LOG_PREFIX}: t={t_ms} imu={imu} x={x} y={y} z={z}"),
             )
         }
+        Event::Wifi { t_ms, n } => {
+            write_into(buf, format_args!("{LOG_PREFIX}: t={t_ms} wifi n={n}"))
+        }
+        Event::Ble { t_ms, n } => write_into(buf, format_args!("{LOG_PREFIX}: t={t_ms} ble n={n}")),
         Event::Mic { t_ms, rms, peak } => write_into(
             buf,
             format_args!("{LOG_PREFIX}: t={t_ms} mic rms={rms} peak={peak}"),
@@ -283,15 +309,66 @@ pub fn pcm_energy(samples: &[i16]) -> (u32, u32) {
 }
 
 /// Header before a PCM dump (`mic pcm hz=… n=…`).
-pub fn format_mic_pcm_header<'a>(
+pub fn format_mic_pcm_header(
     t_ms: u32,
     hz: u32,
     n: usize,
+    buf: &mut [u8],
+) -> Result<&str, FormatError> {
+    write_into(
+        buf,
+        format_args!("{LOG_PREFIX}: t={t_ms} mic pcm hz={hz} n={n}"),
+    )
+}
+
+/// Sanitize an SSID or BLE local name for UART. ASCII printable except
+/// `=` and space become `_`; longer labels are truncated. Never a MAC.
+#[must_use]
+pub fn sanitize_radio_label<'a>(raw: &[u8], out: &'a mut [u8; RADIO_LABEL_MAX]) -> &'a str {
+    let mut n = 0;
+    for &byte in raw {
+        if n == RADIO_LABEL_MAX {
+            break;
+        }
+        out[n] = if byte.is_ascii_graphic() && byte != b'=' {
+            byte
+        } else {
+            b'_'
+        };
+        n += 1;
+    }
+    // Empty or all-replaced still prints `?` so the line is visible.
+    if n == 0 {
+        out[0] = b'?';
+        n = 1;
+    }
+    str::from_utf8(&out[..n]).unwrap_or("?")
+}
+
+/// One Wi-Fi AP (`wifi ssid=… rssi=…`). `ssid` is already sanitized.
+pub fn format_wifi_ssid<'a>(
+    t_ms: u32,
+    ssid: &str,
+    rssi: i8,
     buf: &'a mut [u8],
 ) -> Result<&'a str, FormatError> {
     write_into(
         buf,
-        format_args!("{LOG_PREFIX}: t={t_ms} mic pcm hz={hz} n={n}"),
+        format_args!("{LOG_PREFIX}: t={t_ms} wifi ssid={ssid} rssi={rssi}"),
+    )
+}
+
+/// One BLE advertisement (`ble name=… rssi=…`). `name` is already sanitized.
+/// No address field.
+pub fn format_ble_name<'a>(
+    t_ms: u32,
+    name: &str,
+    rssi: i8,
+    buf: &'a mut [u8],
+) -> Result<&'a str, FormatError> {
+    write_into(
+        buf,
+        format_args!("{LOG_PREFIX}: t={t_ms} ble name={name} rssi={rssi}"),
     )
 }
 
@@ -321,7 +398,7 @@ const fn isqrt_u64(value: u64) -> u64 {
         return 0;
     }
     let mut x = value;
-    let mut y = (x + 1) / 2;
+    let mut y = x.div_ceil(2);
     while y < x {
         x = y;
         y = (x + value / x) / 2;
@@ -522,6 +599,39 @@ mod tests {
     #[test]
     fn imu_period_is_five_seconds() {
         assert_eq!(IMU_REPORT_SECS, 5);
+    }
+
+    #[test]
+    fn radio_lines_match_the_agreed_shape() {
+        assert_eq!(
+            line(&Event::Wifi { t_ms: 1204, n: 3 }),
+            "embassy-debug: t=1204 wifi n=3"
+        );
+        assert_eq!(
+            line(&Event::Ble { t_ms: 1204, n: 2 }),
+            "embassy-debug: t=1204 ble n=2"
+        );
+        let mut buf = [0u8; LINE_CAPACITY];
+        assert_eq!(
+            format_wifi_ssid(1204, "Home", -42, &mut buf).unwrap(),
+            "embassy-debug: t=1204 wifi ssid=Home rssi=-42"
+        );
+        assert_eq!(
+            format_ble_name(1204, "Phone", -70, &mut buf).unwrap(),
+            "embassy-debug: t=1204 ble name=Phone rssi=-70"
+        );
+        assert_eq!(RADIO_REPORT_SECS, 10);
+        assert_eq!(RADIO_LABEL_MAX, 24);
+        let mut label = [0u8; RADIO_LABEL_MAX];
+        assert_eq!(
+            sanitize_radio_label(b"Home Net=1", &mut label),
+            "Home_Net_1"
+        );
+        assert_eq!(sanitize_radio_label(b"", &mut label), "?");
+        let text = format_wifi_ssid(1, "Home", -1, &mut buf).unwrap();
+        let lower = text.to_ascii_lowercase();
+        assert!(!lower.contains("mac"));
+        assert!(!lower.contains("bssid"));
     }
 
     #[test]

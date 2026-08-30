@@ -95,5 +95,7 @@ commented. Full register table, hazards, and the commented bytes:
 Do not invent a four-gray LUT from a generic SSD1677 example. Crate
 `ssd1677` on crates.io is a black/white(/red) skeleton, not this path.
 
-Panel glass part number and temperature LUT *set* (beyond the one gray4
-0x1A override): [nyc-panel-glass](../resources/not-yet-confirmed.md#nyc-panel-glass).
+Schematic Rev 01 names the panel analog rails on the 24-pin FPC: **VGH**,
+**VGL**, **VSH1**, **VSH2**, **VCOM**, **VPP**, and `EP_3V3`. There is
+**no glass part number** on that sheet.
+[nyc-panel-glass](../resources/not-yet-confirmed.md#nyc-panel-glass).

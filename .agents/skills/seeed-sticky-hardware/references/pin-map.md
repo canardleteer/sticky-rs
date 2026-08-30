@@ -14,11 +14,11 @@ hardware unless marked otherwise.
 | 4 | Input | AI / OK / power | Active low, external 10 kΩ. RTC `ext1` wake. Seeed: **AI Voice Button**, right-edge top (glass facing you, USB-C down) |
 | 5 | Input | Up / left | Active low, external 10 kΩ. Seeed: **Page Up Button**, right-edge middle |
 | 6 | Input | Down / right | Active low, external 10 kΩ. Seeed: **Page Down Button**, right-edge bottom |
-| 7 | Input | **Ambiguous** | Seeed: LSM6DS3TR-C INT. `sticky-2048`: BQ27220 `PIN_BFG_INT`. **Do not drive as output.** |
+| 7 | Input | IMU INT1 + gauge GPOUT | Schematic: LSM6DS3TR-C INT1 (`6D_INTn`) and BQ27220 GPOUT (`BFG_INT`) share this pin. **Do not drive as output.** |
 | 8 | Output | MicroSD CS | Shared SPI; idle high |
-| 9 | Input | External power | Digital, edge-driven: high = VBUS present. Divider / ADC use unconfirmed |
+| 9 | Input | External power (`PWR_IN_VOLT`) | Digital, edge-driven: high = VBUS present. Schematic: 5.1 kΩ / 5.1 kΩ from `VIN_5V` (~½ VBUS). 2.5 V at 5 V still reads as GPIO high |
 | 10 | Output | MicroSD power enable | Active high. Sleep: hold low |
-| 11 | Input | MicroSD card detect | Use a pull-up. Interrupt / wake source. Polarity unconfirmed |
+| 11 | Input | MicroSD card detect | 10 kΩ pull-up; insert = **0**. Interrupt / wake source. Card rail 3.3 V |
 | 12 | Input | Shared SPI MISO | Needed by SD; panel is MOSI-only in practice |
 | 13 | Output | Shared SPI SCLK | EPD + SD |
 | 14 | Output | Shared SPI MOSI | EPD + SD |
@@ -31,30 +31,30 @@ hardware unless marked otherwise.
 | 21 | I/O | GT911 INT | Address-select during reset, then input. **No default pull** at/after reset (v2.2 Table 2-1). RTC-capable. |
 | 38 | Output | Mic power enable | Active-high load switch. Hold low when unused and in sleep (floating across sleep can leave the capsule half-powered). Cycle low after wake before recording. Enabling the rail is not a [safety.md](safety.md) destroy-the-board row. |
 | 39 | Output | BQ25616 charge enable | **Active low**. Default IO MUX F0 is JTAG `MTCK` (v2.2 Table 2-4); mux to GPIO before driving. |
-| 40 | Input | BQ25616 `CHARGE_STATE` | Wired in compiled profiles; polarity unconfirmed. Default F0 is JTAG `MTDO`. |
+| 40 | Input | BQ25616 `CHARGE_STATE` | STAT pin. Low while charging (`/CE` enabled); high-Z/high when done or `/CE` parked. Default F0 is JTAG `MTDO`. |
 | 41 | Output | GT911 RST | Address-select sequence. Default F0 is JTAG `MTDI` (input); mux to GPIO. After reset: IE, no pull. |
 | 42 | Output | GT911 power enable | Active high. ~250 ms settle. Default F0 is JTAG `MTMS` (input); mux to GPIO. |
-| 43 | UART0 TX | CH343P | Typical ESP32-S3 U0TXD; not independently scoped |
-| 44 | UART0 RX | CH343P | Typical ESP32-S3 U0RXD |
+| 43 | UART0 TX | CH343P `USB_RXD` | MCU TX to the bridge (ESP32-S3 U0TXD). Schematic Rev 01 |
+| 44 | UART0 RX | CH343P `USB_TXD` | MCU RX from the bridge (ESP32-S3 U0RXD). Schematic Rev 01 |
 | 45 | Output | `PWR_HOLD` | **Must be high** to stay powered. **Strapping pin** (VDD_SPI voltage). Default **WPD**. |
 | 46 | Output | `PWR_LOCK` | **Must be high.** **Strapping pin** (boot mode with GPIO0). Default **WPD**. |
 | 47 | Output | EPD power enable | Active high. ~100 ms settle |
 | 48 | PWM | Passive buzzer | Drive with LEDC/PWM; hold low in sleep |
 
-UART0 TX/RX are ESP32-S3 defaults to the CH343P. Confirm before reassigning
-43/44.
+UART0 TX/RX are ESP32-S3 defaults to the CH343P (schematic Rev 01). Do not
+reassign 43/44.
 
 ### GPIO7
 
-Do not treat GPIO7 as free GPIO. Official Hardware Overview assigns it to the
-IMU interrupt. Playground `sticky-2048` names it `PIN_BFG_INT` (gauge GPOUT).
-On-glass IMU bring-up has polled I2C and left this pin unused. Leave it an
-input until [nyc-gpio7](../resources/not-yet-confirmed.md#nyc-gpio7) is closed.
+Do not treat GPIO7 as free GPIO. Schematic Rev 01 ties **both** LSM6DS3TR-C
+INT1 (`6D_INTn`) and BQ27220 GPOUT (`BFG_INT`) to this pin. Seeed’s overview
+and `sticky-2048` `PIN_BFG_INT` were naming the same net. Leave it an input.
+Do not enable both chips as push-pull.
 
 UART learning firmware (input + pull-up, IMU polled over I2C) read GPIO7
 **low** with no edges while sitting still, during a tilt that changed the
-IMU pose token, and across a USB-C unplug/replug. That is not an owner. Do
-not drive the pin.
+IMU pose token, and across a USB-C unplug/replug. Interrupts were not
+armed on either chip. Do not drive the pin.
 
 Recessed **Reset** on the bottom edge is a hardware reset net, not a GPIO.
 Same edge: microphone hole, lanyard hole, charge LED, USB-C. The three keys
@@ -106,12 +106,14 @@ pins above. In ESP-IDF, unused `quadwp` / `quadhd` / `data4`–`data7` must be
 | PSRAM | In-package 8 MB octal, 3.3 V | ESP32-S3R8 |
 | Panel controller | SSD1677-compatible | Shared SPI |
 | Touch | Goodix GT911 | Touch I2C |
-| Humidity/temp | Sensirion SHT40 | Sensor I2C `0x44`. Suffix: [nyc-sht40-package](../resources/not-yet-confirmed.md#nyc-sht40-package) |
-| RTC | NXP PCF8563 | Sensor I2C `0x51` |
-| Fuel gauge | TI BQ27220 | Sensor I2C `0x55` |
-| IMU | ST LSM6DS3TR-C | Sensor I2C `0x6A`. INT net: GPIO7, owner unconfirmed |
+| Humidity/temp | Sensirion **SHT40-AD1B-R2** | Sensor I2C `0x44`. Four-pin DFN; no ALERT |
+| RTC | NXP **PCF8563M/TR** | Sensor I2C `0x51`. INT (`RTC_INTn`) is NC to the ESP32 |
+| Fuel gauge | TI BQ27220 | Sensor I2C `0x55`. GPOUT shares GPIO7 with the IMU |
+| IMU | ST LSM6DS3TR-C | Sensor I2C `0x6A`. INT1 shares GPIO7 with the gauge |
 | Charger | TI BQ25616 | GPIO only, **not** I2C |
-| USB-UART | WCH CH343P | UART0, USB `1a86:55d3` |
-| Microphone | MEMSensing MSM261DDB020 (single-source ID) | PDM GPIO19/20, EN 38. No loudspeaker. Pins 19/20 are also USB-Serial-JTAG; see [sensors.md](sensors.md#pdm-microphone). |
+| USB-UART | WCH CH343P | UART0 GPIO43/44, USB `1a86:55d3` |
+| Microphone | MEMSensing **MSM261DDB020** | PDM GPIO19/20; EN GPIO38 is **TPS22916CYFPR**. No loudspeaker. Pins 19/20 are also USB-Serial-JTAG; see [sensors.md](sensors.md#pdm-microphone). |
+| Buzzer | **FUET-5018** (passive) | GPIO48 PWM through CJ2324 |
+| Antenna | On-board ANT1 | 2.4 GHz match. Shared Wi-Fi / BLE. No external antenna |
 
 No frontlight. No 4-bit SDMMC; MicroSD is SPI only.

@@ -64,7 +64,8 @@ The buzzer (GPIO48) has **no** hole on this diagram; it is internal.
 
 ## What this drawing is not
 
-- Not a pinout. It does not assign GPIO numbers; those come from firmware.
-- Not a schematic. Charge-LED polarity, SD detect polarity, and GPIO7 owner
-  stay in [not-yet-confirmed.md](../resources/not-yet-confirmed.md).
+- Not a pinout. It does not assign GPIO numbers; those come from
+  firmware and schematic Rev 01 ([pin-map.md](pin-map.md)).
+- Not a schematic. GPIO7 (shared INT1/GPOUT), SD detect (insert = 0),
+  STAT, and the charger-driven charge LED live on that sheet, not here.
 - Not permission to invent a fourth key or a front-face button.

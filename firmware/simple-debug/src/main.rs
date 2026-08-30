@@ -114,17 +114,17 @@ fn main() -> ! {
         external_power.is_present()
     );
 
-    // Not a key. Ambiguous IMU-INT vs gauge-GPOUT; input-only.
+    // Not a key. Shared IMU INT1 and gauge GPOUT; input-only.
     let gpio7 = Input::new(
         peripherals.GPIO7,
         InputConfig::default().with_pull(Pull::Up),
     );
-    // Charger status pin, polarity unmeasured. Not the bottom-edge LED.
+    // BQ25616 STAT. Low while charging when /CE is enabled. Not the LED.
     let charge_status = ChargeStatus::new(Input::new(
         peripherals.GPIO40,
         InputConfig::default().with_pull(Pull::None),
     ));
-    // Left-edge MicroSD detect. Polarity unmeasured.
+    // Left-edge MicroSD detect. Insert = 0 (pull-up).
     let sd_cd = Input::new(
         peripherals.GPIO11,
         InputConfig::default().with_pull(Pull::Up),
@@ -300,7 +300,7 @@ fn main() -> ! {
 /// Inputs the poll loop samples each tick.
 ///
 /// Right-edge keys map to UART `btn 4`/`5`/`6`. The other nets are not
-/// keys: USB-C present, ambiguous GPIO7, charger status, left-edge SD.
+/// keys: USB-C present, shared GPIO7, charger STAT, left-edge SD.
 struct PolledGpios {
     /// AI Voice Button (right-edge top, GPIO4).
     ai_voice: Input<'static>,

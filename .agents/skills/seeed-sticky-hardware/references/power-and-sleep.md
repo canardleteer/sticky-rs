@@ -46,20 +46,17 @@ Not an I2C device.
 | Signal | GPIO | Behavior |
 | --- | --- | --- |
 | Charge enable (`EN_BAT_CHGn`) | 39 | **Active low**: 0 = charging enabled |
-| External power | 9 | Digital, **edge-capable**: high = USB/external present |
-| `CHARGE_STATE` | 40 | Present on compiled maps; polarity unconfirmed. UART learning firmware read **high** while USB was present and `/CE` stayed disabled; gauge current was `0`. After USB-C unplug/replug (host UART dropped), `gpio40=1` and `i=0` still. Do not treat that as “charging.” |
+| External power | 9 | Digital, **edge-capable**: high = USB/external present. Schematic net `PWR_IN_VOLT`: 5.1 kΩ / 5.1 kΩ from `VIN_5V` (~½ VBUS). 2.5 V at 5 V still reads high |
+| `CHARGE_STATE` | 40 | BQ25616 STAT. **Low** while charging when `/CE` is enabled; high-Z/**high** when charge is done or `/CE` is parked. UART learning firmware read **high** with USB present, `/CE` disabled, and gauge `i=0`. Do not treat that as “charging.” |
 
 Treat GPIO9 as a digital **edge source**, not a level you poll: stock firmware
 installs an any-edge GPIO interrupt on it and raises a power-state-changed
-event from the handler. A compiled profile reads the same net as an analog
-`PWR_IN_VOLT`; whether a divider exists is still open, and firmware usage
-cannot answer that.
-[nyc-gpio9-mode](../resources/not-yet-confirmed.md#nyc-gpio9-mode),
-[nyc-gpio40-polarity](../resources/not-yet-confirmed.md#nyc-gpio40-polarity).
+event from the handler. FreeInk’s analog `PWR_IN_VOLT` name matches the
+divider. Firmware still uses the pin digitally.
 
-USB-C feeds the charger. Red/green LED left of the port is charger-driven.
-Charge current, input limit, and termination voltage wait on the schematic:
-[nyc-schematic](../resources/not-yet-confirmed.md#nyc-schematic).
+USB-C feeds the charger (5 V sink; CC1/CC2 are 5.1 kΩ Rd). Red/green LED
+left of the port is charger-driven. Schematic charge set: **Vset 4.2 V**,
+charge **~555 mA**, input limit **~937 mA**.
 
 ## Battery
 
@@ -88,8 +85,8 @@ Turn **peripheral rails off** so they do not draw:
 Use ESP32-S3 **GPIO hold** (and deep-sleep hold enable) so those levels survive
 the sleep entry. Hold/release is a **TRM** topic, not datasheet v2.2. Wake:
 GPIO4 as input with pull-up, `ext1` **ANY_LOW**. Optional
-RTC timer wakeup is MCU-side; PCF8563 INT:
-[nyc-pcf8563-wake](../resources/not-yet-confirmed.md#nyc-pcf8563-wake).
+RTC timer wakeup is MCU-side. PCF8563 INT (`RTC_INTn`) is **NC** to the
+ESP32; it cannot wake the chip.
 
 Stock firmware also holds pin levels across **light** sleep, not just deep
 sleep, and arms the SD card-detect pin as a wake source alongside the buttons.

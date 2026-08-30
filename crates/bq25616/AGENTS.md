@@ -5,7 +5,8 @@ GPIO-only charger control. MCU-agnostic: board pins and latch belong in
 unless a human asked and the safety notes were read.
 
 Board hazards: [docs/SAFETY.md](../../docs/SAFETY.md). Charge-status
-polarity on this product is unmeasured; do not invent `is_charging()`.
+is BQ25616 STAT (low while charging when `/CE` is enabled). Still do
+not invent `is_charging()`; report the raw level.
 
 This crate’s `README.md` is the crates.io landing page. Relative
 markdown links there only resolve inside this package.

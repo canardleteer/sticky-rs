@@ -4,7 +4,8 @@ Host-tested UART log contract for the Sticky Embassy image in
 `firmware/embassy-debug`.
 
 This crate owns the line format: timestamped button, touch, IMU,
-mic-energy, and AI Voice PCM-dump lines, and no identifier fields.
+mic-energy, AI Voice PCM-dump, and radio-scan lines, and no identifier
+fields.
 
 ```text
 embassy-debug: latched
@@ -15,9 +16,15 @@ embassy-debug: t=5000 imu=FaceUp x=12 y=-30 z=16300
 embassy-debug: t=1204 mic rms=12 peak=40
 embassy-debug: t=1204 mic pcm hz=1000 n=256
 embassy-debug: pcm 000 120 -30 400 0 1 2 3 4 5 6 7 8 9 10 11 12
+embassy-debug: t=1204 wifi n=2
+embassy-debug: t=1204 wifi ssid=Home rssi=-42
+embassy-debug: t=1204 ble n=1
+embassy-debug: t=1204 ble name=Phone rssi=-70
 ```
 
 IMU reports use [`IMU_REPORT_SECS`] (5). A pose that does not classify
 is the token `imu=none`; the raw sample is still printed. The `mic`
 and `pcm` lines are printed only by the `--features mic` image. AI Voice
 plays a 1 kHz buzzer tone ([`BUZZER_TONE_HZ`]) and dumps two windows.
+The `wifi` and `ble` lines are printed only by the `--features radio`
+image (SSID / local name and RSSI; never a MAC or BSSID).

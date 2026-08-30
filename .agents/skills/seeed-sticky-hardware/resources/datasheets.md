@@ -48,6 +48,7 @@ TRM. The extraction is text for agents; figures stay in the PDF.
 | `pcf8563` | PCF8563 RTC | [NXP](https://www.nxp.com/docs/en/data-sheet/PCF8563.pdf) (that path 404’d; fetch used [Rev 11 copy](https://datasheet.chipsfind.com/PCF8563T-F4-112-436673.pdf)) | Rev 11, 26 Oct 2015 | `pdf/pcf8563.pdf`, `md/pcf8563.md` | Timekeeping; seconds-register VL / integrity flag |
 | `esp32-s3-datasheet` | ESP32-S3 | [Datasheet PDF](https://documentation.espressif.com/esp32-s3_datasheet_en.pdf) on the [Espressif document list](https://documentation.espressif.com/en/documentList?eol=false) | **Version 2.2** | `pdf/esp32-s3-datasheet.pdf`, `md/esp32-s3-datasheet.md` | Strapping (GPIO0/3/45/46), JTAG pads GPIO39–42, GPIO21 no default pull, I2C 100/400 kbit/s, USB 19/20 |
 | `esp32-s3-trm` | ESP32-S3 | [TRM PDF](https://documentation.espressif.com/esp32-s3_technical_reference_manual_en.pdf) | — | `pdf/esp32-s3-trm.pdf`, `md/esp32-s3-trm.md` | Strapping pins, GPIO hold, `ext1` wake |
+| `seeed-sticky-schematic` | reTerminal Sticky (board) | [Seeed schematic PDF](https://files.seeedstudio.com/wiki/reterminal_sticky/res/reTerminal_Sticky_Schematic_diagram_260609.pdf) (Hardware Overview Resources) | **Rev 01, 2026-06-05**, CC BY-SA 4.0 | `pdf/seeed-sticky-schematic.pdf`, `md/seeed-sticky-schematic.md` | Nets and orderable PNs; no BOM. Walk the PDF pages, not only the extract |
 
 Cache paths are relative to [datasheets/](datasheets/README.md). Download URL order lives in
 `scripts/fetch_datasheets.py` (vendor first, then GitHub or other public copies).
@@ -76,6 +77,7 @@ the local files against this list.
 | `pcf8563` | `871273b1062f7ace8e03db6679ca6aba31aa8028227830f262c18d1b8da2e05f` | 495457 |
 | `esp32-s3-datasheet` | `2d5a7cb7fd559d8d972bd88db32669c0196d23f22d7afaafb0f63d099b589a3f` | 1098115 |
 | `esp32-s3-trm` | `4484bf8a69035ec42a731c58c64ada6fbd1f1618c5559409f134d9ea083f444f` | 15215232 |
+| `seeed-sticky-schematic` | `32232320af8a733b9eb2c8c85877aa233a025b28096fabea1954d428e4aaefde` | 982991 |
 
 ## Verified against the SSD1677 datasheet
 
@@ -159,7 +161,30 @@ plausible-looking constant:
 | GT911 coordinate / command / status bit encodings | Rev.09 deleted the register map (Rev.07). Remaining encodings are on-glass `GT911_REG_*` names, not a Rev.09 table. Do not invent a 186-byte config. |
 | ESP32-S3 GPIO hold, pad-JTAG eFuse, `ext1` register details | Datasheet v2.2 names the pads. The TRM is catalogued (`esp32-s3-trm`); search the local markdown cache when citing it. |
 | GT911 contacts this FPC actually delivers | Silicon max is 5 (Rev.09 §1). Simultaneous count on glass is [nyc-gt911-contacts](not-yet-confirmed.md). |
-| SD detect polarity, GPIO40 charge-status polarity, GPIO9 divider | [Measurement backlog](not-yet-confirmed.md). Treat as raw levels until measured. |
+| Glass part number on this FPC | Schematic Rev 01 names analog rails, not a glass PN. [nyc-panel-glass](not-yet-confirmed.md). |
+
+## Verified against the schematic
+
+Facts below were read out of **Rev 01 (2026-06-05)**, CC BY-SA 4.0. Walk
+the PDF pages for a net; the extract drops some wires.
+
+- **SHT40** is **SHT40-AD1B-R2** at `0x44`, four pins, no ALERT.
+- **GPIO9** is `PWR_IN_VOLT`: 5.1 kΩ / 5.1 kΩ from `VIN_5V` (~½ VBUS).
+- **GPIO7** is shared: LSM6DS3TR-C INT1 (`6D_INTn`) and BQ27220 GPOUT
+  (`BFG_INT`). Input-only.
+- **GPIO43 / GPIO44** are CH343P UART0 TX / RX (`USB_RXD` / `USB_TXD`).
+- **GPIO40** is BQ25616 STAT (`CHARGE_STATE`).
+- **GPIO11** is the MicroSD switch with a 10 kΩ pull-up (insert = 0).
+  Card rail is 3.3 V (`TPS22916CYFPR`).
+- **PCF8563M/TR** INT is `RTC_INTn` and is **NC** to the ESP32. CLKOUT
+  is a test point.
+- **Buzzer** is FUET-5018 on GPIO48 through CJ2324.
+- **USB-C** CC1/CC2 are 5.1 kΩ Rd to GND: 5 V sink, no PD controller.
+- **Mic** is MSM261DDB020; enable is TPS22916CYFPR on GPIO38.
+- **Antenna** is on-board ANT1 (2.4 GHz match). No extra antenna.
+- Charge set: Vset 4.2 V, ~555 mA charge, ~937 mA input limit.
+- Panel FPC names VGH / VGL / VSH1 / VSH2 / VCOM / VPP. No glass PN.
+- No BOM in this PDF.
 
 ## Waveform provenance
 

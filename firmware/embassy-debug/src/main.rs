@@ -22,10 +22,11 @@ use bq25616::Charger;
 
 // Host-tested UART line format.
 use embassy_debug::{
-    format_event, format_git, format_latched, Event, ImuPose, Scene, TouchPoint, BUZZER_TONE_MS,
-    GIT_CAPACITY, IMU_REPORT_SECS, LATCHED_CAPACITY, LINE_CAPACITY, LOG_PREFIX, MAX_TOUCH_POINTS,
-    TONE_DUMP_WINDOWS,
+    format_event, format_git, format_latched, Event, ImuPose, Scene, TouchPoint, GIT_CAPACITY,
+    IMU_REPORT_SECS, LATCHED_CAPACITY, LINE_CAPACITY, LOG_PREFIX, MAX_TOUCH_POINTS,
 };
+#[cfg(feature = "mic")]
+use embassy_debug::{BUZZER_TONE_MS, TONE_DUMP_WINDOWS};
 
 // Embassy runtime: tasks, channels, time.
 use embassy_executor::Spawner;
@@ -44,6 +45,8 @@ use esp_hal::i2c::master::{Config as I2cConfig, I2c};
 use esp_hal::ledc::channel::{self, ChannelIFace};
 use esp_hal::ledc::timer::{self, TimerIFace};
 use esp_hal::ledc::{LSGlobalClkSource, Ledc, LowSpeed};
+#[cfg(feature = "radio")]
+use esp_hal::ram;
 use esp_hal::time::Rate;
 use esp_hal::timer::timg::TimerGroup;
 use esp_hal::Blocking;
@@ -72,12 +75,14 @@ static BEEPS: Channel<CriticalSectionRawMutex, Beep, 4> = Channel::new();
 static DROPPED: AtomicU32 = AtomicU32::new(0);
 
 /// How many PDM windows the mic task should print as `pcm` rows.
+#[cfg(feature = "mic")]
 pub(crate) static TONE_CAPTURE: AtomicU32 = AtomicU32::new(0);
 
 /// Short chirp (keys / glass) or the 1 kHz AI Voice capture tone.
 #[derive(Clone, Copy)]
 enum Beep {
     Chirp,
+    #[cfg(feature = "mic")]
     Tone,
 }
 
@@ -113,7 +118,7 @@ fn ask_tone() {
 /// Pins we must hold for the run so they stay in a safe idle state.
 ///
 /// On the unit: charging stays off, the card is not mounted, the mic is
-/// dark. GPIO7 is not a key — it is an ambiguous interrupt net.
+/// dark. GPIO7 is not a key — IMU INT1 and gauge GPOUT share it.
 struct ParkedHazards {
     _charger: Charger<Output<'static>, bq25616::Disabled>,
     _gpio7: Input<'static>,
@@ -142,7 +147,7 @@ fn acquire_latch(
 /// Park /CE disabled, GPIO7 input-only, and unused CS/rails idle.
 ///
 /// On the unit: we are not charging, not using the left-edge card, and
-/// not recording. Do not drive GPIO7 (IMU INT vs gauge GPOUT is open).
+/// not recording. Do not drive GPIO7 (IMU INT1 and gauge GPOUT share it).
 fn park_charger_and_unused(
     ce: esp_hal::peripherals::GPIO39<'static>,
     gpio7: esp_hal::peripherals::GPIO7<'static>,
@@ -309,7 +314,14 @@ fn spawn_tasks(spawner: &Spawner, parts: SpawnParts) {
 #[esp_hal::main]
 async fn main(spawner: Spawner) {
     let peripherals = esp_hal::init(esp_hal::Config::default());
+    #[cfg(not(feature = "radio"))]
     esp_alloc::heap_allocator!(size: 8 * 1024);
+    // Same class of heap as the esp-hal embassy_coex example.
+    #[cfg(feature = "radio")]
+    {
+        esp_alloc::heap_allocator!(#[ram(reclaimed)] size: 64 * 1024);
+        esp_alloc::heap_allocator!(size: 64 * 1024);
+    }
 
     let mut delay = Delay::new();
     let latch = acquire_latch(peripherals.GPIO45, peripherals.GPIO46, &mut delay);
@@ -424,6 +436,9 @@ async fn main(spawner: Spawner) {
         )
         .expect("mic task"),
     );
+
+    #[cfg(feature = "radio")]
+    spawner.spawn(crate::radio::radio_task(peripherals.WIFI, peripherals.BT).expect("radio task"));
 
     let _keep_latched = latch;
     loop {
@@ -668,6 +683,7 @@ async fn buzzer_task(
             Beep::Chirp => {
                 Timer::after(Duration::from_millis(80)).await;
             }
+            #[cfg(feature = "mic")]
             Beep::Tone => {
                 TONE_CAPTURE.store(TONE_DUMP_WINDOWS, Ordering::Relaxed);
                 Timer::after(Duration::from_millis(u64::from(BUZZER_TONE_MS))).await;
@@ -680,3 +696,5 @@ async fn buzzer_task(
 mod display;
 #[cfg(feature = "mic")]
 mod mic;
+#[cfg(feature = "radio")]
+mod radio;

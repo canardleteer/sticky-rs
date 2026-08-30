@@ -10,9 +10,10 @@ rather than documented.
 - Charge state lives in the type (`Charger<CE, Disabled>` / `Charger<CE, Enabled>`),
   so no caller writes a raw level.
 - A failed transition hands the charger back, so the pin is never lost.
-- `ChargeStatus` reports a raw `Level` and not `is_charging()`: on the
-  reTerminal Sticky that net's polarity is unmeasured, and guessing would
-  convert an open question into a silent assumption.
+- `ChargeStatus` reports a raw `Level` and not `is_charging()`. On the
+  reTerminal Sticky that net is BQ25616 STAT (schematic Rev 01): low
+  while charging when `/CE` is enabled. The crate still does not guess
+  for you.
 
 `#![no_std]`, `embedded-hal` 1.0 only, no MCU dependency.
 

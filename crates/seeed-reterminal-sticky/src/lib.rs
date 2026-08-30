@@ -7,11 +7,11 @@
 //! crate depends on `embedded-hal` 1.0 only and is fully host-testable.
 //!
 //! It is deliberately thin. It is not a second abstraction layer over
-//! `esp-hal`. The crate README maps Seeed / community claims onto crate
-//! types versus chip drivers and the MCU HAL, and marks which rows this
-//! project has confirmed on glass. There is no microphone sample API
-//! here: [`rails::MicRail`] and [`pins::MIC_CLK`] / [`pins::MIC_DATA`]
-//! only. PDM capture is untested.
+//! `esp-hal`. The crate README maps schematic Rev 01 plus Seeed /
+//! community claims onto crate types versus chip drivers and the MCU
+//! HAL, and marks which rows this project has confirmed on glass.
+//! There is no microphone sample API here: [`rails::MicRail`] and
+//! [`pins::MIC_CLK`] / [`pins::MIC_DATA`] only.
 //!
 //! # Bring-up order
 //!
@@ -63,20 +63,18 @@ pub use crate::rails::{EpdRail, MicRail, PanelParked, SdRail, TouchRail};
 
 /// Why [`pins::AMBIGUOUS_INTERRUPT`] (GPIO7) is input-only here.
 ///
-/// Seeed's hardware overview assigns it to the IMU interrupt; a community app
-/// names it as the fuel gauge's `GPOUT`. Both cannot be right, and driving a
-/// pin that another device is also driving is how transistors die. On-glass
-/// IMU bring-up has polled I2C and left this pin alone, so this crate offers
-/// no output constructor for it. Leave it an input until someone measures it
-/// (`nyc-gpio7`).
-pub const AMBIGUOUS_INTERRUPT_NOTE: &str =
-    "GPIO7 owner is unconfirmed (IMU INT vs gauge GPOUT): input only";
+/// Schematic Rev 01 ties LSM6DS3TR-C INT1 and BQ27220 GPOUT to the same
+/// pin. Driving a net two chips can also drive is how transistors die.
+/// This crate offers no output constructor for it.
+pub const AMBIGUOUS_INTERRUPT_NOTE: &str = "GPIO7 is shared IMU INT1 and gauge GPOUT: input only";
 
 /// I2C addresses on this board.
 pub mod addresses {
-    /// Sensirion SHT40 humidity and temperature, sensor bus.
+    /// Sensirion SHT40-AD1B-R2 humidity and temperature, sensor bus.
+    /// Four-pin DFN; no ALERT pin on this board.
     pub const SHT40: u8 = 0x44;
-    /// NXP PCF8563 real-time clock, sensor bus.
+    /// NXP PCF8563M/TR real-time clock, sensor bus.
+    /// INT (`RTC_INTn`) is NC to the ESP32; CLKOUT is a test point.
     pub const PCF8563: u8 = 0x51;
     /// TI BQ27220 fuel gauge, sensor bus (SLUSCB7 `7.3.1.1 I2C Interface`
     /// 7-bit `0x55`).

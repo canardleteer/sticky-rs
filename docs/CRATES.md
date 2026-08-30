@@ -65,7 +65,9 @@ conflict (crates.io `esp-println` 0.18 vs the tag's 0.17).
 `esp-bootloader-esp-idf` is only for `esp_app_desc!()`, so the factory
 ESP-IDF 2nd-stage bootloader and `espflash save-image` accept the payload.
 Do not `--merge`. `esp-alloc` is present because `lsm6ds3tr` 0.2.2 pulls
-`alloc`. `sticky-host` serializes learn-uart YAML with
+`alloc`. `embassy-debug-fw --features radio` also takes `esp-radio` from
+that tag plus `trouble-host` / `bt-hci` for concurrent scan.
+`sticky-host` serializes learn-uart YAML with
 [`noyalib`](https://crates.io/crates/noyalib) 0.0.28 (serde, no `unsafe` in
 sticky-host). Operator prompts use [`anstyle`](https://crates.io/crates/anstyle)
 1.0.14 and [`anstream`](https://crates.io/crates/anstream) 1.0.0 (`anstream`

@@ -20,7 +20,9 @@ On the unit:
   middle / bottom) walk splash → shapes → legend → four-tone OTP gray
   boxes. `--features mic`: AI Voice plays a 1 kHz buzzer tone and dumps
   PCM; it does not change the page. Page Up / Page Down still walk
-  the drawings.
+  the drawings. `--features radio`: Wi-Fi and BLE scan together on the
+  on-board antenna; keys still walk the drawings. Do not combine
+  `mic` and `radio` in one image for a desk test.
 - Tap the glass for `touch` lines; tilt the card for `imu=…`. A short
   beep answers a key-down and the first finger on the glass.
 
@@ -143,3 +145,80 @@ Desk notes from one session in one room. “Quiet” here is relative —
 `nyc-mic-pdm` is still open: we have energy and a ~16-sample period on
 the buzzer dump, not a high-fidelity tone through the hole. Facts:
 [sensors.md](../../.agents/skills/seeed-sticky-hardware/references/sensors.md#on-glass-embassy-debug-mic-feature).
+
+## Radio Test Instructions
+
+Default `embassy-debug` does not start the radio. This feature scans
+Wi-Fi and BLE **at the same time** on the on-board antenna (schematic
+ANT1). Scan only: it does not join an AP, start a SoftAP, or connect
+BLE. It does not print a MAC or BSSID. Snapshot first:
+[docs/getting-started.md](../../docs/getting-started.md).
+
+Use this image **without** `--features mic` so GPIO19/20 stay unused.
+
+To perform the test:
+
+### Step 1: Is the port free?
+
+Same as the microphone test. Only one `monitor` at a time. Ctrl-C an
+old listen. Do not `kill -9`.
+
+Then:
+
+```shell
+cargo xtask detect-connected
+```
+
+You should see a Sticky path. If you do not, and you already killed a
+listen the hard way, unplug the USB-C cable and plug it back in once.
+Run `detect-connected` again.
+
+### Step 2: Build, flash, and listen
+
+```shell
+. $HOME/export-esp.sh
+cargo xtask build-fw embassy-debug --features radio
+cargo xtask flash-app --image target/xtensa-esp32s3-none-elf/release-fw/embassy-debug.bin --yes
+cargo xtask monitor
+```
+
+The image is on the chip only after `flash-app` finishes. A successful
+build alone does not flash. If `flash-app` says no QinHeng CH343, go
+back to Step 1.
+
+Ctrl-C when you are done so the next `flash-app` can see the device.
+Do not `kill -9` that listen. If you already did, unplug and replug
+once (same as Step 1).
+
+### Step 3: What you should see
+
+You should still see `embassy-debug: latched` and the usual `btn` /
+`touch` / `imu=` lines. About every ten seconds, both radios should
+print in the same listen (overlapping timestamps):
+
+```text
+embassy-debug: t=1204 wifi n=2
+embassy-debug: t=1204 wifi ssid=Home rssi=-42
+embassy-debug: t=1800 ble n=1
+embassy-debug: t=1800 ble name=Phone rssi=-70
+```
+
+`n=0` is a pass if the scan finished and the room is empty. A name of
+`?` means an advertisement had no local name (still not a MAC).
+
+Right-edge keys still change the page and play the short chirp.
+
+### Step 4: Optional — something to hear
+
+Turn on a phone's Bluetooth or sit near a known AP. Those numbers
+should go up, or a new `ssid=` / `name=` line should appear. That is
+the "whistle" analog. An empty list in a quiet RF room is not a fail.
+
+### Step 5: Observe and report
+
+- **Both radios**: `wifi n=` and `ble n=` both appear in one
+  `monitor` session. That is concurrent use.
+- **Fail**: hang, panic, or only one of `wifi` / `ble` ever prints.
+
+This is a stack / RF-cal-after-`flash-app` check, not an NYC pin. Do
+not treat a successful scan as a license to write NVS or print a MAC.

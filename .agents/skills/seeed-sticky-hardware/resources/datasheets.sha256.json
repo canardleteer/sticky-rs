@@ -121,6 +121,18 @@
       "path": "datasheets/md/esp32-s3-trm.md",
       "sha256": "63a6bed2b2448cc690e90c894b1f93ce3a044c5fb84748177913c1516139139b",
       "bytes": 7687808
+    },
+    {
+      "id": "seeed-sticky-schematic",
+      "path": "datasheets/pdf/seeed-sticky-schematic.pdf",
+      "sha256": "32232320af8a733b9eb2c8c85877aa233a025b28096fabea1954d428e4aaefde",
+      "bytes": 982991
+    },
+    {
+      "id": "seeed-sticky-schematic",
+      "path": "datasheets/md/seeed-sticky-schematic.md",
+      "sha256": "0fd25fe5174fb97f7bff461772ad6c31586e4eca57dc80c430050a9fe0326b69",
+      "bytes": 176206
     }
   ]
 }

@@ -37,6 +37,7 @@ sequences: [cpp-platformio.md](cpp-platformio.md).
 | Live silicon on a Sticky ([measure.md](measure.md)) | Observed | Chip, USB, factory flash, ACK list; PSRAM/JEDEC confirmed (`esptool flash-id`) |
 | Stock firmware image inspection ([measure.md](measure.md#stock-firmware-image-inspection)) | Official (intent) | Vendor driver sequences, interrupt/wake wiring, device configuration paths. Intent and ordering only — never electrical fact, never a source of bytes |
 | [Seeed Hardware Overview](https://www.seeedstudio.com/sticky/docs/en/device-guide/hardware-overview/) | Official | Mechanics, 750 mAh, module list, IMU INT=GPIO7 |
+| [Seeed schematic Rev 01](https://files.seeedstudio.com/wiki/reterminal_sticky/res/reTerminal_Sticky_Schematic_diagram_260609.pdf) ([datasheets.md](../resources/datasheets.md) `seeed-sticky-schematic`) | Official | Board nets and orderable PNs (CC BY-SA 4.0, 2026-06-05). No BOM in this PDF |
 | [Seeed Quick Start appearance diagram](enclosure.md) ([vendored PNG](../resources/enclosure/appearance_en.png), [SOURCE.md](../resources/enclosure/SOURCE.md)) | Official | Enclosure locations: AI Voice / Page Up / Page Down on the right edge; SD left; Reset/mic/lanyard/LED/USB-C on the bottom. Not a pinout |
 | [Product page](https://www.seeedstudio.com/reTerminal-Sticky-p-6861.html) | Official | Commercial identity (`p-6398` also appears in one board JSON) |
 | ESP32-S3 datasheet v2.2 ([datasheets.md](../resources/datasheets.md)) | Official (confirmed MCU) | Straps GPIO0/3/45/46, GPIO21 no default pull, JTAG F0 on GPIO39–42, I2C 100/400 kbit/s, USB 19/20 |
@@ -67,13 +68,13 @@ weighs them.
 | USB debug | CH343P `1a86:55d3`, no probe-rs | — |
 | SPI clock | 10 MHz on-glass | FreeInk 40 MHz default (out of SSD1677 spec) |
 | Display orientation | mirror_x+180° on-glass | FreeInk `NO_FLIP`; ESPHome `mirror_x` only |
-| GPIO9 | Stock firmware runs it as a **digital any-edge interrupt** with a power-state event (intent, not a divider proof) | FreeInk reads the same net as analog `PWR_IN_VOLT`; a divider is neither proven nor excluded |
-| GPIO40 | UART only `battery_charge_input=ok` | Charge-status polarity unconfirmed |
+| GPIO9 | Stock firmware runs it as a **digital any-edge interrupt**. Schematic: 5.1 kΩ / 5.1 kΩ `PWR_IN_VOLT` from `VIN_5V` (~2.5 V at 5 V VBUS), still a valid high | FreeInk analog `PWR_IN_VOLT` matches the sheet. Firmware stays digital |
+| GPIO40 | UART `gpio40=1` with `/CE` parked (not charging) | Schematic: BQ25616 STAT. Low while charging when `/CE` is enabled; high-Z/high when done or parked |
 | GT911 | UART `touch=ok`; learning image ACKs `0x14`. Bunny on glass reads points (100 kHz, 30 ms, `0x814E = 0` only, tap on release). Crate `init()` extra `0x8040` write is not Bunny. Earlier operator `NotReady`→`poll failed` was a host/image miss, not “no touch.” | Datasheet / FreeInk default `0x5D` / 800×480 raw |
-| **GPIO7** | Unused in on-glass IMU poll | Seeed: IMU INT (official). `sticky-2048`: gauge `PIN_BFG_INT` (third-party). Do not drive. |
+| **GPIO7** | Unused in on-glass IMU poll (input, low, no edges) | Schematic: shared LSM6DS3TR-C INT1 (`6D_INTn`) and BQ27220 GPOUT (`BFG_INT`). Seeed and `sticky-2048` named the same pin. Do not drive. |
 
 Software rows (CPU, DIO/QIO, 16 MB n16r8) are decided as software choices.
-Electrical rows that still need a meter or schematic are in
+Electrical rows that still need a meter or a missing glass PN are in
 [not-yet-confirmed.md](../resources/not-yet-confirmed.md).
 
 A full-chip image contains that unit’s NVS (Wi-Fi RF calibration, serial, MAC).

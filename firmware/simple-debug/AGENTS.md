@@ -11,7 +11,8 @@ Live-ask, never-erase, and flash I/O: root
 
 - Latch GPIO45 then GPIO46 before logs or buses.
 - Park BQ25616 `/CE` disabled. Do not enable charging.
-- GPIO7 is input-only. Do not drive it. Do not enable gauge GPOUT.
+- GPIO7 is input-only (IMU INT1 and gauge GPOUT share it). Do not
+  drive it. Do not enable gauge GPOUT as push-pull.
 - No e-paper LUT or refresh. Panel rail may be up; CS stays idle-high.
 - Gauge: standard-command reads only (`bq27220` without `config-write`).
 - MicroSD: CS idle-high. Do not mount.

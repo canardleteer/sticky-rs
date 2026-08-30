@@ -11,7 +11,8 @@ Live-ask, never-erase, and flash I/O: root
 
 - Latch GPIO45 then GPIO46 before logs or buses.
 - Park BQ25616 `/CE` disabled. Do not enable charging.
-- GPIO7 is input-only. Do not drive it.
+- GPIO7 is input-only (IMU INT1 and gauge GPOUT share it). Do not
+  drive it.
 - MicroSD: CS idle-high. Do not mount.
 - Gauge: not used. No unseal, no data-memory writes.
 - Touch: rail on, INT-during-reset, 100 kHz, INT left floating. No
@@ -26,6 +27,10 @@ Live-ask, never-erase, and flash I/O: root
   a 1 kHz buzzer tone and dumps two PCM windows; it does not change
   the page. How-to:
   [README.md](README.md#microphone-test-instructions).
+- Radio: default image leaves Wi-Fi and BLE off. `--features radio`
+  scans both at once on the on-board antenna. Scan only; no NVS
+  writes; no MAC / BSSID. How-to:
+  [README.md](README.md#radio-test-instructions).
 - No deep sleep. No writes below `0x90000`. No Cargo `runner`.
 
 ## Flash and UART

@@ -37,17 +37,18 @@ token named USB-down **Landscape0**; the table above is the enclosure
 map (USB-down = Portrait 0). Gyro and FIFO wiring
 are undocumented. Stock firmware drives explicit low-power enter/exit
 transitions on this part around sleep, so expect a mode change rather than a
-single fixed ODR. **INT is GPIO7 in Seeed’s overview and is also named
-as the gauge interrupt in `sticky-2048`.** Leave GPIO7 an input. Confirmation:
-[nyc-gpio7](../resources/not-yet-confirmed.md#nyc-gpio7).
+single fixed ODR. **INT1 is GPIO7**, shared with BQ27220 GPOUT
+(schematic `6D_INTn` / `BFG_INT`). Leave GPIO7 an input. Do not enable
+both chips as push-pull.
 
 Face-up / face-down are not aliases for portrait/landscape.
 
 ## PCF8563 RTC (`0x51`)
 
-Time starts at register `0x02`. Seconds bit 7 (`0x80`) is the low-voltage /
-integrity flag. Do not assume the RTC can wake the ESP32 until INT is
-confirmed: [nyc-pcf8563-wake](../resources/not-yet-confirmed.md#nyc-pcf8563-wake).
+Schematic part is **PCF8563M/TR**. Time starts at register `0x02`. Seconds
+bit 7 (`0x80`) is the low-voltage / integrity flag. INT is net `RTC_INTn`
+and is **NC** to the ESP32. CLKOUT is a test point. The RTC cannot wake
+the MCU on a pin.
 
 ## BQ27220 fuel gauge (`0x55`)
 
@@ -107,8 +108,9 @@ Remaining unknowns:
 
 ## SHT40 (`0x44`)
 
-Factory inits an environment sensor at this address. Package suffix and alert
-pin: [nyc-sht40-package](../resources/not-yet-confirmed.md#nyc-sht40-package).
+Schematic part is **SHT40-AD1B-R2** (four-pin DFN: VDD, VSS, SDA, SCL).
+There is **no ALERT** net. Factory inits an environment sensor at this
+address.
 
 A bring-up 1-byte I2C **read** at `0x44` NAKs on silicon. That is not a
 Sensirion measurement transaction and does not prove the part is missing.
@@ -120,7 +122,8 @@ on the same bus after latch.
 
 ## PDM microphone
 
-Identified (single source) as **MEMSensing MSM261DDB020**. Factory inits it.
+Schematic part is **MEMSensing MSM261DDB020**. Factory inits it. Enable
+is **TPS22916CYFPR** on GPIO38.
 The enclosure hole is on the **bottom edge** (Reset, lanyard, charge LED,
 and USB-C on the same edge; [enclosure.md](enclosure.md)).
 There is **no loudspeaker**; the only sound out is the passive buzzer on
@@ -188,8 +191,7 @@ path as the default image. Always-zero or always-max UART energy is a
 mux, slot, or rail miss. Do not use native USB-Serial/JTAG on USB-C
 while those pins are PDM. After deep sleep, disable the USB pad before
 PDM (above). Hold GPIO38 low when unused.
-The GPIO38 switch is named **TPS22916** only in that firmware; treat the
-part number like the capsule ID until a schematic confirms it.
+The GPIO38 switch is **TPS22916CYFPR** on schematic Rev 01.
 
 Push-to-talk on GPIO4 is application policy. The board has no speaker, so
 voice replies have nowhere to play unless firmware writes them to the panel

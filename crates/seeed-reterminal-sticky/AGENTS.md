@@ -6,14 +6,15 @@ turn this crate into an `esp-hal` wrapper.
 
 - GPIO0 (sensor SCL) and GPIO3 (touch SDA) are straps. Never assign
   them to the SPI controller.
-- GPIO7 is input-only until someone measures the owner.
+- GPIO7 is input-only. Schematic Rev 01 ties IMU INT1 and gauge GPOUT
+  to the same pin. Do not enable both chips as push-pull.
 - Never erase flash or write below `0x90000` except a restore of that
   unit. Custom images: `cargo xtask flash-app` into factory `app0`.
 - Do not ship a waveform LUT from this crate.
 
-Unmeasured (open, not defaults): GPIO7 owner, `CHARGE_STATUS`
-polarity, SD card-detect polarity, `MicRail` / `SdRail` settle times,
-GPIO9 as ADC.
+Schematic Rev 01 settled GPIO7 (shared), GPIO9 divider, `CHARGE_STATUS`
+(STAT), SD detect (insert = 0), and UART0 43/44. Still open: `MicRail` /
+`SdRail` settle times, SPI clock with the card, GPIO46 pulse.
 
 Live-ask and never-erase: root [AGENTS.md](../../AGENTS.md). Pin map:
 [seeed-sticky-hardware](../../.agents/skills/seeed-sticky-hardware/SKILL.md).

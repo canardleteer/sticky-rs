@@ -454,6 +454,7 @@ fn clear_gray(bw: &mut [u8], red: &mut [u8], tone: u8, rotation: PageRotation) {
 }
 
 /// Fill a gray4 rectangle in the current page.
+#[allow(clippy::too_many_arguments)]
 fn fill_rect_gray(
     bw: &mut [u8],
     red: &mut [u8],
@@ -473,6 +474,7 @@ fn fill_rect_gray(
 }
 
 /// Black outline so the white box is visible on a white field.
+#[allow(clippy::too_many_arguments)]
 fn stroke_rect_gray(
     bw: &mut [u8],
     red: &mut [u8],

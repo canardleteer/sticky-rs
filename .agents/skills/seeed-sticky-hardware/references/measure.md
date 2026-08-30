@@ -169,7 +169,8 @@ Limits, and they matter:
 
 - Firmware proves **intent and sequencing, not electrical fact**
   ([SKILL.md](../SKILL.md#authority) layer 3). A digital-input ISR does not
-  rule out a divider on the net.
+  by itself prove there is no divider; schematic Rev 01 does (GPIO9 is
+  `PWR_IN_VOLT`).
 - Vendor binaries are **not a source of bytes**. Do not lift LUTs, calibration
   tables, or code out of a stock image into your own project; they are
   copyrighted. Port from a licensed source instead.

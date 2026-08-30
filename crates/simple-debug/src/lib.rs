@@ -88,11 +88,11 @@ pub struct Snapshot {
     pub t_s: u32,
     /// GPIO9: high means external power present.
     pub vbus: bool,
-    /// GPIO7: input only; raw level.
+    /// GPIO7: shared IMU INT1 / gauge GPOUT; input only.
     pub gpio7: bool,
     /// GPIO40: raw STAT level, not "charging".
     pub gpio40: bool,
-    /// GPIO11: card-detect, polarity unmeasured.
+    /// GPIO11: card-detect; insert = 0 (10 kΩ pull-up).
     pub sd_cd: bool,
     /// Gauge state of charge in percent.
     pub soc_pct: u8,
@@ -115,7 +115,7 @@ pub struct GpioLevels {
     pub btn6: bool,
     /// GPIO9 external-power sense.
     pub vbus: bool,
-    /// GPIO7 ambiguous interrupt net.
+    /// GPIO7 shared IMU INT1 / gauge GPOUT (input only).
     pub gpio7: bool,
     /// GPIO40 charger STAT.
     pub gpio40: bool,

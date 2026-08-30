@@ -16,8 +16,8 @@ Live-ask, never-erase, and flash I/O: root
 - Gauge: not used. No unseal, no data-memory writes.
 - Touch: rail on, INT-during-reset, 100 kHz, INT left floating. No
   config-RAM write.
-- Panel: OTP 1-bit splash / shapes / legend; OTP gray4 for four-tone
-  boxes. No `0x32` LUT, no Lotus `0x21`.
+- Panel: OTP 1-bit splash (Ferris + `sticky-rs`) / shapes / legend;
+  OTP gray4 for four-tone boxes. No `0x32` LUT, no Lotus `0x21`.
 - No deep sleep. No writes below `0x90000`. No Cargo `runner`.
 
 ## Flash and UART
@@ -31,8 +31,9 @@ cargo xtask flash-app --image target/xtensa-esp32s3-none-elf/release-fw/embassy-
 cargo xtask monitor
 ```
 
-GPIO5 / GPIO6 cycle splash / shapes / legend / tones (`scene=…`). This
-is not the `learn-uart` operator format.
+Right-edge keys change the page (`scene=…`): splash (Ferris +
+`sticky-rs`) → shapes → legend → tones. This is not the `learn-uart`
+operator format.
 
 Host-tested lines live in `crates/embassy-debug`:
 

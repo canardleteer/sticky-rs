@@ -1,7 +1,22 @@
 //! OTP panel path: 1-bit full refresh, plus a four-tone OTP gray4 scene.
+//!
+//! What you see on the glass: splash (Ferris + `sticky-rs` + a hint), then
+//! shapes, a right-edge legend, and four gray boxes. Waveforms stay in the
+//! panel OTP — this file never writes a `0x32` LUT.
 
+// Embassy time + UART scene token.
 use embassy_debug::{Event, Scene};
 use embassy_time::{with_timeout, Delay, Duration};
+
+// Draw splash with built-in mono fonts and a 1-bit Ferris BMP.
+use embedded_graphics::image::Image;
+use embedded_graphics::mono_font::ascii::{FONT_10X20, FONT_6X10};
+use embedded_graphics::mono_font::MonoTextStyle;
+use embedded_graphics::pixelcolor::BinaryColor;
+use embedded_graphics::prelude::*;
+use embedded_graphics::text::{Alignment, Text};
+
+// SPI panel: exclusive CS, BUSY wait, OTP sequences.
 use embedded_hal::digital::InputPin;
 use embedded_hal_async::digital::Wait;
 use embedded_hal_bus::spi::ExclusiveDevice;
@@ -16,18 +31,23 @@ use seeed_reterminal_sticky::rails::{Enabled, EpdRail};
 use ssd1677_gray4::planes::{gray, mirror_x_plane, rotate180_mono, write_mono, PlaneMapping};
 use ssd1677_gray4::Ssd1677;
 use static_cell::ConstStaticCell;
+use tinybmp::Bmp;
 
 use crate::{emit, now_ms};
 
 const WHITE: u8 = 0xff;
 const REFRESH_TIMEOUT: Duration = Duration::from_secs(15);
 
+/// 72×48 1-bit Ferris; provenance in `assets/SOURCE.md`.
+const FERRIS_BMP: &[u8] = include_bytes!("../assets/ferris.bmp");
+
 static DRAW: ConstStaticCell<[u8; display::PLANE_BYTES]> =
     ConstStaticCell::new([0; display::PLANE_BYTES]);
 static TX: ConstStaticCell<[u8; display::PLANE_BYTES]> =
     ConstStaticCell::new([0; display::PLANE_BYTES]);
 
-/// Pins and the latch witness needed to bring the panel up.
+/// Shared SPI pins for the panel (same bus as the card; this image
+/// never asserts SD CS).
 pub struct PanelParts {
     /// Shared SPI controller.
     pub spi: SPI2<'static>,
@@ -35,17 +55,21 @@ pub struct PanelParts {
     pub sclk: GPIO13<'static>,
     /// MOSI.
     pub mosi: GPIO14<'static>,
-    /// Chip select.
+    /// Chip select. Idle-high except during a transfer.
     pub cs: GPIO15<'static>,
     /// Data/command.
     pub dc: GPIO16<'static>,
     /// Reset.
     pub rst: GPIO17<'static>,
-    /// BUSY (active high).
+    /// BUSY (active high). Do not talk on the bus while it is high.
     pub busy: GPIO18<'static>,
 }
 
-/// White clear, then splash, then wait for [`crate::SCENE`] updates.
+/// Bring the panel up, paint splash, then wait for Page Up / Page Down /
+/// AI Voice to ask for another page.
+///
+/// On the unit: the glass shows Ferris and `sticky-rs` first. In the MCU:
+/// OTP 1-bit full refresh, then OTP gray4 only for the four-tone page.
 #[embassy_executor::task]
 pub async fn display_task(parts: PanelParts, _rail: EpdRail<Output<'static>, Enabled>) {
     let spi = Spi::new(
@@ -80,6 +104,7 @@ pub async fn display_task(parts: PanelParts, _rail: EpdRail<Output<'static>, Ena
     }
 }
 
+/// 1-bit full refresh for splash / shapes / legend; OTP gray4 for tones.
 fn scene_kind(scene: Scene) -> RefreshKind {
     match scene {
         Scene::Tones => RefreshKind::Gray4,
@@ -87,6 +112,8 @@ fn scene_kind(scene: Scene) -> RefreshKind {
     }
 }
 
+/// Re-init the controller when the OTP sequence changes, write planes,
+/// wait for BUSY, then print `scene=…` on UART.
 async fn refresh<SPI, DC, RST, BUSY>(
     driver: &mut Ssd1677<SPI, DC, RST, BUSY, Delay, ssd1677_gray4::Active>,
     draw: &mut [u8; display::PLANE_BYTES],
@@ -144,6 +171,8 @@ async fn refresh<SPI, DC, RST, BUSY>(
     }
 }
 
+/// Draw a 1-bit page in landscape, rotate 180°, mirror X, then write both
+/// RAM planes (second plane cleared). Matches the Seeed OTP polarity.
 fn write_mono_scene<SPI, DC, RST, BUSY, DELAY>(
     driver: &mut Ssd1677<SPI, DC, RST, BUSY, DELAY, ssd1677_gray4::Active>,
     draw: &mut [u8; display::PLANE_BYTES],
@@ -176,6 +205,8 @@ where
     true
 }
 
+/// Four landscape boxes, one OTP gray each. Planes are already 180°-aware
+/// in [`set_gray`]; no extra canvas.
 fn write_tones<SPI, DC, RST, BUSY, DELAY>(
     driver: &mut Ssd1677<SPI, DC, RST, BUSY, DELAY, ssd1677_gray4::Active>,
     bw: &mut [u8; display::PLANE_BYTES],
@@ -202,14 +233,11 @@ where
     true
 }
 
+/// Paint one 1-bit page into `buf` (0xff = white, cleared bit = ink).
 fn draw_scene(scene: Scene, buf: &mut [u8]) {
     buf.fill(WHITE);
     match scene {
-        Scene::Splash => {
-            frame(buf, 8);
-            line(buf, 40, 40, 760, 440);
-            line(buf, 760, 40, 40, 440);
-        }
+        Scene::Splash => draw_splash(buf),
         Scene::Shapes => {
             fill_rect(buf, 60, 60, 200, 160);
             fill_rect(buf, 320, 140, 160, 220);
@@ -222,6 +250,50 @@ fn draw_scene(scene: Scene, buf: &mut [u8]) {
         }
         Scene::Tones => {}
     }
+}
+
+/// First page: small Ferris, then `sticky-rs`, then a smaller hint.
+///
+/// On the unit: look at the glass, then press a right-edge key. In the MCU:
+/// `embedded-graphics` into the existing 1-bit plane; OTP full refresh.
+fn draw_splash(buf: &mut [u8]) {
+    const HINT: &str = "Press a right-edge key to change drawings";
+    const TITLE_GAP: i32 = 16;
+    const HINT_GAP: i32 = 16;
+    const TITLE_H: i32 = 20;
+    const HINT_H: i32 = 10;
+
+    let mut plane = MonoPlane { buf };
+    let Ok(bmp) = Bmp::<BinaryColor>::from_slice(FERRIS_BMP) else {
+        println!("embassy-debug: ferris bmp failed");
+        return;
+    };
+    let size = bmp.size();
+    let ferris_w = size.width as i32;
+    let ferris_h = size.height as i32;
+    let stack_h = ferris_h + TITLE_GAP + TITLE_H + HINT_GAP + HINT_H;
+    let top = (i32::from(display::HEIGHT) - stack_h) / 2;
+    let ferris_x = (i32::from(display::WIDTH) - ferris_w) / 2;
+    let title_y = top + ferris_h + TITLE_GAP + TITLE_H;
+    let hint_y = title_y + HINT_GAP + HINT_H;
+
+    let _ = Image::new(&bmp, Point::new(ferris_x, top)).draw(&mut plane);
+    let title = MonoTextStyle::new(&FONT_10X20, BinaryColor::On);
+    let hint = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
+    let _ = Text::with_alignment(
+        "sticky-rs",
+        Point::new(i32::from(display::WIDTH) / 2, title_y),
+        title,
+        Alignment::Center,
+    )
+    .draw(&mut plane);
+    let _ = Text::with_alignment(
+        HINT,
+        Point::new(i32::from(display::WIDTH) / 2, hint_y),
+        hint,
+        Alignment::Center,
+    )
+    .draw(&mut plane);
 }
 
 /// Four landscape boxes, one OTP gray level each (black → white).
@@ -243,6 +315,7 @@ fn draw_tones(bw: &mut [u8], red: &mut [u8]) {
     }
 }
 
+/// Fill a gray4 rectangle (already 180°-rotated pixel writes).
 fn fill_rect_gray(bw: &mut [u8], red: &mut [u8], x: u16, y: u16, w: u16, h: u16, tone: u8) {
     for yy in y..y.saturating_add(h).min(display::HEIGHT) {
         for xx in x..x.saturating_add(w).min(display::WIDTH) {
@@ -251,6 +324,7 @@ fn fill_rect_gray(bw: &mut [u8], red: &mut [u8], x: u16, y: u16, w: u16, h: u16,
     }
 }
 
+/// Black outline so the white box is visible on a white field.
 fn stroke_rect_gray(bw: &mut [u8], red: &mut [u8], x: u16, y: u16, w: u16, h: u16, tone: u8) {
     if w == 0 || h == 0 {
         return;
@@ -267,6 +341,7 @@ fn stroke_rect_gray(bw: &mut [u8], red: &mut [u8], x: u16, y: u16, w: u16, h: u1
     }
 }
 
+/// One pixel in Seeed OTP plane mapping, written already 180° rotated.
 fn set_gray(bw: &mut [u8], red: &mut [u8], x: u16, y: u16, tone: u8) {
     if x >= display::WIDTH || y >= display::HEIGHT {
         return;
@@ -279,19 +354,7 @@ fn set_gray(bw: &mut [u8], red: &mut [u8], x: u16, y: u16, tone: u8) {
     write_mono(red, width, xr, yr, red_bit);
 }
 
-fn frame(buf: &mut [u8], inset: u16) {
-    let x1 = display::WIDTH - 1 - inset;
-    let y1 = display::HEIGHT - 1 - inset;
-    for x in inset..=x1 {
-        set_black(buf, x, inset);
-        set_black(buf, x, y1);
-    }
-    for y in inset..=y1 {
-        set_black(buf, inset, y);
-        set_black(buf, x1, y);
-    }
-}
-
+/// Filled black rectangle on the 1-bit splash/shapes/legend canvas.
 fn fill_rect(buf: &mut [u8], x: u16, y: u16, w: u16, h: u16) {
     for yy in y..y.saturating_add(h).min(display::HEIGHT) {
         for xx in x..x.saturating_add(w).min(display::WIDTH) {
@@ -300,35 +363,7 @@ fn fill_rect(buf: &mut [u8], x: u16, y: u16, w: u16, h: u16) {
     }
 }
 
-fn line(buf: &mut [u8], x0: u16, y0: u16, x1: u16, y1: u16) {
-    let mut x0 = i32::from(x0);
-    let mut y0 = i32::from(y0);
-    let x1 = i32::from(x1);
-    let y1 = i32::from(y1);
-    let dx = (x1 - x0).abs();
-    let sx = if x0 < x1 { 1 } else { -1 };
-    let dy = -(y1 - y0).abs();
-    let sy = if y0 < y1 { 1 } else { -1 };
-    let mut err = dx + dy;
-    loop {
-        if let (Ok(x), Ok(y)) = (u16::try_from(x0), u16::try_from(y0)) {
-            set_black(buf, x, y);
-        }
-        if x0 == x1 && y0 == y1 {
-            break;
-        }
-        let e2 = 2 * err;
-        if e2 >= dy {
-            err += dy;
-            x0 += sx;
-        }
-        if e2 <= dx {
-            err += dx;
-            y0 += sy;
-        }
-    }
-}
-
+/// Ink a pixel (`0`) on a 0xff-white 1-bit plane.
 fn set_black(buf: &mut [u8], x: u16, y: u16) {
     if x >= display::WIDTH || y >= display::HEIGHT {
         return;
@@ -337,4 +372,44 @@ fn set_black(buf: &mut [u8], x: u16, y: u16) {
     let y = usize::from(y);
     let stride = display::WIDTH as usize / 8;
     buf[y * stride + x / 8] &= !(0x80u8 >> (x % 8));
+}
+
+/// `embedded-graphics` target over the existing 48 KiB 1-bit plane.
+///
+/// [`BinaryColor::On`] is ink (same as [`set_black`]). The splash pipeline
+/// still rotates and mirrors after this draw.
+struct MonoPlane<'a> {
+    buf: &'a mut [u8],
+}
+
+impl OriginDimensions for MonoPlane<'_> {
+    fn size(&self) -> Size {
+        Size::new(u32::from(display::WIDTH), u32::from(display::HEIGHT))
+    }
+}
+
+impl DrawTarget for MonoPlane<'_> {
+    type Color = BinaryColor;
+    type Error = core::convert::Infallible;
+
+    fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
+    where
+        I: IntoIterator<Item = Pixel<Self::Color>>,
+    {
+        for Pixel(point, color) in pixels {
+            if point.x < 0 || point.y < 0 {
+                continue;
+            }
+            let Ok(x) = u16::try_from(point.x) else {
+                continue;
+            };
+            let Ok(y) = u16::try_from(point.y) else {
+                continue;
+            };
+            if color == BinaryColor::On {
+                set_black(self.buf, x, y);
+            }
+        }
+        Ok(())
+    }
 }

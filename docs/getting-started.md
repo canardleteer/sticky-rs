@@ -132,8 +132,8 @@ lines, and restore:
 
 ### Path B — with Embassy (`embassy-debug`)
 
-Embassy event logger. The panel refreshes (splash, then GPIO5 / GPIO6
-cycle splash / shapes / legend / four-tone boxes).
+Embassy event logger. Cold boot is splash (Ferris + `sticky-rs`). The
+three right-edge keys walk splash → shapes → legend → four-tone boxes.
 
 ```shell
 . $HOME/export-esp.sh

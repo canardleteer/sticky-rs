@@ -1,7 +1,11 @@
 //! reTerminal Sticky Embassy event-logger image.
 //!
-//! Latch, then UART0 lines for buttons, GT911, and IMU, plus the panel
-//! (OTP 1-bit scenes and a four-tone gray4 page).
+//! On the unit: the glass shows Ferris and `sticky-rs` first; right-edge
+//! keys change the drawing; taps and tilts print on UART0; a short beep
+//! answers a key or the first finger on the glass.
+//!
+//! In the MCU: latch power, park the charger and unused rails, bring up
+//! the two I2C buses and the panel OTP path. No invented LUT.
 //!
 //! # Before flashing anything
 //!
@@ -13,17 +17,24 @@
 
 use core::sync::atomic::{AtomicU32, Ordering};
 
+// Charger /CE typestate (parked disabled).
 use bq25616::Charger;
+
+// Host-tested UART line format.
 use embassy_debug::{
     format_event, format_git, format_latched, Event, ImuPose, Scene, TouchPoint, GIT_CAPACITY,
     IMU_REPORT_SECS, LATCHED_CAPACITY, LINE_CAPACITY, LOG_PREFIX, MAX_TOUCH_POINTS,
 };
+
+// Embassy runtime: tasks, channels, time.
 use embassy_executor::Spawner;
 use embassy_futures::select::{select3, Either3};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::signal::Signal;
 use embassy_time::{Duration, Instant, Timer};
+
+// esp-hal: GPIO, I2C, LEDC buzzer, timer group.
 use embedded_hal::delay::DelayNs;
 use esp_backtrace as _;
 use esp_hal::delay::Delay;
@@ -36,8 +47,12 @@ use esp_hal::time::Rate;
 use esp_hal::timer::timg::TimerGroup;
 use esp_hal::Blocking;
 use esp_println::println;
+
+// IMU on the sensor bus.
 use lsm6ds3tr::interface::i2c::I2cInterface;
 use lsm6ds3tr::{AccelSampleRate, AccelScale, AccelSettings, LsmSettings, LSM6DS3TR};
+
+// Board latch, rails, GT911 reset dance.
 use seeed_reterminal_sticky::power::Latched;
 use seeed_reterminal_sticky::rails::{Disabled, Enabled, MicRail, Rail, SdRail, TouchRail};
 use seeed_reterminal_sticky::touch::{
@@ -52,9 +67,10 @@ static EVENTS: Channel<CriticalSectionRawMutex, Event, 32> = Channel::new();
 static BEEPS: Channel<CriticalSectionRawMutex, (), 4> = Channel::new();
 static DROPPED: AtomicU32 = AtomicU32::new(0);
 
+/// The page the display task should paint next.
 pub(crate) static SCENE: Signal<CriticalSectionRawMutex, Scene> = Signal::new();
 
-/// Milliseconds since Embassy time started.
+/// Milliseconds since Embassy time started (UART `t=`).
 pub(crate) fn now_ms() -> u32 {
     Instant::now().as_millis() as u32
 }
@@ -66,10 +82,15 @@ pub(crate) fn emit(event: Event) {
     }
 }
 
+/// Ask the buzzer for one short chirp (not a loudspeaker).
 fn ask_beep() {
     let _ = BEEPS.try_send(());
 }
 
+/// Pins we must hold for the run so they stay in a safe idle state.
+///
+/// On the unit: charging stays off, the card is not mounted, the mic is
+/// dark. GPIO7 is not a key — it is an ambiguous interrupt net.
 struct ParkedHazards {
     _charger: Charger<Output<'static>, bq25616::Disabled>,
     _gpio7: Input<'static>,
@@ -78,7 +99,9 @@ struct ParkedHazards {
     _mic_rail: MicRail<Output<'static>, Disabled>,
 }
 
-/// Latch before any rail. PWR_HOLD then PWR_LOCK; never pulse PWR_LOCK.
+/// Latch before any rail so the board stays up on battery.
+///
+/// PWR_HOLD (GPIO45) then PWR_LOCK (GPIO46). Never pulse PWR_LOCK.
 fn acquire_latch(
     hold: esp_hal::peripherals::GPIO45<'static>,
     lock: esp_hal::peripherals::GPIO46<'static>,
@@ -93,6 +116,9 @@ fn acquire_latch(
 }
 
 /// Park /CE disabled, GPIO7 input-only, and unused CS/rails idle.
+///
+/// On the unit: we are not charging, not using the left-edge card, and
+/// not recording. Do not drive GPIO7 (IMU INT vs gauge GPOUT is open).
 fn park_charger_and_unused(
     ce: esp_hal::peripherals::GPIO39<'static>,
     gpio7: esp_hal::peripherals::GPIO7<'static>,
@@ -103,7 +129,6 @@ fn park_charger_and_unused(
 ) -> ParkedHazards {
     let charger = Charger::new(Output::new(ce, Level::High, OutputConfig::default()))
         .expect("driving /CE cannot fail");
-    // Do not drive GPIO7: owner is unconfirmed (IMU INT vs gauge GPOUT).
     let gpio7 = Input::new(gpio7, InputConfig::default().with_pull(Pull::Up));
     // CS idle-high. Do not mount the card.
     let sd_cs = Output::new(sd_cs, Level::High, OutputConfig::default());
@@ -126,7 +151,11 @@ fn park_charger_and_unused(
     }
 }
 
-/// Touch rail, then INT-during-reset. Do not write GT911 config RAM.
+/// Power the touch rail, INT-during-reset, then read the product ID.
+///
+/// On the unit: the glass becomes a digitizer. In the MCU: 100 kHz,
+/// address `0x14`, no config-RAM write. Leave INT floating (GPIO21 has
+/// no reset pull).
 fn touch_i2c_after_int_reset(
     mut touch_i2c: I2c<'static, Blocking>,
     rst: esp_hal::peripherals::GPIO41<'static>,
@@ -159,7 +188,6 @@ fn touch_i2c_after_int_reset(
     touch_rst.set_high();
     delay.delay_ms(RESET_RELEASE_MS);
     touch_int.set_output_enable(false);
-    // GPIO21 has no reset pull. Leave INT floating.
     touch_int.apply_input_config(&InputConfig::default().with_pull(Pull::None));
     touch_int.set_input_enable(true);
     delay.delay_ms(INT_SETTLE_MS);
@@ -192,7 +220,10 @@ fn touch_i2c_after_int_reset(
     (touch_i2c, touch_rst, touch_int, touch_rail)
 }
 
-/// Panel rail after the latch witness. OTP refresh lives in the display task.
+/// Raise the panel 3.3 V rail after the latch witness.
+///
+/// On the unit: the glass can refresh. OTP sequences live in the display
+/// task; this only switches the load.
 fn enable_epd_rail(
     pin: esp_hal::peripherals::GPIO47<'static>,
     latch: &Latched,
@@ -206,10 +237,14 @@ fn enable_epd_rail(
         .expect("driving the panel rail cannot fail")
 }
 
+/// Peripherals handed to Embassy tasks after buses are up.
 struct SpawnParts {
-    btn4: Input<'static>,
-    btn5: Input<'static>,
-    btn6: Input<'static>,
+    /// Right-edge top: AI Voice Button (GPIO4, UART `btn 4`).
+    ai_voice: Input<'static>,
+    /// Right-edge middle: Page Up Button (GPIO5, UART `btn 5`).
+    page_up: Input<'static>,
+    /// Right-edge bottom: Page Down Button (GPIO6, UART `btn 6`).
+    page_down: Input<'static>,
     touch_i2c: I2c<'static, Blocking>,
     touch_rst: Output<'static>,
     touch_int: Flex<'static>,
@@ -221,9 +256,11 @@ struct SpawnParts {
     epd_rail: seeed_reterminal_sticky::rails::EpdRail<Output<'static>, Enabled>,
 }
 
+/// Start UART log, keys, glass, IMU, beep, and panel. First page is splash.
 fn spawn_tasks(spawner: &Spawner, parts: SpawnParts) {
     spawner.spawn(log_task().expect("log task"));
-    spawner.spawn(button_task(parts.btn4, parts.btn5, parts.btn6).expect("button task"));
+    spawner
+        .spawn(button_task(parts.ai_voice, parts.page_up, parts.page_down).expect("button task"));
     spawner.spawn(
         touch_task(
             parts.touch_i2c,
@@ -239,6 +276,10 @@ fn spawn_tasks(spawner: &Spawner, parts: SpawnParts) {
     SCENE.signal(Scene::Splash);
 }
 
+/// Latch, park hazards, bring up buses, then hand the unit to Embassy.
+///
+/// On the unit: power stays on, UART says we latched, the glass shows
+/// Ferris + `sticky-rs`, and a right-edge key changes the drawing.
 #[esp_hal::main]
 async fn main(spawner: Spawner) {
     let peripherals = esp_hal::init(esp_hal::Config::default());
@@ -296,15 +337,17 @@ async fn main(spawner: Spawner) {
         &mut delay,
     );
 
-    let btn4 = Input::new(
+    // Right-edge keys (glass facing you, USB-C down): AI Voice, Page Up,
+    // Page Down. Active-low with external pull-ups.
+    let ai_voice = Input::new(
         peripherals.GPIO4,
         InputConfig::default().with_pull(Pull::Up),
     );
-    let btn5 = Input::new(
+    let page_up = Input::new(
         peripherals.GPIO5,
         InputConfig::default().with_pull(Pull::Up),
     );
-    let btn6 = Input::new(
+    let page_down = Input::new(
         peripherals.GPIO6,
         InputConfig::default().with_pull(Pull::Up),
     );
@@ -317,9 +360,9 @@ async fn main(spawner: Spawner) {
     spawn_tasks(
         &spawner,
         SpawnParts {
-            btn4,
-            btn5,
-            btn6,
+            ai_voice,
+            page_up,
+            page_down,
             touch_i2c,
             touch_rst,
             touch_int,
@@ -346,6 +389,7 @@ async fn main(spawner: Spawner) {
     }
 }
 
+/// Print timestamped lines on UART0 (CH343, USB-C).
 #[embassy_executor::task]
 async fn log_task() {
     loop {
@@ -367,15 +411,23 @@ async fn log_task() {
     }
 }
 
+/// Right-edge keys: log `btn 4`/`5`/`6`, beep, and change the page.
+///
+/// Page Up goes to the previous drawing; Page Down and AI Voice go to
+/// the next (splash → shapes → legend → tones).
 #[embassy_executor::task]
-async fn button_task(mut btn4: Input<'static>, mut btn5: Input<'static>, mut btn6: Input<'static>) {
+async fn button_task(
+    mut ai_voice: Input<'static>,
+    mut page_up: Input<'static>,
+    mut page_down: Input<'static>,
+) {
     let mut scene = Scene::Splash;
 
     loop {
         let gpio = match select3(
-            btn4.wait_for_any_edge(),
-            btn5.wait_for_any_edge(),
-            btn6.wait_for_any_edge(),
+            ai_voice.wait_for_any_edge(),
+            page_up.wait_for_any_edge(),
+            page_down.wait_for_any_edge(),
         )
         .await
         {
@@ -385,9 +437,9 @@ async fn button_task(mut btn4: Input<'static>, mut btn5: Input<'static>, mut btn
         };
         Timer::after(Duration::from_millis(20)).await;
         let down = match gpio {
-            4 => btn4.is_low(),
-            5 => btn5.is_low(),
-            _ => btn6.is_low(),
+            4 => ai_voice.is_low(),
+            5 => page_up.is_low(),
+            _ => page_down.is_low(),
         };
         emit(Event::Button {
             t_ms: now_ms(),
@@ -401,7 +453,7 @@ async fn button_task(mut btn4: Input<'static>, mut btn5: Input<'static>, mut btn
                     scene = scene.prev();
                     SCENE.signal(scene);
                 }
-                6 => {
+                4 | 6 => {
                     scene = scene.next();
                     SCENE.signal(scene);
                 }
@@ -411,6 +463,7 @@ async fn button_task(mut btn4: Input<'static>, mut btn5: Input<'static>, mut btn
     }
 }
 
+/// Poll the glass. A new contact set prints `touch` and beeps on first down.
 #[embassy_executor::task]
 async fn touch_task(
     mut i2c: I2c<'static, Blocking>,
@@ -459,6 +512,7 @@ async fn touch_task(
     }
 }
 
+/// Tilt the card: a pose line about every [`IMU_REPORT_SECS`].
 #[embassy_executor::task]
 async fn imu_task(i2c: I2c<'static, Blocking>) {
     let settings = LsmSettings::default().with_accel(
@@ -486,6 +540,7 @@ async fn imu_task(i2c: I2c<'static, Blocking>) {
     }
 }
 
+/// Board classifier pose → UART token (`imu=FaceUp`, …).
 fn pose(orientation: imu::Orientation) -> ImuPose {
     match orientation {
         imu::Orientation::Portrait0 => ImuPose::Portrait0,
@@ -497,6 +552,7 @@ fn pose(orientation: imu::Orientation) -> ImuPose {
     }
 }
 
+/// One 80 ms chirp on the passive buzzer (GPIO48). Not a speaker.
 #[embassy_executor::task]
 async fn buzzer_task(
     ledc: esp_hal::peripherals::LEDC<'static>,

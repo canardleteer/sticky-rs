@@ -1,8 +1,12 @@
 //! reTerminal Sticky simple-debug image.
 //!
-//! Blocking `esp-hal` `#[main]`: latch, park hazardous pins, print boot-time
-//! bus facts, then a UART heartbeat of raw GPIO/gauge/IMU levels. No Embassy,
-//! no RTOS, no panel LUT.
+//! On the unit: UART0 (USB-C) prints a heartbeat of USB present, the three
+//! right-edge keys, battery SoC/V/I, and how the card is sitting. The glass
+//! does not refresh. `--features operator` also watches fingers on the glass
+//! for `learn-uart`.
+//!
+//! In the MCU: blocking `esp-hal` — latch, park hazards, probe buses, then
+//! poll. No Embassy, no RTOS, no panel LUT.
 //!
 //! # Before flashing anything
 //!
@@ -14,11 +18,16 @@
 
 use core::cell::RefCell;
 
+// Charger /CE and raw status / VBUS inputs.
 use bq25616::{ChargeStatus, Charger, ExternalPower, Level as ChargeLevel};
 use bq27220::Bq27220;
+
+// Shared sensor I2C (gauge + IMU).
 use embedded_hal::delay::DelayNs;
 use embedded_hal::digital::InputPin;
 use embedded_hal_bus::i2c::RefCellDevice;
+
+// esp-hal: GPIO, I2C, blocking main.
 use esp_backtrace as _;
 use esp_hal::delay::Delay;
 use esp_hal::gpio::{Flex, Input, InputConfig, Level, Output, OutputConfig, Pull};
@@ -27,8 +36,13 @@ use esp_hal::main;
 use esp_hal::time::Rate;
 use esp_hal::Blocking;
 use esp_println::println;
+
+// IMU + humidity ACK on the sensor bus.
 use lsm6ds3tr::interface::i2c::I2cInterface;
 use lsm6ds3tr::{AccelSampleRate, AccelScale, AccelSettings, LsmSettings, LSM6DS3TR};
+use sht4x::{Precision, Sht4x};
+
+// Board latch, rails, GT911 reset dance.
 use seeed_reterminal_sticky::rails::{EpdRail, MicRail, Rail, SdRail, TouchRail};
 use seeed_reterminal_sticky::touch::{
     Register, SlaveAddress, I2C_HZ as TOUCH_I2C_HZ, INT_SETTLE_MS, POST_RESET_SETTLE_MS,
@@ -37,7 +51,8 @@ use seeed_reterminal_sticky::touch::{
 #[cfg(feature = "operator")]
 use seeed_reterminal_sticky::touch::{COMMAND_READ_COORDINATES, STATUS_CLEAR};
 use seeed_reterminal_sticky::{addresses, display, imu, Latch, I2C_FREQUENCY_HZ};
-use sht4x::{Precision, Sht4x};
+
+// Host-tested UART line format.
 use simple_debug::{
     collect_edges, format_edge, format_git, format_gt911_id, format_heartbeat, Edge, GpioLevels,
     ImuPose, Snapshot, EDGE_CAPACITY, GIT_CAPACITY, GT911_ID_CAPACITY, HEARTBEAT_CAPACITY,
@@ -51,13 +66,17 @@ use simple_debug::{
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
+/// Latch, park hazards, print who is on the buses, then heartbeat.
+///
+/// On the unit: plug USB-C, watch UART, press the right-edge keys, tilt
+/// the card. The glass stays as it was (no refresh).
 #[main]
 fn main() -> ! {
     let peripherals = esp_hal::init(esp_hal::Config::default());
     esp_alloc::heap_allocator!(size: 8 * 1024);
     let mut delay = Delay::new();
 
-    // 1. Power latch, before anything else. Rails below need the witness.
+    // Latch before any rail so the board stays up on battery.
     let latch = Latch::acquire(
         Output::new(peripherals.GPIO45, Level::Low, OutputConfig::default()),
         Output::new(peripherals.GPIO46, Level::Low, OutputConfig::default()),
@@ -77,6 +96,7 @@ fn main() -> ! {
         }
     }
 
+    // Park charging. `/CE` is active-low; High means "do not charge."
     let charger = Charger::new(Output::new(
         peripherals.GPIO39,
         Level::High,
@@ -84,6 +104,7 @@ fn main() -> ! {
     ))
     .expect("driving /CE cannot fail");
 
+    // USB-C / external present (GPIO9). High means a cable is in.
     let mut external_power = ExternalPower::new(Input::new(
         peripherals.GPIO9,
         InputConfig::default().with_pull(Pull::None),
@@ -93,27 +114,31 @@ fn main() -> ! {
         external_power.is_present()
     );
 
+    // Not a key. Ambiguous IMU-INT vs gauge-GPOUT; input-only.
     let gpio7 = Input::new(
         peripherals.GPIO7,
         InputConfig::default().with_pull(Pull::Up),
     );
+    // Charger status pin, polarity unmeasured. Not the bottom-edge LED.
     let charge_status = ChargeStatus::new(Input::new(
         peripherals.GPIO40,
         InputConfig::default().with_pull(Pull::None),
     ));
+    // Left-edge MicroSD detect. Polarity unmeasured.
     let sd_cd = Input::new(
         peripherals.GPIO11,
         InputConfig::default().with_pull(Pull::Up),
     );
-    let btn4 = Input::new(
+    // Right-edge keys (glass facing you, USB-C down), active-low.
+    let ai_voice = Input::new(
         peripherals.GPIO4,
         InputConfig::default().with_pull(Pull::Up),
     );
-    let btn5 = Input::new(
+    let page_up = Input::new(
         peripherals.GPIO5,
         InputConfig::default().with_pull(Pull::Up),
     );
-    let btn6 = Input::new(
+    let page_down = Input::new(
         peripherals.GPIO6,
         InputConfig::default().with_pull(Pull::Up),
     );
@@ -123,6 +148,7 @@ fn main() -> ! {
     let _epd_cs = Output::new(peripherals.GPIO15, Level::High, OutputConfig::default());
     let _buzzer = Output::new(peripherals.GPIO48, Level::Low, OutputConfig::default());
 
+    // Left-edge card power. CS stays idle-high; we do not mount.
     let sd_rail: SdRail<_, _> = Rail::new(
         Output::new(peripherals.GPIO10, Level::Low, OutputConfig::default()),
         latch.witness(),
@@ -138,6 +164,7 @@ fn main() -> ! {
     )
     .expect("driving the mic rail cannot fail");
 
+    // Sensor bus (SHT, RTC, gauge, IMU). GPIO0 is a strap: never SPI.
     let mut sensor_i2c = I2c::new(
         peripherals.I2C0,
         I2cConfig::default().with_frequency(Rate::from_hz(I2C_FREQUENCY_HZ)),
@@ -146,6 +173,7 @@ fn main() -> ! {
     .with_sda(peripherals.GPIO1)
     .with_scl(peripherals.GPIO0);
 
+    // Dedicated touch bus. GPIO3 is a strap: never SPI.
     let mut touch_i2c = I2c::new(
         peripherals.I2C1,
         I2cConfig::default().with_frequency(Rate::from_hz(TOUCH_I2C_HZ)),
@@ -233,6 +261,8 @@ fn main() -> ! {
             Ok(()) => println!("{LOG_PREFIX}: gt911 command read-coordinates"),
             Err(_) => println!("{LOG_PREFIX}: gt911 command failed"),
         }
+        // Host `learn-uart` steps: AI Voice, Page Up, Page Down, USB-C,
+        // tilt, GPIO7, left-edge card, then a finger on the glass.
         for step in [
             "buttons_ok",
             "buttons_up",
@@ -251,9 +281,9 @@ fn main() -> ! {
     }
 
     let mut gpio = PolledGpios {
-        btn4,
-        btn5,
-        btn6,
+        ai_voice,
+        page_up,
+        page_down,
         external_power,
         gpio7,
         charge_status,
@@ -267,17 +297,27 @@ fn main() -> ! {
     run_poll_loop(&mut delay, &mut gpio, &mut gauge, &mut imu_dev, &mut touch);
 }
 
+/// Inputs the poll loop samples each tick.
+///
+/// Right-edge keys map to UART `btn 4`/`5`/`6`. The other nets are not
+/// keys: USB-C present, ambiguous GPIO7, charger status, left-edge SD.
 struct PolledGpios {
-    btn4: Input<'static>,
-    btn5: Input<'static>,
-    btn6: Input<'static>,
+    /// AI Voice Button (right-edge top, GPIO4).
+    ai_voice: Input<'static>,
+    /// Page Up Button (right-edge middle, GPIO5).
+    page_up: Input<'static>,
+    /// Page Down Button (right-edge bottom, GPIO6).
+    page_down: Input<'static>,
     external_power: ExternalPower<Input<'static>>,
     gpio7: Input<'static>,
     charge_status: ChargeStatus<Input<'static>>,
     sd_cd: Input<'static>,
 }
 
-/// Held for the whole poll so INT stays an input after reset.
+/// GT911 handles held so INT stays an input after reset.
+///
+/// On the unit: the glass stays addressed. The default image does not
+/// poll contacts after the boot ACK.
 struct TouchKeep {
     #[cfg_attr(not(feature = "operator"), allow(dead_code))]
     i2c: I2c<'static, Blocking>,
@@ -287,7 +327,11 @@ struct TouchKeep {
     addr: u8,
 }
 
-/// INT-during-reset, then product-ID read. Do not write config RAM.
+/// Power-on the digitizer: INT-during-reset, then product-ID read.
+///
+/// On the unit: the glass can report contacts (operator image). In the
+/// MCU: do not write config RAM. Leave INT floating (GPIO21 has no
+/// reset pull).
 fn reset_and_probe_gt911(
     touch_i2c: &mut I2c<'static, Blocking>,
     rst: esp_hal::peripherals::GPIO41<'static>,
@@ -325,7 +369,10 @@ fn reset_and_probe_gt911(
     (touch_rst, touch_int, gt911_addr)
 }
 
-/// Boot-time ACKs only. Do not print SHT serial; a 1-byte read NAKs.
+/// Boot-time ACKs on the sensor bus (humidity, RTC, gauge, IMU).
+///
+/// Do not print the SHT serial. A 1-byte read is not a valid SHT command
+/// and NAKs; use high-precision measure `0xFD` instead.
 fn ack_walk_sensor_bus(sensor_i2c: &mut I2c<'static, Blocking>, delay: &mut Delay) {
     // Sensirion SHT4x: 0xFD is high-precision measure (`Precision::High` in
     // sht4x 0.2.0). A 1-byte I2C read is not a valid command and NAKs.
@@ -345,6 +392,10 @@ fn ack_walk_sensor_bus(sensor_i2c: &mut I2c<'static, Blocking>, delay: &mut Dela
     }
 }
 
+/// Heartbeat (and, with `operator`, 20 ms edges + glass contacts).
+///
+/// On the unit: watch UART for `simple-debug: t=…` and key edges. The
+/// glass does not change.
 fn run_poll_loop(
     delay: &mut Delay,
     gpio: &mut PolledGpios,
@@ -356,9 +407,9 @@ fn run_poll_loop(
     let _ = touch;
 
     let mut prev = read_levels(
-        &mut gpio.btn4,
-        &mut gpio.btn5,
-        &mut gpio.btn6,
+        &mut gpio.ai_voice,
+        &mut gpio.page_up,
+        &mut gpio.page_down,
         &mut gpio.external_power,
         &mut gpio.gpio7,
         &mut gpio.charge_status,
@@ -385,9 +436,9 @@ fn run_poll_loop(
     let mut polls: u32 = 0;
     loop {
         let now = read_levels(
-            &mut gpio.btn4,
-            &mut gpio.btn5,
-            &mut gpio.btn6,
+            &mut gpio.ai_voice,
+            &mut gpio.page_up,
+            &mut gpio.page_down,
             &mut gpio.external_power,
             &mut gpio.gpio7,
             &mut gpio.charge_status,
@@ -487,6 +538,7 @@ fn run_poll_loop(
     }
 }
 
+/// One boot ACK/NAK line (`simple-debug: 0x14 ack`).
 fn log_ack(address: u8, ok: bool) {
     println!(
         "{}: {:#04x} {}",
@@ -496,10 +548,11 @@ fn log_ack(address: u8, ok: bool) {
     );
 }
 
+/// Snapshot of keys and sense pins. UART still names them `btn 4`/`5`/`6`.
 fn read_levels<B4, B5, B6, Vbus, G7, Stat, Sd>(
-    btn4: &mut B4,
-    btn5: &mut B5,
-    btn6: &mut B6,
+    ai_voice: &mut B4,
+    page_up: &mut B5,
+    page_down: &mut B6,
     vbus: &mut ExternalPower<Vbus>,
     gpio7: &mut G7,
     gpio40: &mut ChargeStatus<Stat>,
@@ -515,9 +568,9 @@ where
     Sd: InputPin,
 {
     GpioLevels {
-        btn4: btn4.is_high().unwrap_or(true),
-        btn5: btn5.is_high().unwrap_or(true),
-        btn6: btn6.is_high().unwrap_or(true),
+        btn4: ai_voice.is_high().unwrap_or(true),
+        btn5: page_up.is_high().unwrap_or(true),
+        btn6: page_down.is_high().unwrap_or(true),
         vbus: vbus.is_present().unwrap_or(false),
         gpio7: gpio7.is_high().unwrap_or(true),
         gpio40: matches!(gpio40.level(), Ok(ChargeLevel::High)),
@@ -525,6 +578,7 @@ where
     }
 }
 
+/// Board classifier pose → UART token (`imu=FaceUp`, …).
 fn pose(orientation: imu::Orientation) -> ImuPose {
     match orientation {
         imu::Orientation::Portrait0 => ImuPose::Portrait0,

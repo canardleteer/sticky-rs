@@ -83,7 +83,7 @@ pub struct TouchPoint {
 /// Pages the panel can show.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Scene {
-    /// Cold-boot splash after the white clear.
+    /// Cold-boot title card: Ferris, `sticky-rs`, then a smaller hint.
     Splash,
     /// Geometric shapes.
     Shapes,

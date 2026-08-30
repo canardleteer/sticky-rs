@@ -115,7 +115,10 @@ and the README list.
   `cargo clippy --locked --all-targets -- -D warnings`, and
   `cargo fmt --check`. Do not advertise `cargo test --workspace` (that
   pulls Xtensa firmware members). rust-analyzer excludes those packages
-  via [rust-analyzer.toml](rust-analyzer.toml).
+  via [rust-analyzer.toml](rust-analyzer.toml). Owned Markdown is checked
+  with `rumdl check` (config [`.rumdl.toml`](.rumdl.toml)). Do not run
+  rumdl on vendor PDF extracts under the hardware skill
+  `resources/datasheets/md/`.
 - One workspace lockfile is committed. Pass `--locked` and keep the claimed
   MSRV. After changing `host/sticky-host/Cargo.toml`, `xtask/Cargo.toml`,
   `firmware/*/Cargo.toml`, or workspace members, refresh it with

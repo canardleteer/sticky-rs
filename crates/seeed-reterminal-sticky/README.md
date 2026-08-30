@@ -125,7 +125,7 @@ Treat these as open, not as defaults:
 - BQ25616 `CHARGE_STATUS` polarity
 - MicroSD card-detect polarity
 - `MicRail` / `SdRail` settle times (the values in source are labelled guesses)
-- Whether GPIO9 is usable as ADC in addition to a digital VBUS sense
+- Whether GPIO9 can be an ADC as well as a digital VBUS sense
 
 Settle times labelled unmeasured in the source really are guesses.
 

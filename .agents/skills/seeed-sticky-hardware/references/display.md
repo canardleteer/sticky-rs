@@ -73,20 +73,24 @@ framebuffer mapping fixed, then rotate drawing/touch into page axes.
 
 Refresh is expensive; glass holds pixels without power.
 
-- **Full** black/white: OTP `UpdateSequence::DISPLAY_MODE_1_WITH_TEMP` (`0xF7`). Cold boot: white clear.
-- **Partial** / DU black/white: OTP `UpdateSequence::DISPLAY_MODE_2_WITH_TEMP` (`0xFF`). Still panel-wide; send a
-  full comparison frame, not a dirty rectangle alone. Lotus independently
-  documents that Master Activation drives the whole panel from 0x24; a RAM
-  window only scopes the write. Do not copy Lotus/bb_epaper `0xFC`.
-- **Gray4**: OTP `SEEED_GRAY4_TEMPERATURE` then `UpdateSequence::SEEED_GRAY4` (`0xD7`), dual planes with
-  Seeed’s inverted polarity (`PlaneMapping::SEEED_OTP`). Not an MCU 0x32 table.
+- **Full** black/white: OTP `UpdateSequence::DISPLAY_MODE_1_WITH_TEMP`
+  (`0xF7`). Cold boot: white clear.
+- **Partial** / DU black/white: OTP
+  `UpdateSequence::DISPLAY_MODE_2_WITH_TEMP` (`0xFF`). Still panel-wide;
+  send a full comparison frame, not a dirty rectangle alone. Lotus
+  independently documents that Master Activation drives the whole panel
+  from 0x24; a RAM window only scopes the write. Do not copy
+  Lotus/bb_epaper `0xFC`.
+- **Gray4**: OTP `SEEED_GRAY4_TEMPERATURE` then
+  `UpdateSequence::SEEED_GRAY4` (`0xD7`), dual planes with Seeed’s inverted
+  polarity (`PlaneMapping::SEEED_OTP`). Not an MCU 0x32 table.
 - Deep sleep: `0x10` = `DEEP_SLEEP_ENTER` (`0x03`), wait ~100 ms, then `EPD_EN=0`.
 
 Seeed’s open `seeed_epaper` SSD1677 driver and stock `reterminal_template`
 agree on that OTP path. They do **not** write a 105-byte LUT. A FreeInk MCU
 table for Sticky was compared to stock app0 and is **absent**; it stays
 commented. Full register table, hazards, and the commented bytes:
-[docs/ssd1677.md](../../../docs/ssd1677.md).
+[docs/ssd1677.md](../../../../docs/ssd1677.md).
 
 Do not invent a four-gray LUT from a generic SSD1677 example. Crate
 `ssd1677` on crates.io is a black/white(/red) skeleton, not this path.

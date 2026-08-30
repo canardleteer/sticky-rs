@@ -28,8 +28,10 @@ transforms — belong in `seeed-reterminal-sticky`. Keep that split.
   markdown links there only resolve to files **inside that crate's package**.
   Do not link `../../docs/...`, a sibling crate, or a skill with a
   repo-relative path from a crate README; use an absolute URL into this
-  repository (`https://github.com/canardleteer/sticky-rs/blob/main/...`) or name the
-  item in backticks. Relative links remain fine in repo-root docs, `AGENTS.md`,
+  repository
+  (`https://github.com/canardleteer/sticky-rs/blob/main/...`)
+  or name the item in backticks. Relative links remain fine in repo-root
+  docs, `AGENTS.md`,
   and `.agents/skills/`.
 - Prefer a named `enum` or `const` over a magic number in code. Prefer the
   vendor datasheet’s name for that number when the sheet has one (for example
@@ -56,7 +58,10 @@ transforms — belong in `seeed-reterminal-sticky`. Keep that split.
   `cargo clippy --locked --all-targets -- -D warnings`, and
   `cargo fmt --check`. Do not advertise `cargo test --workspace` (that
   pulls Xtensa firmware members). rust-analyzer excludes those packages
-  via [rust-analyzer.toml](../../../../rust-analyzer.toml).
+  via [rust-analyzer.toml](../../../../rust-analyzer.toml). Owned
+  Markdown is checked with `rumdl check` (config
+  [`.rumdl.toml`](../../../../.rumdl.toml)). Do not run rumdl on vendor
+  PDF extracts under the hardware skill `resources/datasheets/md/`.
 - One workspace lockfile is committed. Pass `--locked` and keep the claimed
   MSRV. After changing `host/sticky-host/Cargo.toml`, `xtask/Cargo.toml`,
   `firmware/*/Cargo.toml`, or workspace members, refresh it with

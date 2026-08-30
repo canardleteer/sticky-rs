@@ -82,7 +82,8 @@ First-time toolchain and both image paths:
    esp-hal images. (`esp_app_desc!()` is required; do not `--merge`.
    There is no Cargo `runner`, so `cargo run` cannot flash.)
 
-3. Write that `.bin` into factory `app0` only, then listen. `monitor` is UART0 at 115200
+3. Write that `.bin` into factory `app0` only, then listen. `monitor` is
+   UART0 at 115200
    over USB CDC (it does not open the ACM TTY, so Linux `cdc-acm` cannot
    pulse EN). It takes the same UART session lock as `flash-app`. Ctrl-C
    ends the listen.

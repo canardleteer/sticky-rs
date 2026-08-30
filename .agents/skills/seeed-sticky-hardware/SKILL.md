@@ -224,14 +224,14 @@ Factory firmware also ACKs the PDM microphone and SD slot.
 
 ## Silicon defaults
 
-- **PSRAM:** **8 MB octal** on hardware (`esptool flash-id`, `AP_3v3`). ~96 KiB gray4
-  frames fit there; a 48 KiB 1-bit frame can stay in internal RAM. 80 MHz is
-  a firmware config, not an eFuse field.
+- **PSRAM:** **8 MB octal** on hardware (`esptool flash-id`, `AP_3v3`).
+  ~96 KiB gray4 frames fit there; a 48 KiB 1-bit frame can stay in internal
+  RAM. 80 MHz is a firmware config, not an eFuse field.
 - **CPU:** factory image has run at **160 MHz**. Community firmware has used
   240 MHz. Either is a software choice; `esptool flash-id` listing 240 MHz is
   chip capability, not the factory app clock. Read `cpu freq` from UART on the unit.
-- **Flash:** eFuse **quad**, eFuse voltage **3.3 V** (`esptool`). Factory runtime has logged **DIO**.
-  QIO is a software choice, not an eFuse fact.
+- **Flash:** eFuse **quad**, eFuse voltage **3.3 V** (`esptool`). Factory
+  runtime has logged **DIO**. QIO is a software choice, not an eFuse fact.
 - **Canvas:** 800×480, top-left origin, 2-bit packed (4 pixels/byte, MSB-first,
   Black=0 … White=3). Transmit a 180°-rotated copy with `mirror_x`.
 - **Wake:** GPIO4 `ext1` ANY_LOW. Touch cannot wake if the GT911 rail is off.
@@ -252,8 +252,10 @@ Factory firmware also ACKs the PDM microphone and SD slot.
 - Enable an MCU pull-up on GPIO21 (GT911 INT) by default: Table 2-1 has no
   reset pull. On-glass leaves INT floating after address select.
 - Overlap display and SD SPI transactions.
-- Invent a four-gray LUT from a generic SSD1677 example, or mix an MCU 0x32 table with Sticky OTP gray4.
-- Use crate `bq27xxx` (wrong gauge family: Impedance Track BQ27426/427; this board has a CEDV BQ27220).
+- Invent a four-gray LUT from a generic SSD1677 example, or mix an MCU
+  0x32 table with Sticky OTP gray4.
+- Use crate `bq27xxx` (wrong gauge family: Impedance Track BQ27426/427;
+  this board has a CEDV BQ27220).
 - Run `erase-flash` / full-chip erase, or write below `0x90000` (hard rule 7).
 - Invent registers or opcodes when the vendor PDF is unread. If the local
   datasheet cache is missing, ask the user to populate it.

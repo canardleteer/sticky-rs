@@ -1,0 +1,55 @@
+# rumdl: author-owned Markdown only. Do not lint vendor PDF extracts.
+
+[global]
+line-length = 80
+respect-gitignore = true
+
+# Owned docs, crate/firmware READMEs, and authored skill pages.
+include = [
+    "README.md",
+    "AGENTS.md",
+    "docs/*.md",
+    "crates/*/README.md",
+    "firmware/*/README.md",
+    "host/sticky-host/README.md",
+    ".agents/skills/sticky-rs/**/*.md",
+    ".agents/skills/seeed-sticky-hardware/SKILL.md",
+    ".agents/skills/seeed-sticky-hardware/references/*.md",
+    ".agents/skills/seeed-sticky-hardware/resources/datasheets.md",
+    ".agents/skills/seeed-sticky-hardware/resources/datasheets/README.md",
+    ".agents/skills/seeed-sticky-hardware/resources/external.md",
+    ".agents/skills/seeed-sticky-hardware/resources/not-yet-confirmed.md",
+    ".agents/skills/seeed-sticky-hardware/resources/enclosure/SOURCE.md",
+]
+
+exclude = [
+    ".git",
+    ".github",
+    "node_modules",
+    "vendor",
+    "dist",
+    "build",
+    "CHANGELOG.md",
+    "LICENSE.md",
+    "examples/README.md",
+    # Symlink of resources/datasheets.md; lint the real file once.
+    "docs/DATASHEETS.md",
+    # Vendor PDFs and pdftotext extracts (also gitignored).
+    ".agents/skills/seeed-sticky-hardware/resources/datasheets/md/**",
+    ".agents/skills/seeed-sticky-hardware/resources/datasheets/pdf/**",
+]
+
+# MD004 would restyle every `-` list to `*` (first-pass noise).
+# MD059 would rename link labels. MD034 would rewrite autolinks.
+disable = ["MD004", "MD059", "MD034"]
+
+[MD010]
+spaces-per-tab = 2
+
+[MD013]
+code-blocks = false
+tables = false
+headings = true
+
+[MD004]
+style = "asterisk"

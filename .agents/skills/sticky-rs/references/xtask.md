@@ -99,8 +99,9 @@ cargo xtask monitor --for 20
 # or: cargo xtask monitor --lines 80 --quiet --output uart.log
 ```
 
-`flash-app` does not build that `.bin` (`build-fw` does). If the listen shows a boot loop
-(checksum / “not bootable”) or the image wedges: `restore-factory-firmware`
+`flash-app` does not build that `.bin` (`build-fw` does). If the listen
+shows a boot loop (checksum / “not bootable”) or the image wedges:
+`restore-factory-firmware`
 (`--part app0` or full, `--yes` of **that unit's** original; never erase),
 then `confirm-factory-firmware`. `learn-uart` / `learn-uart-only` are a
 different path (operator YAML, `simple-debug --features operator`), not a
@@ -153,9 +154,10 @@ UART tool without a live session.
 The same pattern applies to **non-xtask** host tools in this repository that
 could reset the UART. Call `try_acquire` first, then `status`/`output` for
 subprocesses, or do not talk to the port. Inventory that does not reset
-(`detect-connected` without `--probe`) and host-only import / `diff-learn-uart` /
-`build-fw` are the exceptions. Bare `esptool` / `espflash` CLI typed at a shell still do
-not take the lock; wrapping them in-repo is how they participate.
+(`detect-connected` without `--probe`) and host-only import /
+`diff-learn-uart` / `build-fw` are the exceptions. Bare `esptool` /
+`espflash` CLI typed at a shell still do not take the lock; wrapping them
+in-repo is how they participate.
 
 ## What has been run
 

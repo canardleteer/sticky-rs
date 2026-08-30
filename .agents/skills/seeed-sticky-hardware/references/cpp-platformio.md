@@ -24,7 +24,7 @@ Native IDF **v5.4**, target `esp32s3`. This is a hardware-correct starting
 tree for reading vendor C++ firmware, not a Playground submission, not a
 copy of `sticky-2048`, and not a flash path for this skill.
 
-```
+```text
 project/
   CMakeLists.txt
   sdkconfig.defaults
@@ -57,7 +57,7 @@ idf_component_register(
 factory runtime; QIO is a software choice. CPU frequency is a software choice
 (factory 160 MHz, Bunny 240 MHz). Leave Wi-Fi/BT to the app.
 
-```
+```ini
 CONFIG_IDF_TARGET="esp32s3"
 CONFIG_ESPTOOLPY_FLASHSIZE_32MB=y
 CONFIG_ESPTOOLPY_FLASHMODE_DIO=y

@@ -165,6 +165,6 @@ plausible-looking constant:
 
 | LUT | Source | License | Status |
 | --- | --- | --- | --- |
-| _(none shipped)_ | Sticky uses OTP; MCU 0x32 is optional | — | Do not add a row for bytes extracted from vendor firmware |
+| *(none shipped)* | Sticky uses OTP; MCU 0x32 is optional | — | Do not add a row for bytes extracted from vendor firmware |
 
 Do not add a row for bytes extracted from vendor firmware.

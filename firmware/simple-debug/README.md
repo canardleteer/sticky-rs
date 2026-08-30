@@ -28,8 +28,9 @@ tries to compile `esp-hal`.
 
 ## What it prints
 
-At boot: latch, `git=<hash> dirty=<0|1>` (from `build.rs`), external-power GPIO9, I2C ACKs, gauge DeviceType, IMU accel
-init, rail names plus panel geometry. Then once a second:
+At boot: latch, `git=<hash> dirty=<0|1>` (from `build.rs`), external-power
+GPIO9, I2C ACKs, gauge DeviceType, IMU accel init, rail names plus panel
+geometry. Then once a second:
 
 ```text
 simple-debug: t=12 vbus=1 gpio7=1 gpio40=0 sd_cd=1 soc=87 v=3870 i=-12 imu=FaceUp

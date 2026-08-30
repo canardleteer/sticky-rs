@@ -83,8 +83,9 @@ Track** and is the wrong family. Do not use it.
 
 Reads of standard commands and the CEDV set are harmless. On silicon, after
 latch, `bq27220` DeviceType plus voltage / current / SoC reads succeeded
-(USB-powered unit; do not treat a single SoC as a profile proof). The dangerous path
-is data-memory configuration, and it is worth knowing that stock firmware
+(USB-powered unit; do not treat a single SoC as a profile proof). The
+dangerous path is data-memory configuration, and it is worth knowing that
+stock firmware
 really does walk it:
 
 1. Unseal, then enter `CFGUPDATE` (with a timeout — it can hang).
@@ -118,8 +119,9 @@ on the same bus after latch.
 
 Identified (single source) as **MEMSensing MSM261DDB020**. Factory inits it.
 The enclosure hole is on the **bottom edge** (Reset, lanyard, charge LED,
-and USB-C on the same edge; [enclosure.md](enclosure.md)). There is **no loudspeaker**; the only sound out is the
-passive buzzer on GPIO48.
+and USB-C on the same edge; [enclosure.md](enclosure.md)).
+There is **no loudspeaker**; the only sound out is the passive buzzer on
+GPIO48.
 
 | Signal | GPIO |
 | --- | ---: |

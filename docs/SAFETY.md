@@ -86,8 +86,8 @@ Consequences:
 
 ## Host-only scope
 
-Agents do not open a serial port unless a human asked. This tree has no host
-flash program and no Cargo `runner`. Do not treat bare `espflash`,
+Agents do not open a serial port unless a human asked. Host I/O is
+`cargo xtask`. There is no Cargo `runner`. Do not treat bare `espflash`,
 `esptool`, `idf.py`, or PlatformIO as an in-repo path. Prefer region
 read/write over a full-chip erase. Never `espflash flash` (default
 bootloader and table). QinHeng (`1a86:55d3`) is the Sticky UART; refuse a

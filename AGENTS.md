@@ -1,7 +1,7 @@
 # sticky-rs
 
-Board contract and safety notes for the Seeed Studio reTerminal Sticky.
-Firmware is not in this tree yet.
+Board contract, host tools, and safety notes for the Seeed Studio
+reTerminal Sticky. Firmware images are not in this tree yet.
 
 ## Hardware safety (read before writing code)
 
@@ -20,17 +20,32 @@ Firmware is not in this tree yet.
 
 Full hazard table: [docs/SAFETY.md](docs/SAFETY.md). Board facts and source
 precedence: [seeed-sticky-hardware](.agents/skills/seeed-sticky-hardware/SKILL.md).
+Host tools: [sticky-rs](.agents/skills/sticky-rs/SKILL.md)
+(`sticky-host` is the library; `cargo xtask` is the clap front-end).
 
 ## Do not connect to a physical device
 
-This repository has **no in-repo device I/O**. Do not open a serial port,
-run `espflash` / `esptool` / `idf.py flash` / PlatformIO upload, or
-`probe-rs` against hardware unless the human **explicitly asked** to run
-that live command on a device in that message.
+This repository is **host-verified by default**. Landing xtask source is not
+permission to open a port. Discovery and flash I/O go through `cargo xtask`,
+not bare `espflash`, `esptool`, `idf.py flash`, or PlatformIO upload. Do not
+run those tools, `probe-rs`, or `cargo xtask` against hardware unless the
+human **explicitly asked to run** that live command on a device in that
+message (`detect-connected --probe`, live `backup-factory-firmware`,
+`confirm-factory-firmware`, `restore-factory-firmware`, `flash-app`,
+`learn-uart`, `learn-uart-only`, or `monitor`). Host-only xtask
+(`detect-connected` without `--probe`, `backup-factory-firmware --import`,
+`diff-learn-uart`, `build-fw`) does not open a UART.
 
-A device may be attached for unrelated reasons; ignore it. Never commit a
-MAC address, serial number, USB serial string, NVS blob, or flash image.
-`backups/` is gitignored on purpose.
+When a live ask is present, the **only** in-repo device I/O is `cargo xtask`.
+`flash-app` does not compile; `cargo xtask build-fw` first (fails until
+firmware members exist). Flag catalog:
+[sticky-rs xtask.md](.agents/skills/sticky-rs/references/xtask.md).
+`cargo xtask --help` is the flag source of truth.
+
+A device may be attached for unrelated reasons; ignore it. There is no Cargo
+`runner`, so `cargo run` cannot flash. Never commit a MAC address, serial
+number, USB serial string, NVS blob, or flash image. `backups/` is gitignored
+on purpose.
 
 ## Keep skills updated
 
@@ -41,7 +56,11 @@ conflicts in the hardware skill instead of flattening them.
 | When you change | Also update |
 | --- | --- |
 | Pin, rail, display, touch, sensor, enclosure, measurement backlog, or datasheet catalog | [seeed-sticky-hardware](.agents/skills/seeed-sticky-hardware/SKILL.md) (and a [sources.md](.agents/skills/seeed-sticky-hardware/references/sources.md) conflict row if sources disagree) |
-| Hardware safety, live-ask set, or “never erase” | this file **and** the hardware skill if it restates it |
+| `cargo xtask` CLI, `sticky-host` API, UART lock, `flash-app` / backup / restore contract, firmware packages, crate layout | [sticky-rs](.agents/skills/sticky-rs/SKILL.md) (especially [xtask.md](.agents/skills/sticky-rs/references/xtask.md) and [layout.md](.agents/skills/sticky-rs/references/layout.md)) **and** the root [README.md](README.md) xtask list |
+| Hardware safety, live-ask set, or “never erase” | this file **and** both skills if they restate it |
+
+Do not treat `cargo xtask --help` as a substitute for the sticky-rs catalog
+and the README list.
 
 ## Working rules
 
@@ -69,12 +88,14 @@ and maintain this file according to the
 across compatible agent clients, without assumptions about user-specific paths
 or session state.
 
-One skill:
+Two skills:
 
 - [seeed-sticky-hardware](.agents/skills/seeed-sticky-hardware/SKILL.md) —
   board contract (pins, rails, datasheets, observed silicon, source
-  precedence). The skill user weighs conflicts. Host discovery and flash I/O
-  belong to a consuming project's tools, not this skill.
+  precedence). The skill user weighs conflicts.
+- [sticky-rs](.agents/skills/sticky-rs/SKILL.md) — this repository’s host
+  tools (`cargo xtask` / `sticky-host`), crate layout, and Rust firmware
+  path. Xtensa images are not migrated yet.
 
 Vendor datasheets are official for registers of chips confirmed on this
 model; observed hardware still outranks a datasheet default. See

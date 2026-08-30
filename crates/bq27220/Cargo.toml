@@ -1,0 +1,29 @@
+[package]
+name = "bq27220"
+version = "0.1.0"
+description = "Read-only driver for the TI BQ27220 CEDV battery fuel gauge, with configuration writes behind an opt-in feature"
+readme = "README.md"
+publish = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+default = []
+# Enables raw data-memory and control writes. Off by default: see the crate
+# docs and docs/SAFETY.md. Every path this unlocks can misconfigure a gauge
+# permanently.
+config-write = []
+
+[dependencies]
+embedded-hal.workspace = true
+
+[dev-dependencies]
+embedded-hal-mock.workspace = true
+
+[lints]
+workspace = true

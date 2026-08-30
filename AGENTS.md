@@ -64,6 +64,9 @@ and the README list.
 
 ## Working rules
 
+- Follow [docs/API-RULES.md](docs/API-RULES.md) for any new crate: typestate
+  for hazardous state, `C-FREE` destructors, no internal bus locking, datasheet
+  citations in rustdoc.
 - **Do not invent registers or opcodes.** If the datasheet has not been read,
   record the gap in the hardware skill catalog
   ([resources/datasheets.md](.agents/skills/seeed-sticky-hardware/resources/datasheets.md)).

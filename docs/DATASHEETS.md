@@ -1,0 +1,1 @@
+../.agents/skills/seeed-sticky-hardware/resources/datasheets.md

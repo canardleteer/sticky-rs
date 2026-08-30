@@ -8,9 +8,9 @@ members, not default-members).
 
 1. **Never erase this board's flash.** No `erase-flash`, no full-chip erase.
    Do not write below `0x90000` except a restore of **that same unit's**
-   original image. The factory NVS holds per-unit Wi-Fi RF calibration,
-   device identity, and persisted gauge state; none of it is regenerable by
-   hobby tools.
+   original or `--capture`. The factory NVS holds per-unit Wi-Fi RF
+   calibration, device identity, and persisted gauge state; lost `nvs` is
+   not regenerable by hobby tools.
 2. **No e-paper waveform may be invented.** The Sticky's confirmed path is
    panel **OTP** sequences (no MCU `0x32` write). Do not add a default
    105-byte LUT without recorded provenance and a compatible license.
@@ -23,6 +23,21 @@ Full hazard table: [docs/SAFETY.md](docs/SAFETY.md). Board facts and source
 precedence: [seeed-sticky-hardware](.agents/skills/seeed-sticky-hardware/SKILL.md).
 Host tools: [sticky-rs](.agents/skills/sticky-rs/SKILL.md)
 (`sticky-host` is the library; `cargo xtask` is the clap front-end).
+
+## Layout
+
+| Path | Role |
+| --- | --- |
+| `crates/*` | Default-members. Host-testable `no_std` |
+| `host/*` | Default-members. `host/sticky-host/` is the host library |
+| `xtask/` | Default-member at the repo root (`cargo xtask`) |
+| `firmware/simple-debug` | Workspace member, not a default-member |
+| `firmware/embassy-debug` | Workspace member, not a default-member. Panel is `--features epd` |
+
+Host verify uses default-members. rust-analyzer excludes the two firmware
+packages via [rust-analyzer.toml](rust-analyzer.toml). Full path table:
+[sticky-rs layout.md](.agents/skills/sticky-rs/references/layout.md).
+Fresh-start how-to: [docs/getting-started.md](docs/getting-started.md).
 
 ## Do not connect to a physical device
 
@@ -67,16 +82,38 @@ and the README list.
 - Follow [docs/API-RULES.md](docs/API-RULES.md) for any new crate: typestate
   for hazardous state, `C-FREE` destructors, no internal bus locking, datasheet
   citations in rustdoc.
+- Each published crate's `README.md` is the crates.io landing page. Relative
+  markdown links there only resolve to files **inside that crate's package**.
+  Do not link `../../docs/...`, a sibling crate, or a skill with a
+  repo-relative path from a crate README; use an absolute URL into this
+  repository (`https://github.com/canardleteer/sticky-rs/blob/main/...`) or
+  name the item in backticks. Relative links remain fine in repo-root docs,
+  this file, and `.agents/skills/`.
 - **Do not invent registers or opcodes.** If the datasheet has not been read,
-  record the gap in the hardware skill catalog
-  ([resources/datasheets.md](.agents/skills/seeed-sticky-hardware/resources/datasheets.md)).
-  Cached PDFs and extracted markdown are gitignored under that skill’s
+  expose a documented raw primitive and record the gap in the hardware skill
+  catalog ([docs/DATASHEETS.md](docs/DATASHEETS.md)). Cached PDFs and
+  extracted markdown are gitignored under that skill’s
   `resources/datasheets/`. Ask the user to populate the cache
   (`scripts/fetch_datasheets.py` from the skill directory); do not download
   vendor files unless they asked.
 - Prefer a named `enum` or `const` over a magic number. Prefer the vendor
-  datasheet’s name when the sheet has one.
-- Never `bq27xxx` (wrong gauge family); never a generic SSD1677 four-gray LUT.
+  datasheet’s name when the sheet has one. If it never names the encoding,
+  use the on-glass / crate name or a raw primitive.
+- Adopt a crates.io driver only with a recorded verdict in
+  [docs/CRATES.md](docs/CRATES.md). Never `bq27xxx` (wrong gauge family);
+  never a generic SSD1677 four-gray LUT.
+- Host CLI and UART-lock implementation rules live in
+  [sticky-rs layout.md](.agents/skills/sticky-rs/references/layout.md).
+- Verify with `cargo test --locked`,
+  `cargo clippy --locked --all-targets -- -D warnings`, and
+  `cargo fmt --check`. Do not advertise `cargo test --workspace` (that
+  pulls Xtensa firmware members). rust-analyzer excludes those packages
+  via [rust-analyzer.toml](rust-analyzer.toml).
+- One workspace lockfile is committed. Pass `--locked` and keep the claimed
+  MSRV. After changing `host/sticky-host/Cargo.toml`, `xtask/Cargo.toml`,
+  `firmware/*/Cargo.toml`, or workspace members, refresh it with
+  `cargo generate-lockfile`.
+- Use [Conventional Commits](https://www.conventionalcommits.org/).
 - Measurement-backlog items in the hardware skill stay open until someone
   measures them. Firmware evidence proves intent and sequencing, never
   electrical fact.

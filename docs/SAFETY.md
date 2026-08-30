@@ -8,6 +8,8 @@ plus the board contract in
 [`.agents/skills/seeed-sticky-hardware/`](../.agents/skills/seeed-sticky-hardware/SKILL.md).
 When those sources disagree, name both sides; the skill user weighs them.
 Precedence: [Authority](../.agents/skills/seeed-sticky-hardware/SKILL.md#authority).
+Operator toolchain and both firmware paths:
+[getting-started.md](getting-started.md).
 
 ## Hazard table
 

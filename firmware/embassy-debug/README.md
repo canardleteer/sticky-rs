@@ -52,6 +52,9 @@ and print `scene=…`.
 This is the unattended-plus-hands check: flash the **default** image (no
 `--features epd`, so the glass is not refreshed), then watch UART0.
 
+First-time toolchain and both image paths:
+[docs/getting-started.md](../../docs/getting-started.md).
+
 1. Once per unit, capture a snapshot (gitignored). Known factory →
    write-once `original/`; already-flashed units need `--name`. Layout id
    `factory-32mb-v1`. How-to:

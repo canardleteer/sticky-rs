@@ -111,9 +111,8 @@ different path (operator YAML, `simple-debug --features operator`), not a
 `flash-app` **must** call `require_safety_net` (original preferred, else
 unique capture) and refuse when no snapshot matches or the live identity
 does not match, and **must** take the shared UART session lock. Do not add
-a Cargo `runner`. Do not put a device path in anything that can act
-(`*.toml`, `*.rs`, `*.sh`, workflows, `Makefile`); xtask reads
-`ESPFLASH_PORT`.
+a Cargo `runner`. Do not put a device path in tracked source
+(`*.toml`, `*.rs`); xtask reads `ESPFLASH_PORT`.
 
 There is no Cargo `runner`, so `cargo run` cannot flash. xtask may use the
 `espflash` library for region read/write only; never a full-chip erase,

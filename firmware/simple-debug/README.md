@@ -62,7 +62,9 @@ edges are not a hardware failure.
 ## Build and install
 
 Same contract as every in-repo `app0` write. Partition layout is the
-host catalog id `factory-32mb-v1` (not a local CSV). How-to:
+host catalog id `factory-32mb-v1` (not a local CSV). First-time toolchain
+and both image paths:
+[docs/getting-started.md](../../docs/getting-started.md). Snapshot how-to:
 [docs/firmware-snapshot-management.md](../../docs/firmware-snapshot-management.md).
 
 1. `cargo xtask backup-factory-firmware` once per unit (gitignored).

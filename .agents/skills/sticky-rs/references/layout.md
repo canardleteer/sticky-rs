@@ -10,7 +10,8 @@
 | `xtask/` | Clap front-end at the repo root (`cargo xtask`). Maps flags to `sticky-host`; `repo_root()` is the parent of this package |
 | `backups/` | Gitignored per-unit `original/<serial>/` and `captures/<unit-id>/<slug>/` plus `learn-uart/` YAML. Not in git |
 | `firmware/*` | Workspace members, not default-members. ELFs in workspace `target/` |
-| `docs/` | [SAFETY.md](../../../../docs/SAFETY.md), [firmware-snapshot-management.md](../../../../docs/firmware-snapshot-management.md), [API-RULES.md](../../../../docs/API-RULES.md), [CRATES.md](../../../../docs/CRATES.md), [ssd1677.md](../../../../docs/ssd1677.md) |
+| `docs/` | [SAFETY.md](../../../../docs/SAFETY.md), [getting-started.md](../../../../docs/getting-started.md), [firmware-snapshot-management.md](../../../../docs/firmware-snapshot-management.md), [API-RULES.md](../../../../docs/API-RULES.md), [CRATES.md](../../../../docs/CRATES.md), [ssd1677.md](../../../../docs/ssd1677.md), [DATASHEETS.md](../../../../docs/DATASHEETS.md) (symlink into the hardware skill) |
+| `rust-analyzer.toml` | Excludes `simple-debug-fw` and `embassy-debug-fw` from host check |
 | `.agents/skills/seeed-sticky-hardware/` | Board contract |
 | `.agents/skills/sticky-rs/` | This skill |
 
@@ -54,10 +55,12 @@ transforms — belong in `seeed-reterminal-sticky`. Keep that split.
 - Verify with `cargo test --locked`,
   `cargo clippy --locked --all-targets -- -D warnings`, and
   `cargo fmt --check`. Do not advertise `cargo test --workspace` (that
-  will pull Xtensa firmware members when they exist).
+  pulls Xtensa firmware members). rust-analyzer excludes those packages
+  via [rust-analyzer.toml](../../../../rust-analyzer.toml).
 - One workspace lockfile is committed. Pass `--locked` and keep the claimed
   MSRV. After changing `host/sticky-host/Cargo.toml`, `xtask/Cargo.toml`,
-  or workspace members, refresh it with `cargo generate-lockfile`.
+  `firmware/*/Cargo.toml`, or workspace members, refresh it with
+  `cargo generate-lockfile`.
 - Use [Conventional Commits](https://www.conventionalcommits.org/).
 - Silicon discovery and device I/O use `cargo xtask`. Do not add a parallel
   `esptool` / `espflash` CLI recipe when xtask already answers. Host-only

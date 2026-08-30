@@ -15,7 +15,9 @@ Host tools are: `cargo xtask`
 
 **Read [docs/SAFETY.md](docs/SAFETY.md) before flashing or probing a unit.**
 A mistake can destroy factory NVS (per-unit RF calibration), the fuel-gauge
-OTP, or the panel. Snapshot how-to:
+OTP, or the panel. Getting started (host verify, Xtensa, both firmware
+paths): [docs/getting-started.md](docs/getting-started.md). Snapshot
+how-to:
 [docs/firmware-snapshot-management.md](docs/firmware-snapshot-management.md).
 The pin map, rails, and source precedence live in
 [`.agents/skills/seeed-sticky-hardware/`](.agents/skills/seeed-sticky-hardware/SKILL.md).

@@ -31,8 +31,8 @@ Additional rules for this workspace:
   Enforced through workspace lints.
 - **Cite the datasheet in rustdoc** for every register, opcode, and magic
   number, including the document revision. A constant without a citation is a
-  bug: see the hardware skill
-  [datasheet catalog](../.agents/skills/seeed-sticky-hardware/resources/datasheets.md).
+  bug: see the
+  [datasheet catalog](DATASHEETS.md).
 - **Do not invent registers.** If a datasheet has not been read, expose a
   documented raw primitive instead of a typed accessor built on a guess, and
   record the gap in that catalog.

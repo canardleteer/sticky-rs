@@ -55,7 +55,9 @@ use lsm6ds3tr::{AccelSampleRate, AccelScale, AccelSettings, LsmSettings, LSM6DS3
 // Board latch, rails, GT911 reset dance.
 use seeed_reterminal_sticky::display::PageRotation;
 use seeed_reterminal_sticky::power::Latched;
-use seeed_reterminal_sticky::rails::{Disabled, Enabled, MicRail, Rail, SdRail, TouchRail};
+#[cfg(not(feature = "mic"))]
+use seeed_reterminal_sticky::rails::MicRail;
+use seeed_reterminal_sticky::rails::{Disabled, Enabled, Rail, SdRail, TouchRail};
 use seeed_reterminal_sticky::touch::{
     Register, SlaveAddress, COMMAND_READ_COORDINATES, I2C_HZ as TOUCH_I2C_HZ, INT_SETTLE_MS,
     POST_RESET_SETTLE_MS, RESET_HOLD_MS, RESET_RELEASE_MS, STATUS_CLEAR,
@@ -100,6 +102,7 @@ struct ParkedHazards {
     _gpio7: Input<'static>,
     _sd_cs: Output<'static>,
     _sd_rail: SdRail<Output<'static>, Disabled>,
+    #[cfg(not(feature = "mic"))]
     _mic_rail: MicRail<Output<'static>, Disabled>,
 }
 
@@ -128,7 +131,7 @@ fn park_charger_and_unused(
     gpio7: esp_hal::peripherals::GPIO7<'static>,
     sd_cs: esp_hal::peripherals::GPIO8<'static>,
     sd_en: esp_hal::peripherals::GPIO10<'static>,
-    mic_en: esp_hal::peripherals::GPIO38<'static>,
+    #[cfg(not(feature = "mic"))] mic_en: esp_hal::peripherals::GPIO38<'static>,
     latch: &Latched,
 ) -> ParkedHazards {
     let charger = Charger::new(Output::new(ce, Level::High, OutputConfig::default()))
@@ -141,6 +144,7 @@ fn park_charger_and_unused(
         latch,
     )
     .expect("driving the SD rail cannot fail");
+    #[cfg(not(feature = "mic"))]
     let mic_rail: MicRail<_, _> = Rail::new(
         Output::new(mic_en, Level::Low, OutputConfig::default()),
         latch,
@@ -151,6 +155,7 @@ fn park_charger_and_unused(
         _gpio7: gpio7,
         _sd_cs: sd_cs,
         _sd_rail: sd_rail,
+        #[cfg(not(feature = "mic"))]
         _mic_rail: mic_rail,
     }
 }
@@ -312,9 +317,13 @@ async fn main(spawner: Spawner) {
         peripherals.GPIO7,
         peripherals.GPIO8,
         peripherals.GPIO10,
+        #[cfg(not(feature = "mic"))]
         peripherals.GPIO38,
         latch.witness(),
     );
+
+    #[cfg(feature = "mic")]
+    let mic_rail = crate::mic::enable_rail(peripherals.GPIO38, latch.witness(), &mut delay);
 
     let sensor_i2c = I2c::new(
         peripherals.I2C0,
@@ -385,6 +394,18 @@ async fn main(spawner: Spawner) {
             },
             epd_rail,
         },
+    );
+
+    #[cfg(feature = "mic")]
+    spawner.spawn(
+        crate::mic::mic_task(
+            peripherals.I2S0,
+            peripherals.DMA_CH0,
+            peripherals.GPIO19,
+            peripherals.GPIO20,
+            mic_rail,
+        )
+        .expect("mic task"),
     );
 
     let _keep_latched = latch;
@@ -620,3 +641,5 @@ async fn buzzer_task(
 }
 
 mod display;
+#[cfg(feature = "mic")]
+mod mic;

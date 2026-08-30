@@ -20,6 +20,9 @@ Live-ask, never-erase, and flash I/O: root
   and landscape 800×480). FaceUp / FaceDown keep the last of those.
   Legend, tones, and shapes stay USB-down portrait. OTP gray4 splash /
   legend / tones; OTP 1-bit shapes. No `0x32` LUT, no Lotus `0x21`.
+- Microphone: default image leaves `MicRail` disabled. `--features mic`
+  enables the rail and I2S PDM RX (16 kHz mono, unconfirmed). How-to:
+  [README.md](README.md#microphone-test-instructions).
 - No deep sleep. No writes below `0x90000`. No Cargo `runner`.
 
 ## Flash and UART

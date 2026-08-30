@@ -63,3 +63,9 @@ ssd1677-gray4 = { path = "../../crates/ssd1677-gray4", default-features = false,
   "async",
 ] }
 static_cell = "2.1.1"
+
+[features]
+default = []
+# Enable MicRail + I2S PDM RX and print `mic rms=` / `peak=` lines.
+# Community 16 kHz / 16-bit / left recipe; unconfirmed on this unit.
+mic = []

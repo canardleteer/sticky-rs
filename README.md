@@ -62,7 +62,7 @@ exactly one QinHeng CH343 (`1a86:55d3`).
 | `learn-uart` | yes | UART heartbeat vet plus skippable human steps |
 | `learn-uart-only` | yes | Same session, only named groups |
 | `diff-learn-uart` | no | Host-only compare of two reports or factory serials |
-| `build-fw` | no | Host-only. `cargo +esp` + `save-image` for `simple-debug` or `embassy-debug` |
+| `build-fw` | no | Host-only. `cargo +esp` + `save-image` for `simple-debug` or `embassy-debug`. `--features operator` / `mic` |
 | `ci` | no | Host-only CI gate (fmt, host clippy/test, firmware clippy, rumdl, machete, audit) |
 | `monitor` | yes | UART0 at 115200 |
 

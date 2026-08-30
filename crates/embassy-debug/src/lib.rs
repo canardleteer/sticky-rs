@@ -2,8 +2,8 @@
 //!
 //! The firmware owns buses, pins, and the Embassy tasks. This crate owns the
 //! **strings** it prints so the log contract can be tested on the host:
-//! timestamped button, touch, and IMU lines, and no factory serial / USB
-//! serial / MAC fields.
+//! timestamped button, touch, IMU, and mic-energy lines, and no factory
+//! serial / USB serial / MAC fields.
 
 #![no_std]
 #![forbid(unsafe_code)]
@@ -17,6 +17,9 @@ pub const LOG_PREFIX: &str = "embassy-debug";
 
 /// Default IMU report period, in seconds.
 pub const IMU_REPORT_SECS: u32 = 5;
+
+/// Mic energy report period, in milliseconds (`--features mic` image).
+pub const MIC_REPORT_MS: u32 = 250;
 
 /// Silicon maximum concurrent touches (GT911 Rev.09 §1).
 pub const MAX_TOUCH_POINTS: usize = 5;
@@ -169,6 +172,15 @@ pub enum Event {
         /// Raw Z LSB.
         z: i16,
     },
+    /// PDM window energy (`--features mic` image).
+    Mic {
+        /// Milliseconds since boot.
+        t_ms: u32,
+        /// Integer RMS of the i16 window.
+        rms: u32,
+        /// Max absolute sample in the window.
+        peak: u32,
+    },
     /// The panel finished a scene.
     Scene {
         /// Milliseconds since boot.
@@ -222,6 +234,10 @@ pub fn format_event<'a>(event: &Event, buf: &'a mut [u8]) -> Result<&'a str, For
                 format_args!("{LOG_PREFIX}: t={t_ms} imu={imu} x={x} y={y} z={z}"),
             )
         }
+        Event::Mic { t_ms, rms, peak } => write_into(
+            buf,
+            format_args!("{LOG_PREFIX}: t={t_ms} mic rms={rms} peak={peak}"),
+        ),
         Event::Scene { t_ms, scene } => write_into(
             buf,
             format_args!("{}: t={t_ms} scene={}", LOG_PREFIX, scene.as_str()),
@@ -230,6 +246,38 @@ pub fn format_event<'a>(event: &Event, buf: &'a mut [u8]) -> Result<&'a str, For
             write_into(buf, format_args!("{LOG_PREFIX}: t={t_ms} drop={dropped}"))
         }
     }
+}
+
+/// Integer RMS and peak of a PCM window. Empty window is `(0, 0)`.
+#[must_use]
+pub fn pcm_energy(samples: &[i16]) -> (u32, u32) {
+    if samples.is_empty() {
+        return (0, 0);
+    }
+    let mut sum_sq: u64 = 0;
+    let mut peak: u32 = 0;
+    for &sample in samples {
+        let abs = u32::from(sample.unsigned_abs());
+        if abs > peak {
+            peak = abs;
+        }
+        sum_sq += u64::from(abs) * u64::from(abs);
+    }
+    let mean_sq = sum_sq / samples.len() as u64;
+    (isqrt_u64(mean_sq) as u32, peak)
+}
+
+const fn isqrt_u64(value: u64) -> u64 {
+    if value == 0 {
+        return 0;
+    }
+    let mut x = value;
+    let mut y = (x + 1) / 2;
+    while y < x {
+        x = y;
+        y = (x + value / x) / 2;
+    }
+    x
 }
 
 fn format_touch<'a>(
@@ -425,6 +473,27 @@ mod tests {
     #[test]
     fn imu_period_is_five_seconds() {
         assert_eq!(IMU_REPORT_SECS, 5);
+    }
+
+    #[test]
+    fn mic_line_matches_the_agreed_shape() {
+        assert_eq!(
+            line(&Event::Mic {
+                t_ms: 1204,
+                rms: 12,
+                peak: 40,
+            }),
+            "embassy-debug: t=1204 mic rms=12 peak=40"
+        );
+        assert_eq!(MIC_REPORT_MS, 250);
+    }
+
+    #[test]
+    fn pcm_energy_is_rms_and_peak() {
+        assert_eq!(pcm_energy(&[]), (0, 0));
+        assert_eq!(pcm_energy(&[0, 0, 0, 0]), (0, 0));
+        assert_eq!(pcm_energy(&[3, -4]), (3, 4));
+        assert_eq!(pcm_energy(&[i16::MIN]), (32768, 32768));
     }
 
     #[test]

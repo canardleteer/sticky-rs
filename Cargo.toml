@@ -1,0 +1,36 @@
+[workspace]
+resolver = "3"
+# First crate commits fill these globs.
+members = []
+default-members = []
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.85"
+license = "MIT"
+repository = "https://github.com/canardleteer/sticky-rs"
+authors = ["canardleteer"]
+keywords = ["embedded", "no-std", "esp32s3", "reterminal-sticky"]
+categories = ["embedded", "no-std", "hardware-support"]
+
+[workspace.dependencies]
+embedded-hal = "1.0.0"
+embedded-hal-async = "1.0.0"
+embedded-hal-bus = "0.3.0"
+embedded-graphics-core = "0.4.1"
+
+# Dev-only. Not no_std. `eh1` gives the embedded-hal 1.0 mocks; disabling
+# default features keeps the embedded-hal 0.2 and embedded-time shims out of
+# the graph.
+embedded-hal-mock = { version = "0.11.1", default-features = false, features = [
+  "eh1",
+  "embedded-hal-async",
+] }
+embedded-graphics = "0.8.2"
+
+[workspace.lints.rust]
+missing_docs = "warn"
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+undocumented_unsafe_blocks = "warn"

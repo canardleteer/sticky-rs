@@ -1,0 +1,5 @@
+# There is deliberately no [target.*.runner]: cargo run must not flash a
+# device. No workspace [build] target and no [unstable] build-std: those
+# would break host `std` crates. Xtensa rustflags wait for firmware members.
+
+# `xtask` alias is added when the xtask package lands.

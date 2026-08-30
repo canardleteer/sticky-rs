@@ -13,9 +13,9 @@ embassy-debug: t=5000 imu=FaceUp x=12 y=-30 z=16300
 
 On the unit:
 
-- Cold boot paints splash upright with USB-C at the bottom: dark
-  Ferris (OTP gray4, no box), `sticky-rs`, then a hint to use the
-  right-edge keys. FaceUp / FaceDown keep that portrait page.
+- Cold boot paints a portrait splash (USB-C down) or a landscape
+  splash (USB-C right / left) so Ferris and `sticky-rs` stay upright.
+  FaceUp / FaceDown keep the last in-plane page.
 - AI Voice / Page Up / Page Down (right-edge top / middle / bottom)
   walk splash → shapes → legend → four-tone OTP gray boxes.
 - Tap the glass for `touch` lines; tilt the card for `imu=…`. A short

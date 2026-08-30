@@ -1,8 +1,8 @@
 //! reTerminal Sticky Embassy event-logger image.
 //!
-//! On the unit: USB-C at the bottom, Ferris and `sticky-rs` read
-//! upright; right-edge keys change the drawing; taps and tilts print on
-//! UART0; a short beep answers a key or the first finger on the glass.
+//! On the unit: splash stays upright in the four in-plane holds; right-edge
+//! keys change the drawing; taps and tilts print on UART0; a short beep
+//! answers a key or the first finger on the glass.
 //!
 //! In the MCU: latch power, park the charger and unused rails, bring up
 //! the two I2C buses and the panel OTP path. No invented LUT.
@@ -53,6 +53,7 @@ use lsm6ds3tr::interface::i2c::I2cInterface;
 use lsm6ds3tr::{AccelSampleRate, AccelScale, AccelSettings, LsmSettings, LSM6DS3TR};
 
 // Board latch, rails, GT911 reset dance.
+use seeed_reterminal_sticky::display::PageRotation;
 use seeed_reterminal_sticky::power::Latched;
 use seeed_reterminal_sticky::rails::{Disabled, Enabled, MicRail, Rail, SdRail, TouchRail};
 use seeed_reterminal_sticky::touch::{
@@ -69,6 +70,9 @@ static DROPPED: AtomicU32 = AtomicU32::new(0);
 
 /// The page the display task should paint next.
 pub(crate) static SCENE: Signal<CriticalSectionRawMutex, Scene> = Signal::new();
+
+/// In-plane splash page. Face-up / face-down / unknown do not signal.
+pub(crate) static PAGE_ROTATION: Signal<CriticalSectionRawMutex, PageRotation> = Signal::new();
 
 /// Milliseconds since Embassy time started (UART `t=`).
 pub(crate) fn now_ms() -> u32 {
@@ -512,9 +516,12 @@ async fn touch_task(
     }
 }
 
-/// Tilt the card: a pose line about every [`IMU_REPORT_SECS`].
+/// Tilt the card: splash follows in-plane pose; UART about every
+/// [`IMU_REPORT_SECS`].
 #[embassy_executor::task]
 async fn imu_task(i2c: I2c<'static, Blocking>) {
+    const POLL_MS: u64 = 250;
+
     let settings = LsmSettings::default().with_accel(
         AccelSettings::new()
             .with_sample_rate(AccelSampleRate::_26Hz)
@@ -526,17 +533,31 @@ async fn imu_task(i2c: I2c<'static, Blocking>) {
         Err(_) => println!("{LOG_PREFIX}: imu accel init failed"),
     }
 
+    let mut last_uart: Option<Instant> = None;
+    let mut last_rotation = Some(PageRotation::Portrait0);
     loop {
         if let Ok(xyz) = imu_dev.read_accel_raw() {
-            emit(Event::Imu {
-                t_ms: now_ms(),
-                pose: imu::classify(xyz.x, xyz.y, xyz.z).map(pose),
-                x: xyz.x,
-                y: xyz.y,
-                z: xyz.z,
-            });
+            let classified = imu::classify(xyz.x, xyz.y, xyz.z);
+            if let Some(rotation) = classified.and_then(imu::Orientation::page_rotation) {
+                if last_rotation != Some(rotation) {
+                    last_rotation = Some(rotation);
+                    crate::PAGE_ROTATION.signal(rotation);
+                }
+            }
+            let uart_due = last_uart
+                .is_none_or(|t| t.elapsed() >= Duration::from_secs(u64::from(IMU_REPORT_SECS)));
+            if uart_due {
+                emit(Event::Imu {
+                    t_ms: now_ms(),
+                    pose: classified.map(pose),
+                    x: xyz.x,
+                    y: xyz.y,
+                    z: xyz.z,
+                });
+                last_uart = Some(Instant::now());
+            }
         }
-        Timer::after(Duration::from_secs(u64::from(IMU_REPORT_SECS))).await;
+        Timer::after(Duration::from_millis(POLL_MS)).await;
     }
 }
 

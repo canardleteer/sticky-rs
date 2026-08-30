@@ -23,24 +23,66 @@ pub const HEIGHT: u16 = 480;
 /// USB-down portrait page width (short edge, keys on the right).
 ///
 /// Matches the enclosure diagram: glass facing you, USB-C on the bottom
-/// short edge. Embassy-debug draws this page for Portrait, FaceUp, and
-/// FaceDown.
+/// short edge.
 pub const PAGE_WIDTH: u16 = HEIGHT;
 /// USB-down portrait page height (long edge).
 pub const PAGE_HEIGHT: u16 = WIDTH;
 
+/// In-plane page used to draw upright content for a hold.
+///
+/// Face-up and face-down are not variants: a flat unit has no in-plane
+/// “up.” Keep the last rotation (default [`Self::Portrait0`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PageRotation {
+    /// USB-C on the bottom short edge. Page is [`PAGE_WIDTH`] ×
+    /// [`PAGE_HEIGHT`].
+    Portrait0,
+    /// USB-C on the top short edge. Same portrait page, mapped 180°.
+    Portrait180,
+    /// USB-C on the right short edge. Page is [`WIDTH`] × [`HEIGHT`].
+    Landscape0,
+    /// USB-C on the left short edge. Same landscape page, mapped 180°.
+    Landscape180,
+}
+
+impl PageRotation {
+    /// Logical page size for this hold, `(width, height)`.
+    #[must_use]
+    pub const fn page_size(self) -> (u16, u16) {
+        match self {
+            Self::Portrait0 | Self::Portrait180 => (PAGE_WIDTH, PAGE_HEIGHT),
+            Self::Landscape0 | Self::Landscape180 => (WIDTH, HEIGHT),
+        }
+    }
+}
+
 /// Maps a USB-down portrait pixel onto the pre-rotation 800×480 canvas.
 ///
-/// Portrait (0, 0) is the top-left with USB-C at the bottom. `px` is
-/// flipped so text is not mirrored on glass. Embassy-debug does not
-/// `mirror_x_plane` after this (that reverse_bits 8-pixel vertical bands
-/// on this page).
+/// Same as [`page_to_framebuffer`] with [`PageRotation::Portrait0`].
+/// Embassy-debug does not `mirror_x_plane` after this (that reverse_bits
+/// 8-pixel vertical bands on this page).
 #[must_use]
 pub const fn portrait_to_framebuffer(px: u16, py: u16) -> Option<(u16, u16)> {
-    if px >= PAGE_WIDTH || py >= PAGE_HEIGHT {
+    page_to_framebuffer(px, py, PageRotation::Portrait0)
+}
+
+/// Maps a page pixel onto the pre-rotation 800×480 canvas.
+///
+/// Page `(0, 0)` is the top-left as the user holds the card. Output is
+/// the same space [`portrait_to_framebuffer`] already used: callers that
+/// then write `(WIDTH-1-x, HEIGHT-1-y)` must not add another rotation.
+#[must_use]
+pub const fn page_to_framebuffer(px: u16, py: u16, rotation: PageRotation) -> Option<(u16, u16)> {
+    let (page_w, page_h) = rotation.page_size();
+    if px >= page_w || py >= page_h {
         return None;
     }
-    Some((WIDTH - 1 - py, HEIGHT - 1 - px))
+    Some(match rotation {
+        PageRotation::Portrait0 => (WIDTH - 1 - py, HEIGHT - 1 - px),
+        PageRotation::Portrait180 => (py, px),
+        PageRotation::Landscape0 => (px, py),
+        PageRotation::Landscape180 => (WIDTH - 1 - px, HEIGHT - 1 - py),
+    })
 }
 
 /// Last RAM X address unit for a full-width window (`8.3` address units).
@@ -215,6 +257,77 @@ mod tests {
         assert_eq!(portrait_to_framebuffer(479, 799), Some((0, 0)));
         assert_eq!(portrait_to_framebuffer(480, 0), None);
         assert_eq!(portrait_to_framebuffer(0, 800), None);
+        assert_eq!(
+            page_to_framebuffer(0, 0, PageRotation::Portrait0),
+            portrait_to_framebuffer(0, 0)
+        );
+    }
+
+    #[test]
+    fn usb_up_portrait_corners_are_the_180_of_usb_down() {
+        assert_eq!(
+            page_to_framebuffer(0, 0, PageRotation::Portrait180),
+            Some((0, 0))
+        );
+        assert_eq!(
+            page_to_framebuffer(479, 0, PageRotation::Portrait180),
+            Some((0, 479))
+        );
+        assert_eq!(
+            page_to_framebuffer(0, 799, PageRotation::Portrait180),
+            Some((799, 0))
+        );
+        assert_eq!(
+            page_to_framebuffer(479, 799, PageRotation::Portrait180),
+            Some((799, 479))
+        );
+        assert_eq!(page_to_framebuffer(480, 0, PageRotation::Portrait180), None);
+    }
+
+    #[test]
+    fn usb_right_landscape_corners_are_the_identity_on_the_canvas() {
+        assert_eq!(
+            page_to_framebuffer(0, 0, PageRotation::Landscape0),
+            Some((0, 0))
+        );
+        assert_eq!(
+            page_to_framebuffer(799, 0, PageRotation::Landscape0),
+            Some((799, 0))
+        );
+        assert_eq!(
+            page_to_framebuffer(0, 479, PageRotation::Landscape0),
+            Some((0, 479))
+        );
+        assert_eq!(
+            page_to_framebuffer(799, 479, PageRotation::Landscape0),
+            Some((799, 479))
+        );
+        assert_eq!(page_to_framebuffer(800, 0, PageRotation::Landscape0), None);
+        assert_eq!(page_to_framebuffer(0, 480, PageRotation::Landscape0), None);
+    }
+
+    #[test]
+    fn usb_left_landscape_corners_are_the_180_of_usb_right() {
+        assert_eq!(
+            page_to_framebuffer(0, 0, PageRotation::Landscape180),
+            Some((799, 479))
+        );
+        assert_eq!(
+            page_to_framebuffer(799, 0, PageRotation::Landscape180),
+            Some((0, 479))
+        );
+        assert_eq!(
+            page_to_framebuffer(0, 479, PageRotation::Landscape180),
+            Some((799, 0))
+        );
+        assert_eq!(
+            page_to_framebuffer(799, 479, PageRotation::Landscape180),
+            Some((0, 0))
+        );
+        assert_eq!(
+            page_to_framebuffer(800, 0, PageRotation::Landscape180),
+            None
+        );
     }
 
     #[test]

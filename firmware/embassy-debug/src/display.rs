@@ -1,14 +1,16 @@
-//! OTP panel path: USB-down portrait pages, 1-bit and gray4.
+//! OTP panel path: splash follows IMU; other pages stay USB-down.
 //!
-//! What you see on the glass (USB-C at the bottom): splash (dark Ferris +
-//! `sticky-rs` + a hint), then shapes, a right-edge legend, and four gray
-//! boxes. FaceUp and FaceDown keep that same portrait. Waveforms stay in
-//! the panel OTP — this file never writes a `0x32` LUT.
+//! Splash is two drawings: a 480×800 portrait stack and an 800×480
+//! landscape stack (Ferris + `sticky-rs` + hints). FaceUp / FaceDown
+//! keep the last in-plane page. Shapes, legend, and tones stay USB-down
+//! portrait. Waveforms stay in the panel OTP — this file never writes a
+//! `0x32` LUT.
 
 use crate::{emit, now_ms};
 
 // Embassy time + UART scene token.
 use embassy_debug::{Event, Scene};
+use embassy_futures::select::{select, Either};
 use embassy_time::{with_timeout, Delay, Duration};
 
 // Draw splash with built-in mono fonts.
@@ -28,7 +30,7 @@ use esp_hal::spi::master::{Config as SpiConfig, Spi};
 use esp_hal::spi::Mode;
 use esp_hal::time::Rate;
 use esp_println::println;
-use seeed_reterminal_sticky::display::{self, RefreshKind};
+use seeed_reterminal_sticky::display::{self, PageRotation, RefreshKind};
 use seeed_reterminal_sticky::rails::{Enabled, EpdRail};
 use ssd1677_gray4::planes::{gray, rotate180_mono, write_mono, PlaneMapping};
 use ssd1677_gray4::Ssd1677;
@@ -66,12 +68,12 @@ pub struct PanelParts {
     pub busy: GPIO18<'static>,
 }
 
-/// Bring the panel up, paint splash, then wait for Page Up / Page Down /
-/// AI Voice to ask for another page.
+/// Bring the panel up, paint splash, then wait for a key or an IMU pose.
 ///
-/// On the unit: USB-C at the bottom, Ferris and `sticky-rs` read upright.
-/// FaceUp / FaceDown keep that page. In the MCU: OTP gray4 for splash and
-/// tones; OTP 1-bit for shapes and the legend.
+/// On the unit: splash stays upright in the four in-plane holds. FaceUp /
+/// FaceDown keep the last of those. Other pages stay USB-down. In the
+/// MCU: OTP gray4 for splash, the key legend, and tones; OTP 1-bit for
+/// shapes.
 #[embassy_executor::task]
 pub async fn display_task(parts: PanelParts, _rail: EpdRail<Output<'static>, Enabled>) {
     let spi = Spi::new(
@@ -92,25 +94,39 @@ pub async fn display_task(parts: PanelParts, _rail: EpdRail<Output<'static>, Ena
 
     let mut driver = Ssd1677::new(bus, dc, rst, busy, Delay).expect("panel reset");
     let mut scene = Scene::Splash;
+    let mut rotation = PageRotation::Portrait0;
     let mut kind = scene_kind(scene);
     driver.init(&kind.controller_config()).expect("panel init");
 
     let draw = DRAW.take();
     let tx = TX.take();
 
-    refresh(&mut driver, draw, tx, scene, &mut kind).await;
+    refresh(&mut driver, draw, tx, scene, rotation, &mut kind).await;
 
     loop {
-        scene = crate::SCENE.wait().await;
-        refresh(&mut driver, draw, tx, scene, &mut kind).await;
+        match select(crate::SCENE.wait(), crate::PAGE_ROTATION.wait()).await {
+            Either::First(next) => {
+                scene = next;
+                refresh(&mut driver, draw, tx, scene, rotation, &mut kind).await;
+            }
+            Either::Second(next) => {
+                if next == rotation {
+                    continue;
+                }
+                rotation = next;
+                if scene == Scene::Splash {
+                    refresh(&mut driver, draw, tx, scene, rotation, &mut kind).await;
+                }
+            }
+        }
     }
 }
 
-/// Gray4 for splash (Ferris) and the four-tone page; 1-bit for the rest.
+/// Gray4 for splash, legend text, and the four-tone page; 1-bit for shapes.
 fn scene_kind(scene: Scene) -> RefreshKind {
     match scene {
-        Scene::Splash | Scene::Tones => RefreshKind::Gray4,
-        Scene::Shapes | Scene::Legend => RefreshKind::Full,
+        Scene::Splash | Scene::Legend | Scene::Tones => RefreshKind::Gray4,
+        Scene::Shapes => RefreshKind::Full,
     }
 }
 
@@ -121,6 +137,7 @@ async fn refresh<SPI, DC, RST, BUSY>(
     draw: &mut [u8; display::PLANE_BYTES],
     tx: &mut [u8; display::PLANE_BYTES],
     scene: Scene,
+    rotation: PageRotation,
     kind: &mut RefreshKind,
 ) where
     SPI: embedded_hal::spi::SpiDevice,
@@ -139,7 +156,7 @@ async fn refresh<SPI, DC, RST, BUSY>(
 
     match next {
         RefreshKind::Gray4 => {
-            if !write_gray4_scene(driver, draw, tx, scene) {
+            if !write_gray4_scene(driver, draw, tx, scene, rotation) {
                 return;
             }
         }
@@ -216,6 +233,7 @@ fn write_gray4_scene<SPI, DC, RST, BUSY, DELAY>(
     bw: &mut [u8; display::PLANE_BYTES],
     red: &mut [u8; display::PLANE_BYTES],
     scene: Scene,
+    rotation: PageRotation,
 ) -> bool
 where
     SPI: embedded_hal::spi::SpiDevice,
@@ -225,9 +243,10 @@ where
     DELAY: embedded_hal::delay::DelayNs,
 {
     match scene {
-        Scene::Splash => draw_splash(bw, red),
+        Scene::Splash => draw_splash(bw, red, rotation),
+        Scene::Legend => draw_legend(bw, red),
         Scene::Tones => draw_tones(bw, red),
-        Scene::Shapes | Scene::Legend => {}
+        Scene::Shapes => {}
     }
 
     if driver
@@ -249,20 +268,78 @@ fn draw_scene(scene: Scene, buf: &mut [u8]) {
             fill_rect(buf, 160, 280, 140, 200);
             fill_rect(buf, 80, 560, 280, 160);
         }
-        Scene::Legend => {
-            fill_rect(buf, 360, 80, 80, 80);
-            fill_rect(buf, 360, 360, 80, 80);
-            fill_rect(buf, 360, 640, 80, 80);
-        }
-        Scene::Splash | Scene::Tones => {}
+        Scene::Splash | Scene::Legend | Scene::Tones => {}
     }
 }
 
-/// First page: dark Ferris, then `sticky-rs`, then a two-line hint.
+/// Three squares beside the right-edge keys, Seeed names to the left.
 ///
-/// On the unit: USB-C at the bottom, read the stack top to bottom. In the
-/// MCU: `embedded-graphics` into OTP gray4; white Ferris pixels are skipped.
-fn draw_splash(bw: &mut [u8], red: &mut [u8]) {
+/// Centers come from the Seeed appearance diagram (front view): screen
+/// y 75–429, key nubs AI Voice 90–120, Page Up 141–183, Page Down
+/// 189–231. All three sit in the top half of the glass.
+fn draw_legend(bw: &mut [u8], red: &mut [u8]) {
+    const BOX: u16 = 72;
+    const MARGIN: u16 = 8;
+    const GAP: i32 = 12;
+    const X: u16 = display::PAGE_WIDTH - MARGIN - BOX;
+    const KEYS: [(&str, u16); 3] = [("AI Voice", 68), ("Page Up", 197), ("Page Down", 305)];
+
+    clear_gray(bw, red, gray::WHITE, PageRotation::Portrait0);
+    let style = MonoTextStyle::new(&FONT_10X20, BinaryColor::On);
+    let text_x = i32::from(X) - GAP;
+    for (label, center) in KEYS {
+        let y = center.saturating_sub(BOX / 2);
+        fill_rect_gray(
+            bw,
+            red,
+            X,
+            y,
+            BOX,
+            BOX,
+            gray::BLACK,
+            PageRotation::Portrait0,
+        );
+        let _ = Text::with_alignment(
+            label,
+            Point::new(text_x, i32::from(center) + 6),
+            style,
+            Alignment::Right,
+        )
+        .draw(&mut GrayInk::new(bw, red, 1, PageRotation::Portrait0));
+    }
+}
+
+/// Splash: portrait 480×800 or landscape 800×480, then map to the panel.
+fn draw_splash(bw: &mut [u8], red: &mut [u8], rotation: PageRotation) {
+    match rotation {
+        PageRotation::Portrait0 | PageRotation::Portrait180 => {
+            draw_splash_portrait(bw, red, rotation);
+        }
+        PageRotation::Landscape0 | PageRotation::Landscape180 => {
+            draw_splash_landscape(bw, red, rotation);
+        }
+    }
+}
+
+/// USB-C down / up: Ferris, title, hints stacked on the 480×800 page.
+fn draw_splash_portrait(bw: &mut [u8], red: &mut [u8], rotation: PageRotation) {
+    draw_splash_stack(bw, red, rotation, display::PAGE_WIDTH, display::PAGE_HEIGHT);
+}
+
+/// USB-C right / left: the same stack composed on the 800×480 page.
+fn draw_splash_landscape(bw: &mut [u8], red: &mut [u8], rotation: PageRotation) {
+    draw_splash_stack(bw, red, rotation, display::WIDTH, display::HEIGHT);
+}
+
+/// Center Ferris + `sticky-rs` + two hints in a page. White Ferris pixels
+/// are skipped.
+fn draw_splash_stack(
+    bw: &mut [u8],
+    red: &mut [u8],
+    rotation: PageRotation,
+    page_w: u16,
+    page_h: u16,
+) {
     const TITLE_GAP: i32 = 28;
     const HINT_GAP: i32 = 28;
     const LINE_GAP: i32 = 8;
@@ -270,21 +347,21 @@ fn draw_splash(bw: &mut [u8], red: &mut [u8]) {
     const HINT_FAT: u16 = 1;
     const GLYPH_H: i32 = 20;
 
-    clear_gray(bw, red, gray::WHITE);
+    clear_gray(bw, red, gray::WHITE, rotation);
 
     let ferris_w = i32::from(FERRIS_W);
     let ferris_h = i32::from(FERRIS_H);
     let title_h = GLYPH_H + i32::from(TITLE_FAT) - 1;
     let hint_h = GLYPH_H + i32::from(HINT_FAT) - 1;
     let stack_h = ferris_h + TITLE_GAP + title_h + HINT_GAP + hint_h + LINE_GAP + hint_h;
-    let top = (i32::from(display::PAGE_HEIGHT) - stack_h) / 2;
-    let cx = i32::from(display::PAGE_WIDTH) / 2;
-    let ferris_x = (i32::from(display::PAGE_WIDTH) - ferris_w) / 2;
+    let top = (i32::from(page_h) - stack_h) / 2;
+    let cx = i32::from(page_w) / 2;
+    let ferris_x = (i32::from(page_w) - ferris_w) / 2;
     let title_y = top + ferris_h + TITLE_GAP + title_h;
     let hint1_y = title_y + HINT_GAP + hint_h;
     let hint2_y = hint1_y + LINE_GAP + hint_h;
 
-    blit_ferris(bw, red, ferris_x, top);
+    blit_ferris(bw, red, ferris_x, top, rotation);
     let style = MonoTextStyle::new(&FONT_10X20, BinaryColor::On);
     let _ = Text::with_alignment(
         "sticky-rs",
@@ -292,25 +369,25 @@ fn draw_splash(bw: &mut [u8], red: &mut [u8]) {
         style,
         Alignment::Center,
     )
-    .draw(&mut GrayInk::new(bw, red, TITLE_FAT));
+    .draw(&mut GrayInk::new(bw, red, TITLE_FAT, rotation));
     let _ = Text::with_alignment(
         "Press a right-edge key",
         Point::new(cx, hint1_y),
         style,
         Alignment::Center,
     )
-    .draw(&mut GrayInk::new(bw, red, HINT_FAT));
+    .draw(&mut GrayInk::new(bw, red, HINT_FAT, rotation));
     let _ = Text::with_alignment(
         "to change drawings",
         Point::new(cx, hint2_y),
         style,
         Alignment::Center,
     )
-    .draw(&mut GrayInk::new(bw, red, HINT_FAT));
+    .draw(&mut GrayInk::new(bw, red, HINT_FAT, rotation));
 }
 
 /// Skip white (no box). Other tones are OTP gray4.
-fn blit_ferris(bw: &mut [u8], red: &mut [u8], x0: i32, y0: i32) {
+fn blit_ferris(bw: &mut [u8], red: &mut [u8], x0: i32, y0: i32, rotation: PageRotation) {
     for y in 0..FERRIS_H {
         for x in 0..FERRIS_W {
             let tone = ferris_tone(x, y);
@@ -323,7 +400,7 @@ fn blit_ferris(bw: &mut [u8], red: &mut [u8], x0: i32, y0: i32) {
             let Some(py) = u16::try_from(y0.saturating_add(i32::from(y))).ok() else {
                 continue;
             };
-            set_gray_page(bw, red, px, py, tone);
+            set_gray_page(bw, red, px, py, tone, rotation);
         }
     }
 }
@@ -337,7 +414,7 @@ fn ferris_tone(x: u16, y: u16) -> u8 {
 
 /// Four portrait boxes, one OTP gray level each (black → white).
 fn draw_tones(bw: &mut [u8], red: &mut [u8]) {
-    clear_gray(bw, red, gray::WHITE);
+    clear_gray(bw, red, gray::WHITE, PageRotation::Portrait0);
     const BOX_W: u16 = 360;
     const BOX_H: u16 = 140;
     const BOX_X: u16 = 60;
@@ -348,52 +425,90 @@ fn draw_tones(bw: &mut [u8], red: &mut [u8]) {
         (590, gray::WHITE),
     ];
     for (y, tone) in BOXES {
-        fill_rect_gray(bw, red, BOX_X, y, BOX_W, BOX_H, tone);
-        stroke_rect_gray(bw, red, BOX_X, y, BOX_W, BOX_H, gray::BLACK);
+        fill_rect_gray(
+            bw,
+            red,
+            BOX_X,
+            y,
+            BOX_W,
+            BOX_H,
+            tone,
+            PageRotation::Portrait0,
+        );
+        stroke_rect_gray(
+            bw,
+            red,
+            BOX_X,
+            y,
+            BOX_W,
+            BOX_H,
+            gray::BLACK,
+            PageRotation::Portrait0,
+        );
     }
 }
 
-fn clear_gray(bw: &mut [u8], red: &mut [u8], tone: u8) {
-    fill_rect_gray(
-        bw,
-        red,
-        0,
-        0,
-        display::PAGE_WIDTH,
-        display::PAGE_HEIGHT,
-        tone,
-    );
+fn clear_gray(bw: &mut [u8], red: &mut [u8], tone: u8, rotation: PageRotation) {
+    let (page_w, page_h) = rotation.page_size();
+    fill_rect_gray(bw, red, 0, 0, page_w, page_h, tone, rotation);
 }
 
-/// Fill a gray4 rectangle in USB-down portrait coordinates.
-fn fill_rect_gray(bw: &mut [u8], red: &mut [u8], x: u16, y: u16, w: u16, h: u16, tone: u8) {
-    for yy in y..y.saturating_add(h).min(display::PAGE_HEIGHT) {
-        for xx in x..x.saturating_add(w).min(display::PAGE_WIDTH) {
-            set_gray_page(bw, red, xx, yy, tone);
+/// Fill a gray4 rectangle in the current page.
+fn fill_rect_gray(
+    bw: &mut [u8],
+    red: &mut [u8],
+    x: u16,
+    y: u16,
+    w: u16,
+    h: u16,
+    tone: u8,
+    rotation: PageRotation,
+) {
+    let (page_w, page_h) = rotation.page_size();
+    for yy in y..y.saturating_add(h).min(page_h) {
+        for xx in x..x.saturating_add(w).min(page_w) {
+            set_gray_page(bw, red, xx, yy, tone, rotation);
         }
     }
 }
 
 /// Black outline so the white box is visible on a white field.
-fn stroke_rect_gray(bw: &mut [u8], red: &mut [u8], x: u16, y: u16, w: u16, h: u16, tone: u8) {
+fn stroke_rect_gray(
+    bw: &mut [u8],
+    red: &mut [u8],
+    x: u16,
+    y: u16,
+    w: u16,
+    h: u16,
+    tone: u8,
+    rotation: PageRotation,
+) {
     if w == 0 || h == 0 {
         return;
     }
+    let (page_w, page_h) = rotation.page_size();
     let x1 = x.saturating_add(w).saturating_sub(1);
     let y1 = y.saturating_add(h).saturating_sub(1);
-    for xx in x..=x1.min(display::PAGE_WIDTH.saturating_sub(1)) {
-        set_gray_page(bw, red, xx, y, tone);
-        set_gray_page(bw, red, xx, y1, tone);
+    for xx in x..=x1.min(page_w.saturating_sub(1)) {
+        set_gray_page(bw, red, xx, y, tone, rotation);
+        set_gray_page(bw, red, xx, y1, tone, rotation);
     }
-    for yy in y..=y1.min(display::PAGE_HEIGHT.saturating_sub(1)) {
-        set_gray_page(bw, red, x, yy, tone);
-        set_gray_page(bw, red, x1, yy, tone);
+    for yy in y..=y1.min(page_h.saturating_sub(1)) {
+        set_gray_page(bw, red, x, yy, tone, rotation);
+        set_gray_page(bw, red, x1, yy, tone, rotation);
     }
 }
 
-/// Portrait pixel → Seeed OTP planes (already 180°-rotated writes).
-fn set_gray_page(bw: &mut [u8], red: &mut [u8], px: u16, py: u16, tone: u8) {
-    let Some((x, y)) = display::portrait_to_framebuffer(px, py) else {
+/// Page pixel → Seeed OTP planes (already 180°-rotated writes).
+fn set_gray_page(
+    bw: &mut [u8],
+    red: &mut [u8],
+    px: u16,
+    py: u16,
+    tone: u8,
+    rotation: PageRotation,
+) {
+    let Some((x, y)) = display::page_to_framebuffer(px, py, rotation) else {
         return;
     };
     set_gray(bw, red, x, y, tone);
@@ -439,7 +554,7 @@ fn set_black(buf: &mut [u8], x: u16, y: u16) {
     buf[y * stride + x / 8] &= !(0x80u8 >> (x % 8));
 }
 
-/// `embedded-graphics` target over OTP gray4, USB-down portrait.
+/// `embedded-graphics` target over OTP gray4 in the current page.
 ///
 /// [`BinaryColor::On`] is black ink. `fat` > 1 paints each source pixel
 /// as a `fat`×`fat` block so mono glyphs survive the refresh.
@@ -447,24 +562,24 @@ struct GrayInk<'a> {
     bw: &'a mut [u8],
     red: &'a mut [u8],
     fat: u16,
+    rotation: PageRotation,
 }
 
 impl<'a> GrayInk<'a> {
-    fn new(bw: &'a mut [u8], red: &'a mut [u8], fat: u16) -> Self {
+    fn new(bw: &'a mut [u8], red: &'a mut [u8], fat: u16, rotation: PageRotation) -> Self {
         Self {
             bw,
             red,
             fat: fat.max(1),
+            rotation,
         }
     }
 }
 
 impl OriginDimensions for GrayInk<'_> {
     fn size(&self) -> Size {
-        Size::new(
-            u32::from(display::PAGE_WIDTH),
-            u32::from(display::PAGE_HEIGHT),
-        )
+        let (w, h) = self.rotation.page_size();
+        Size::new(u32::from(w), u32::from(h))
     }
 }
 
@@ -494,6 +609,7 @@ impl DrawTarget for GrayInk<'_> {
                         x0.saturating_add(dx),
                         y0.saturating_add(dy),
                         gray::BLACK,
+                        self.rotation,
                     );
                 }
             }

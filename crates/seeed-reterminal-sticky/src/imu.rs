@@ -3,8 +3,8 @@
 //! Labels follow the enclosure diagram (glass facing you, USB-C on the
 //! bottom short edge is portrait), then the gravity axis seen on a unit.
 //! Face-up and face-down are **not** aliases for portrait and landscape:
-//! a flat device has no meaningful in-plane reading. Embassy-debug still
-//! draws the USB-down portrait page for those two poses.
+//! a flat device has no meaningful in-plane reading. Keep the last
+//! in-plane page (default USB-down portrait) instead of inventing one.
 
 /// Accelerometer sensitivity at +/-2 g, in g per LSB.
 pub const SENSITIVITY_G_PER_LSB: f32 = 0.000_061;
@@ -31,6 +31,20 @@ pub enum Orientation {
     FaceUp,
     /// Gravity dominant on −Z: lying face down.
     FaceDown,
+}
+
+impl Orientation {
+    /// In-plane page for this pose. `None` when the unit is flat.
+    #[must_use]
+    pub const fn page_rotation(self) -> Option<crate::display::PageRotation> {
+        match self {
+            Self::Portrait0 => Some(crate::display::PageRotation::Portrait0),
+            Self::Portrait180 => Some(crate::display::PageRotation::Portrait180),
+            Self::Landscape0 => Some(crate::display::PageRotation::Landscape0),
+            Self::Landscape180 => Some(crate::display::PageRotation::Landscape180),
+            Self::FaceUp | Self::FaceDown => None,
+        }
+    }
 }
 
 /// Classifies orientation from a raw accelerometer sample.
@@ -106,5 +120,19 @@ mod tests {
         // Flat on a desk with a little X noise still reads face up.
         let noise = 1_000;
         assert_eq!(classify(noise, noise, ONE_G), Some(Orientation::FaceUp));
+    }
+
+    #[test]
+    fn only_in_plane_poses_have_a_page_rotation() {
+        assert_eq!(
+            Orientation::Portrait0.page_rotation(),
+            Some(crate::display::PageRotation::Portrait0)
+        );
+        assert_eq!(
+            Orientation::Landscape0.page_rotation(),
+            Some(crate::display::PageRotation::Landscape0)
+        );
+        assert_eq!(Orientation::FaceUp.page_rotation(), None);
+        assert_eq!(Orientation::FaceDown.page_rotation(), None);
     }
 }

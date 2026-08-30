@@ -19,6 +19,10 @@ the glass. Tapping it is the touch step (`gt911_contacts`), not `btn 4` / `5` /
 
 ## Right long edge (three tactile keys)
 
+On the appearance diagram they sit in the **top half** of that edge
+(AI Voice near the top of the glass; Page Down still above mid-height),
+not spaced along the full card.
+
 Top to bottom:
 
 | Seeed label | Firmware GPIO | UART token |

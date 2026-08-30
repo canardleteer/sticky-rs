@@ -85,6 +85,7 @@ conflicts in the hardware skill instead of flattening them.
 | Hardware safety or “never erase” | [safety.md](.agents/skills/seeed-sticky-hardware/references/safety.md) (`docs/SAFETY.md` is a symlink) **and** this file if it restates a row |
 | Live-ask set | this file **and** the sticky-rs skill |
 | Agent rules that belong to one directory | that directory’s `AGENTS.md` (nearest file wins on conflict) |
+| How-to voice | this file (working-rules how-to bullet) |
 
 Do not treat `cargo xtask --help` as a substitute for the sticky-rs catalog
 and the README list.
@@ -140,6 +141,13 @@ and the README list.
 - Measurement-backlog items in the hardware skill stay open until someone
   measures them. Firmware evidence proves intent and sequencing, never
   electrical fact.
+- Operator how-to (firmware README test recipes, getting-started command
+  blocks) is for a person at the desk. Numbered steps with human titles;
+  what to type, then what they should see, then what to do with their
+  hands; pass and fail as observations. Keep live-ask, envelope, and
+  backlog ids in this file and the skills. A backlog item may close a
+  how-to as a note, not as the voice of the steps. Do not write those
+  pages as agent notes.
 
 ## Agent Documentation Standards
 

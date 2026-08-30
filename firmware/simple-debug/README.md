@@ -93,8 +93,7 @@ and both image paths:
    ```
 
    YAML is written under gitignored
-   `learn-uart/` on the bound snapshot (original if present, else the
-   capture), with a living sidecar
+   `developer-data/uart-inspection-records/<serial>/`, with a living sidecar
    `*.uart.log` (timestamped device lines and host events). A session that
    finishes without aborting copies `learn-uart-latest.yaml` (`complete: true`);
    a crash does not. `cargo xtask learn-uart-only touch` (or `--only touch`)

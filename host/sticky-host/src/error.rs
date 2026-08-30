@@ -245,7 +245,7 @@ impl fmt::Display for Error {
             Self::Yaml(reason) => write!(f, "yaml: {reason}"),
             Self::MissingLearnReport => write!(
                 f,
-                "no learn-uart YAML under developer-data/backups/original/<serial>/learn-uart/; run cargo xtask learn-uart first"
+                "no learn-uart YAML under developer-data/uart-inspection-records/<serial>/; run cargo xtask learn-uart first"
             ),
             Self::LearnNeedsTty => write!(
                 f,

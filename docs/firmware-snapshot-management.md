@@ -76,14 +76,16 @@ Each snapshot directory has the same binaries as before:
 - **`MANIFEST.yaml`** (schema `sticky-firmware-snapshot/v1`): identity,
   hashes, `kind`, `layout_id`, `classification`, optional `image_name`,
   and the parsed `partitions:` list
-- confirm reports: `divergence-<unix>.yaml`
+
+After persist the snapshot tree is sealed read-only (files and directories).
+Confirm reports go to `developer-data/confirm-records/<serial>/divergence-<unix>.yaml`.
+Learn-uart YAML and `*.uart.log` go to
+`developer-data/uart-inspection-records/<serial>/`. Leftover
+`learn-uart/` under an old snapshot is read-only for `diff-learn-uart`.
 
 Older gitignored trees may still have `MANIFEST.json` and
 `partitions.csv`. The host **reads** YAML first, then JSON. New writes do
 not emit `partitions.csv` or JSON. Do not convert or commit `developer-data/`.
-
-Learn-uart YAML stays under the **bound** snapshot (`learn-uart/`),
-original if present, else the capture used as the safety net.
 
 ## Known partition layouts
 

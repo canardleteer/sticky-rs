@@ -39,7 +39,7 @@ cargo +esp build plus espflash save-image into workspace target/ (no UART). \
 flash-app write-bins a custom image into factory app0 only (requires a matching \
 original or capture, --yes; never the espflash 'flash' subcommand). \
 learn-uart vets UART heartbeats and optional human steps, then writes YAML \
-under developer-data/backups/original/<factory-serial>/learn-uart/ (gitignored; records \
+under developer-data/uart-inspection-records/<factory-serial>/ (gitignored; records \
 factory serial, not MAC). A completed session also copies learn-uart-latest.yaml \
 (trust that file only when complete: true — a crash never publishes it). \
 Interactive sessions name steps by the action you \
@@ -55,7 +55,7 @@ writes the file only).";
 
 const LEARN_UART_ABOUT: &str = "\
 UART heartbeat vet plus skippable human steps. YAML is written under \
-developer-data/backups/original/<factory-serial>/learn-uart/ (gitignored). The report records \
+developer-data/uart-inspection-records/<factory-serial>/ (gitignored). The report records \
 that unit's factory serial_number so later units can be compared. It does not \
 record MAC or CH343 USB serial. Requires a matching original (backup first). \
 QinHeng CH343, UART session lock, no DTR/RTS while listening. Optional --image \
@@ -112,7 +112,7 @@ pub enum Command {
     RestoreFactoryFirmware(RestoreArgs),
     /// write-bin a custom image into factory `app0` only. Requires `--yes` and a snapshot.
     FlashApp(FlashAppArgs),
-    /// UART heartbeat vet plus skippable human steps; YAML under `developer-data/backups/original/<serial>/learn-uart/`.
+    /// UART heartbeat vet plus skippable human steps; YAML under `developer-data/uart-inspection-records/<serial>/`.
     #[command(long_about = LEARN_UART_ABOUT)]
     LearnUart(LearnUartCliArgs),
     /// Same as `learn-uart --only …` (one or more step groups).
@@ -239,7 +239,7 @@ pub struct LearnUartSessionArgs {
     /// Serial device. Also `ESPFLASH_PORT`. Optional if exactly one Sticky CH343 is present.
     #[arg(long, env = "ESPFLASH_PORT")]
     pub port: Option<String>,
-    /// Extra YAML copy. Canonical file is always `developer-data/backups/original/<serial>/learn-uart/<stamp>.yaml`.
+    /// Extra YAML copy. Canonical file is always `developer-data/uart-inspection-records/<serial>/<stamp>.yaml`.
     #[arg(long, value_name = "FILE")]
     pub report: Option<PathBuf>,
     /// Skip a step: `buttons`, `vbus`, `imu`, `sd_detect`, `touch`.

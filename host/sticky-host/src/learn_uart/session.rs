@@ -27,7 +27,7 @@ use crate::Error;
 pub struct LearnUartArgs {
     /// `--port` / `ESPFLASH_PORT`.
     pub port: Option<String>,
-    /// Extra YAML copy. Canonical file always goes under `developer-data/backups/original/<serial>/learn-uart/`.
+    /// Extra YAML copy. Canonical file always goes under `developer-data/uart-inspection-records/<serial>/`.
     pub report: Option<PathBuf>,
     /// `--skip` tokens.
     pub skip: Vec<String>,
@@ -54,8 +54,9 @@ pub fn run(layout: &Layout, args: LearnUartArgs) -> Result<(), Error> {
     let net = crate::original::require_safety_net_from_port(layout, &port)?;
     let factory_serial = net.snapshot.manifest.factory_serial.clone();
     anstream::eprintln!(
-        "learn-uart: bound to {} (report in learn-uart/)",
-        net.snapshot.dir.display()
+        "learn-uart: bound to {} (report in {})",
+        net.snapshot.dir.display(),
+        layout.uart_inspection_dir(&factory_serial).display()
     );
 
     if args.image.is_some() && !args.yes {
@@ -121,7 +122,9 @@ pub fn run(layout: &Layout, args: LearnUartArgs) -> Result<(), Error> {
 
     let stamp = now_stamp();
     let canonical = unique_report_path(
-        crate::original::Layout::learn_uart_in(&net.snapshot.dir).join(format!("{stamp}.yaml")),
+        layout
+            .uart_inspection_dir(&factory_serial)
+            .join(format!("{stamp}.yaml")),
     );
     let mut uart_log = UartLog::create(uart_log_path(&canonical))?;
 

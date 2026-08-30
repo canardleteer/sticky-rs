@@ -371,7 +371,89 @@ fn persist_tree(
         fs::create_dir_all(parent)?;
     }
     fs::rename(&partial, &final_dir)?;
+    seal_tree(&final_dir)?;
     Ok(final_dir)
+}
+
+/// Mark every file, then every directory, read-only (children first).
+pub fn seal_tree(root: &Path) -> Result<(), Error> {
+    let mut files = Vec::new();
+    let mut dirs = Vec::new();
+    collect_tree(root, &mut files, &mut dirs)?;
+    for path in files {
+        set_readonly(&path, true)?;
+    }
+    for path in dirs.into_iter().rev() {
+        set_readonly(&path, true)?;
+    }
+    Ok(())
+}
+
+/// Clear the read-only bit so a sealed tree can be deleted (tests / local cleanup).
+pub fn unseal_tree(root: &Path) -> Result<(), Error> {
+    if !root.exists() {
+        return Ok(());
+    }
+    let mut files = Vec::new();
+    let mut dirs = Vec::new();
+    collect_tree(root, &mut files, &mut dirs)?;
+    for path in dirs {
+        set_readonly(&path, false)?;
+    }
+    for path in files {
+        set_readonly(&path, false)?;
+    }
+    Ok(())
+}
+
+fn collect_tree(
+    dir: &Path,
+    files: &mut Vec<PathBuf>,
+    dirs: &mut Vec<PathBuf>,
+) -> Result<(), Error> {
+    dirs.push(dir.to_path_buf());
+    for entry in fs::read_dir(dir)? {
+        let path = entry?.path();
+        if path.is_dir() {
+            collect_tree(&path, files, dirs)?;
+        } else {
+            files.push(path);
+        }
+    }
+    Ok(())
+}
+
+fn set_readonly(path: &Path, readonly: bool) -> Result<(), Error> {
+    let mut perms = fs::metadata(path)?.permissions();
+    perms.set_readonly(readonly);
+    fs::set_permissions(path, perms)?;
+    Ok(())
+}
+
+/// Temp root that unseals before [`tempfile::TempDir`] deletes (tests).
+#[cfg(test)]
+pub(crate) struct UnsealOnDrop {
+    tmp: tempfile::TempDir,
+}
+
+#[cfg(test)]
+impl UnsealOnDrop {
+    pub(crate) fn new() -> Self {
+        Self {
+            tmp: tempfile::tempdir().unwrap(),
+        }
+    }
+
+    pub(crate) fn path(&self) -> &Path {
+        self.tmp.path()
+    }
+}
+
+#[cfg(test)]
+impl Drop for UnsealOnDrop {
+    fn drop(&mut self) {
+        let _ = unseal_tree(self.tmp.path());
+    }
 }
 
 /// Factory serial from an xtask manifest (YAML or JSON) when that file parses.
@@ -408,8 +490,8 @@ mod tests {
     use crate::original::load_manifest;
     use crate::partitions::{test_entry, PARTITION_TABLE_OFFSET};
 
-    fn tmp_layout() -> (tempfile::TempDir, Layout) {
-        let tmp = tempfile::tempdir().unwrap();
+    fn tmp_layout() -> (UnsealOnDrop, Layout) {
+        let tmp = UnsealOnDrop::new();
         let layout = Layout::from_developer_data_root(tmp.path());
         (tmp, layout)
     }
@@ -482,6 +564,11 @@ mod tests {
         let manifest = load_manifest(&dest).unwrap();
         assert_eq!(manifest.kind, SnapshotKind::Original);
         assert_eq!(manifest.schema, MANIFEST_SCHEMA);
+        assert!(fs::metadata(dest.join("flash-32mb.bin"))
+            .unwrap()
+            .permissions()
+            .readonly());
+        assert!(fs::metadata(&dest).unwrap().permissions().readonly());
     }
 
     #[test]

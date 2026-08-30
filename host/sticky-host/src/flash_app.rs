@@ -165,7 +165,7 @@ mod tests {
 
     #[test]
     fn flash_without_yes_refuses() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::backup::UnsealOnDrop::new();
         let layout = Layout::from_developer_data_root(tmp.path());
         let mock = RefCell::new(MockDevice::default());
         let image = payload(tmp.path(), &[0xE9, 0x01]);
@@ -175,7 +175,7 @@ mod tests {
 
     #[test]
     fn flash_refuses_without_original() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::backup::UnsealOnDrop::new();
         let layout = Layout::from_developer_data_root(tmp.path());
         let board = info();
         let mock = RefCell::new(MockDevice {
@@ -189,7 +189,7 @@ mod tests {
 
     #[test]
     fn flash_refuses_identity_mismatch() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::backup::UnsealOnDrop::new();
         let layout = Layout::from_developer_data_root(tmp.path());
         let board = info();
         persist(&layout, &board);
@@ -214,7 +214,7 @@ mod tests {
 
     #[test]
     fn flash_writes_app0_only() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::backup::UnsealOnDrop::new();
         let layout = Layout::from_developer_data_root(tmp.path());
         let board = info();
         persist(&layout, &board);
@@ -233,7 +233,7 @@ mod tests {
 
     #[test]
     fn flash_refuses_elf_file() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::backup::UnsealOnDrop::new();
         let layout = Layout::from_developer_data_root(tmp.path());
         let board = info();
         persist(&layout, &board);
@@ -253,7 +253,7 @@ mod tests {
 
     #[test]
     fn flash_refuses_when_table_has_no_app0() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::backup::UnsealOnDrop::new();
         let layout = Layout::from_developer_data_root(tmp.path());
         let board = info();
         let nvs_off = 0x9000u32;
@@ -283,7 +283,7 @@ mod tests {
 
     #[test]
     fn flash_refuses_empty_and_oversized_files() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::backup::UnsealOnDrop::new();
         let layout = Layout::from_developer_data_root(tmp.path());
         let board = info();
         persist(&layout, &board);
@@ -306,7 +306,7 @@ mod tests {
 
     #[test]
     fn flash_refuses_usb_serial_mismatch() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::backup::UnsealOnDrop::new();
         let layout = Layout::from_developer_data_root(tmp.path());
         let board_text = info();
         let mut board = parse_board_info(&board_text).unwrap();
@@ -336,7 +336,7 @@ mod tests {
 
     #[test]
     fn flash_refuses_app0_below_min_offset() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::backup::UnsealOnDrop::new();
         let layout = Layout::from_developer_data_root(tmp.path());
         let board = info();
         let unsafe_off = 0x88000u32;
@@ -386,6 +386,7 @@ mod tests {
         .unwrap();
         let original_dir = layout.original_dir("TESTFACTORY001");
         let mut manifest = load_manifest(&original_dir).unwrap();
+        crate::backup::unseal_tree(&original_dir).unwrap();
         fs::remove_dir_all(&original_dir).unwrap();
         manifest.kind = SnapshotKind::Capture;
         manifest.image_name = Some(slug.into());
@@ -401,7 +402,7 @@ mod tests {
 
     #[test]
     fn flash_refuses_unknown_layout_without_override() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::backup::UnsealOnDrop::new();
         let layout = Layout::from_developer_data_root(tmp.path());
         let board = info();
         persist(&layout, &board);
@@ -419,11 +420,12 @@ mod tests {
 
     #[test]
     fn flash_accepts_factory_v1_without_override() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::backup::UnsealOnDrop::new();
         let layout = Layout::from_developer_data_root(tmp.path());
         let board = info();
         persist(&layout, &board);
         let dir = layout.original_dir("TESTFACTORY001");
+        crate::backup::unseal_tree(&dir).unwrap();
         let mut manifest = load_manifest(&dir).unwrap();
         manifest.partitions = partitions_from_layout(&FACTORY_32MB_V1);
         fs::write(
@@ -443,7 +445,7 @@ mod tests {
 
     #[test]
     fn flash_uses_capture_as_safety_net() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::backup::UnsealOnDrop::new();
         let layout = Layout::from_developer_data_root(tmp.path());
         let board = info();
         write_capture_with_parts(

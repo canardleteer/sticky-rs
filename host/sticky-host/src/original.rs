@@ -59,13 +59,29 @@ impl Layout {
         self.captures_dir().join(unit_id).join(slug)
     }
 
-    /// `developer-data/backups/original/{factory-serial}/learn-uart/`.
+    /// `developer-data/uart-inspection-records/{factory-serial}/`.
     #[must_use]
-    pub fn learn_uart_dir(&self, factory_serial: &str) -> PathBuf {
-        self.original_dir(factory_serial).join("learn-uart")
+    pub fn uart_inspection_dir(&self, factory_serial: &str) -> PathBuf {
+        self.developer_data_root
+            .join("uart-inspection-records")
+            .join(factory_serial)
     }
 
-    /// `learn-uart/` under a bound snapshot (original or capture).
+    /// `developer-data/confirm-records/{factory-serial}/`.
+    #[must_use]
+    pub fn confirm_records_dir(&self, factory_serial: &str) -> PathBuf {
+        self.developer_data_root
+            .join("confirm-records")
+            .join(factory_serial)
+    }
+
+    /// Learn-uart YAML root (same as [`Self::uart_inspection_dir`]).
+    #[must_use]
+    pub fn learn_uart_dir(&self, factory_serial: &str) -> PathBuf {
+        self.uart_inspection_dir(factory_serial)
+    }
+
+    /// Leftover `learn-uart/` under a snapshot (read fallback only).
     #[must_use]
     pub fn learn_uart_in(snapshot_dir: &Path) -> PathBuf {
         snapshot_dir.join("learn-uart")
@@ -392,6 +408,14 @@ mod tests {
         assert_eq!(
             layout.backups_root,
             PathBuf::from("/repo/developer-data/backups")
+        );
+        assert_eq!(
+            layout.uart_inspection_dir("TESTFACTORY001"),
+            PathBuf::from("/repo/developer-data/uart-inspection-records/TESTFACTORY001")
+        );
+        assert_eq!(
+            layout.confirm_records_dir("TESTFACTORY001"),
+            PathBuf::from("/repo/developer-data/confirm-records/TESTFACTORY001")
         );
     }
 

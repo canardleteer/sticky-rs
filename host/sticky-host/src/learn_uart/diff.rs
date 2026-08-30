@@ -30,7 +30,14 @@ pub fn load_spec(layout: &Layout, spec: &str) -> Result<(String, Report), Error>
     }
     validate_factory_serial(spec)?;
     let dir = layout.learn_uart_dir(spec);
-    let path = latest_report_path(&dir)?;
+    let path = match latest_report_path(&dir) {
+        Ok(path) => path,
+        Err(Error::MissingLearnReport) => {
+            let leftover = Layout::learn_uart_in(&layout.original_dir(spec));
+            latest_report_path(&leftover)?
+        }
+        Err(error) => return Err(error),
+    };
     let report = load_report(&path)?;
     Ok((report.factory_serial.clone(), report))
 }

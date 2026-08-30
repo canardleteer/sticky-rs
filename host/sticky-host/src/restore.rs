@@ -97,7 +97,7 @@ mod tests {
 
     #[test]
     fn restore_without_yes_refuses() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::backup::UnsealOnDrop::new();
         let layout = Layout::from_developer_data_root(tmp.path());
         let mock = RefCell::new(MockDevice::default());
         let err = restore(&mock, &layout, "PORT", false, None, None).unwrap_err();
@@ -106,7 +106,7 @@ mod tests {
 
     #[test]
     fn restore_part_nvs_records_write() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::backup::UnsealOnDrop::new();
         let layout = Layout::from_developer_data_root(tmp.path());
         let mac = test_mac();
         let info = format!(
@@ -135,7 +135,7 @@ mod tests {
 
     #[test]
     fn restore_paths_unknown_part() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::backup::UnsealOnDrop::new();
         let layout = Layout::from_developer_data_root(tmp.path());
         let mac = test_mac();
         let info = format!("Flash size: 32MB\nMAC address: {mac}\n");
@@ -157,7 +157,7 @@ mod tests {
 
     #[test]
     fn restore_refuses_unknown_mac() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::backup::UnsealOnDrop::new();
         let layout = Layout::from_developer_data_root(tmp.path());
         let mac = test_mac();
         let info = format!(
@@ -193,7 +193,7 @@ mod tests {
 
     #[test]
     fn restore_refuses_usb_serial_mismatch() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::backup::UnsealOnDrop::new();
         let layout = Layout::from_developer_data_root(tmp.path());
         let mac = test_mac();
         let info = format!(

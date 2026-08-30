@@ -38,8 +38,9 @@ If you intend to flash your own firmware:
 
 1. Take a full-chip snapshot of **your** unit first. Prefer the unique
    Sticky CH343 (`1a86:55d3`). Factory-classified trees are write-once
-   under `original/`; already-flashed units go under `captures/`. Both are
-   gitignored. Do not commit them. If `nvs` was already overwritten, snapshot
+   under `original/`; already-flashed units go under `captures/`. Persist
+   then seals that tree read-only. Both are gitignored. Do not commit them.
+   If `nvs` was already overwritten, snapshot
    anyway — this repo cannot regenerate RF calibration.
 2. Write only factory `app0`. Leave `nvs`, `otadata`, `phy_init`, `app1`,
    and the LittleFS partitions alone on that first custom write. Do not
@@ -58,7 +59,9 @@ Operator how-to (classify, YAML trees, copy-paste xtask recipes):
 `developer-data/backups/captures/<unit-id>/<slug>/` hold `flash-32mb.bin`, split
 `part-*.bin`, and `MANIFEST.yaml` (identity, hashes, layout id, OTA slot).
 Older trees may still have `MANIFEST.json` / `partitions.csv` (read
-fallback only). Do not commit them.
+fallback only). Confirm reports live in
+`developer-data/confirm-records/<serial>/`. Learn-uart YAML lives in
+`developer-data/uart-inspection-records/<serial>/`. Do not commit them.
 
 ## Why gauge writes stay off
 

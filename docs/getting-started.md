@@ -218,7 +218,7 @@ charge enable, latch timing, and sleep current remain human-approved work.
 | `firmware/embassy-debug` | ESP32-S3 Embassy event logger. Same membership; panel is `--features epd` |
 | `host/sticky-host/` | Host library: detect, factory backup, confirm, restore, `build-fw`, `flash-app`, learn-uart, monitor (`Layout` in; UART lock inside live methods) |
 | `xtask/` | Clap front-end at the repo root (`cargo xtask`) over `sticky-host` |
-| `developer-data/` | Gitignored private / personalized files. Snapshots in `developer-data/backups/` (`original/<factory-serial>/`, `captures/<unit-id>/<slug>/`, `learn-uart/` YAML); not in git |
+| `developer-data/` | Gitignored private / personalized files. Sealed snapshots in `developer-data/backups/`; learn-uart YAML in `uart-inspection-records/<serial>/`; confirm reports in `confirm-records/<serial>/`; not in git |
 
 The chip drivers are `#![no_std]`, depend only on `embedded-hal` 1.0, and
 know nothing about ESP32-S3. Board specifics live in the board-support

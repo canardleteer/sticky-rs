@@ -24,7 +24,7 @@ pub struct RegionDiff {
     pub live_sha256: String,
 }
 
-/// Confirm report written next to the original (gitignored under `developer-data/backups/`).
+/// Confirm report written under `developer-data/confirm-records/<serial>/`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DivergenceReport {
     /// Factory serial of the original.
@@ -53,7 +53,7 @@ pub fn confirm_live<D: DeviceIo>(
     let live = crate::backup::read_full_flash(device, port)?;
     let original_dump = fs::read(snapshot.dir.join("flash-32mb.bin"))?;
     let report = compare_dumps(&snapshot, &original_dump, &live)?;
-    write_report(&snapshot, &report)?;
+    write_report(layout, &report)?;
     Ok(report)
 }
 
@@ -123,17 +123,19 @@ fn push_region(regions: &mut Vec<RegionDiff>, name: &str, original: &[u8], live:
     });
 }
 
-fn write_report(original: &OriginalBackup, report: &DivergenceReport) -> Result<(), Error> {
+fn write_report(layout: &Layout, report: &DivergenceReport) -> Result<(), Error> {
+    let dir = layout.confirm_records_dir(&report.factory_serial);
+    fs::create_dir_all(&dir)?;
     let name = format!("divergence-{}.yaml", report.compared_at_unix);
     let yaml = noyalib::to_string(report).map_err(|error| Error::Yaml(error.to_string()))?;
-    fs::write(original.dir.join(name), yaml)?;
+    fs::write(dir.join(name), yaml)?;
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::backup::persist_original;
+    use crate::backup::{persist_original, UnsealOnDrop};
     use crate::identity::{parse_board_info, test_mac};
     use crate::partitions::{test_entry, PARTITION_TABLE_OFFSET};
 
@@ -148,7 +150,7 @@ mod tests {
 
     #[test]
     fn confirm_lists_nvs_when_it_differs() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = UnsealOnDrop::new();
         let layout = Layout::from_developer_data_root(tmp.path());
         let mac = test_mac();
         let info = format!(
@@ -177,5 +179,14 @@ mod tests {
             .find(|r| r.name == "bootloader")
             .unwrap();
         assert!(boot.matches);
+        write_report(&layout, &report).unwrap();
+        let written = layout
+            .confirm_records_dir("TESTFACTORY001")
+            .join(format!("divergence-{}.yaml", report.compared_at_unix));
+        assert!(written.is_file());
+        assert!(!original
+            .dir
+            .join(format!("divergence-{}.yaml", report.compared_at_unix))
+            .exists());
     }
 }

@@ -62,7 +62,9 @@ A device may be attached for unrelated reasons; ignore it. There is no Cargo
 number, USB serial string, NVS blob, or flash image. `developer-data/` is
 gitignored on purpose. Put per-unit dumps, learn-uart YAML, and any other
 private or personalized files there (`developer-data/backups/` for
-snapshots). Do not use a leftover repo-root `backups/`.
+sealed snapshots, `developer-data/uart-inspection-records/` for learn-uart,
+`developer-data/confirm-records/` for confirm reports). Do not use a leftover
+repo-root `backups/`.
 
 ## Keep skills updated
 

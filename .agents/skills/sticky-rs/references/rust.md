@@ -213,8 +213,7 @@ Vendor documents and gaps live in the hardware skill
 [datasheet catalog](../../seeed-sticky-hardware/resources/datasheets.md).
 That catalog does not name this repo’s crates. Which crate cites which
 sheet, and the adoption verdict, live here and in
-[`docs/CRATES.md`](../../../../docs/CRATES.md) (lands with hardware crates).
-Prefer crate rustdoc for
+[`docs/CRATES.md`](../../../../docs/CRATES.md). Prefer crate rustdoc for
 the exact literature revision a driver was typed against.
 
 | Catalog id | Crate | Notes |

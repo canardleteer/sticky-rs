@@ -10,7 +10,7 @@
 | `xtask/` | Clap front-end at the repo root (`cargo xtask`). Maps flags to `sticky-host`; `repo_root()` is the parent of this package |
 | `backups/` | Gitignored per-unit originals and `learn-uart/` YAML plus sidecar UART logs. Not in git |
 | `firmware/*` | Not migrated yet. When they land: workspace members, not default-members; ELFs in workspace `target/` |
-| `docs/` | [SAFETY.md](../../../../docs/SAFETY.md). API-RULES / CRATES land with hardware crates |
+| `docs/` | [SAFETY.md](../../../../docs/SAFETY.md), [API-RULES.md](../../../../docs/API-RULES.md), [CRATES.md](../../../../docs/CRATES.md) |
 | `.agents/skills/seeed-sticky-hardware/` | Board contract |
 | `.agents/skills/sticky-rs/` | This skill |
 
@@ -20,9 +20,9 @@ transforms — belong in `seeed-reterminal-sticky`. Keep that split.
 
 ## Working rules (this repository)
 
-- Follow [docs/API-RULES.md](../../../../docs/API-RULES.md) once that file
-  exists: typestate for hazardous state, `C-FREE` destructors, no internal
-  bus locking, datasheet citations in rustdoc.
+- Follow [docs/API-RULES.md](../../../../docs/API-RULES.md): typestate for
+  hazardous state, `C-FREE` destructors, no internal bus locking, datasheet
+  citations in rustdoc.
 - Each published crate's `README.md` is the crates.io landing page. Relative
   markdown links there only resolve to files **inside that crate's package**.
   Do not link `../../docs/...`, a sibling crate, or a skill with a
@@ -36,8 +36,8 @@ transforms — belong in `seeed-reterminal-sticky`. Keep that split.
   sheet never names the encoding, do not invent a datasheet-looking alias;
   use the documented on-glass / crate name or a raw primitive.
 - Adopt a crates.io driver only with a recorded verdict in
-  [docs/CRATES.md](../../../../docs/CRATES.md) once that file exists. Never
-  `bq27xxx` (wrong gauge family); never a generic SSD1677 four-gray LUT.
+  [docs/CRATES.md](../../../../docs/CRATES.md). Never `bq27xxx` (wrong
+  gauge family); never a generic SSD1677 four-gray LUT.
 - Host CLIs (`xtask` and any future CLI) use [`clap`](https://docs.rs/clap)
   **derive** (`Parser`, `Subcommand`, `Args`). Do not put clap types in
   `sticky-host`. Do not use clap builder, `pico-args`, or hand-rolled

@@ -16,8 +16,11 @@ On the unit:
 - Cold boot paints a portrait splash (USB-C down) or a landscape
   splash (USB-C right / left) so Ferris and `sticky-rs` stay upright.
   FaceUp / FaceDown keep the last in-plane page.
-- AI Voice / Page Up / Page Down (right-edge top / middle / bottom)
-  walk splash → shapes → legend → four-tone OTP gray boxes.
+- Default image: AI Voice / Page Up / Page Down (right-edge top /
+  middle / bottom) walk splash → shapes → legend → four-tone OTP gray
+  boxes. `--features mic`: AI Voice plays a 1 kHz buzzer tone and dumps
+  PCM; it does not change the page. Page Up / Page Down still walk
+  the drawings.
 - Tap the glass for `touch` lines; tilt the card for `imu=…`. A short
   beep answers a key-down and the first finger on the glass.
 
@@ -80,15 +83,61 @@ usual `btn` / `touch` / `imu=` lines. About four times a second:
 embassy-debug: t=1204 mic rms=12 peak=40
 ```
 
-### Step 4: Observe and report
+### Step 4: AI Voice tone (the board makes the tone)
 
-- **Quiet room**: low, stable `rms` / `peak` values.
-- **Make Noise**: Scratch or tap the **microphone hole** on the USB-C
-  side/edge of the device.
-  - Those numbers should jump. A key-down beep is a weaker extra
-    stimulus.
+Press **AI Voice** (right-edge top). You should hear a 1 kHz buzz for
+about 0.4 s. The page does not change. UART should print `btn 4 down`,
+then a header and 16-sample rows:
 
-**If you observe**: Always-zero or always-max means the mux, slot, or
-rail is wrong, and should not be considered a passing test. Do not treat
-that result as closing
+```text
+embassy-debug: t=1204 btn 4 down
+embassy-debug: t=1204 mic rms=1800 peak=4000
+embassy-debug: t=1204 mic pcm hz=1000 n=256
+embassy-debug: pcm 000 120 -30 400 0 1 2 3 4 5 6 7 8 9 10 11 12
+```
+
+`hz=1000` is the buzzer we played, not a measured mic frequency. Two
+windows (32 ms) dump while the tone is on. A 1 kHz sine at 16 kHz
+would repeat about every 16 samples — look for that period in the
+rows. If the rows stay a flat floor, the mic did not pick up the
+buzzer (enclosure coupling is weak); whistle at the hole as well.
+
+Page Up / Page Down still change the drawing and play the short chirp.
+
+### Step 5: Observe and report
+
+- **Quiet room**: fans and a little background noise are fine. `rms` /
+  `peak` should sit at a stable floor (not zero, not pegged). This is
+  not a silent chamber. Covering the holes can still leave a floor
+  near `rms` 1000 / `peak` 2500 — treat that as the PDM path, not a
+  failed rail.
+- **Make Noise**: Press AI Voice (hear the buzz), or scratch, tap, or
+  whistle at the **microphone hole** on the USB-C side/edge.
+  - Those numbers should jump. A loud whistle can clip `peak` at 32768
+    (16-bit full scale). That is not “always-max” unless the quiet
+    floor was pegged too.
+
+**If you observe**: Always-zero or always-max (quiet and loud look the
+same) means the mux, slot, or rail is wrong, and should not be
+considered a passing test. Do not treat that result as closing
 [`nyc-mic-pdm`](../../.agents/skills/seeed-sticky-hardware/resources/not-yet-confirmed.md#nyc-mic-pdm).
+
+### What we already learned on this unit
+
+Desk notes from one session, not a silent-chamber spec.
+
+- A leftover `monitor` can own the CH343. `lsusb` still shows QinHeng
+  `1a86:55d3`, but `detect-connected` / `flash-app` see no serial port.
+  Ctrl-C that listen. `kill -9` leaves the USB interfaces unbound —
+  unplug and replug once.
+- Quiet with fans on and a little background noise sat around
+  `rms` 1209 / `peak` 2580.
+- Covering as many holes as we could only moved that to about
+  `rms` 1040–890 / `peak` 2940–2640. Same band. That leftover floor is
+  the PDM path, not the room.
+- A whistle jumped to `rms` 2770–6749 and `peak` 13421, then clipped
+  at 32768 (16-bit full scale). That is a live capsule, not a stuck
+  rail.
+
+`nyc-mic-pdm` still wants a known-tone waveform (rate, slot, hole vs
+the samples). Step 4 is that capture, using the buzzer we can play.

@@ -2,7 +2,7 @@
 //!
 //! The firmware owns buses, pins, and the Embassy tasks. This crate owns the
 //! **strings** it prints so the log contract can be tested on the host:
-//! timestamped button, touch, IMU, and mic-energy lines, and no factory
+//! timestamped button, touch, IMU, mic-energy, and PCM-dump lines, and no factory
 //! serial / USB serial / MAC fields.
 
 #![no_std]
@@ -20,6 +20,21 @@ pub const IMU_REPORT_SECS: u32 = 5;
 
 /// Mic energy report period, in milliseconds (`--features mic` image).
 pub const MIC_REPORT_MS: u32 = 250;
+
+/// PDM window length in i16 samples (`--features mic` image).
+pub const PCM_WINDOW_SAMPLES: usize = 256;
+
+/// Samples per `pcm` UART row.
+pub const PCM_ROW_SAMPLES: usize = 16;
+
+/// Nominal buzzer tone on AI Voice capture, in Hz (LEDC 1 kHz).
+pub const BUZZER_TONE_HZ: u32 = 1000;
+
+/// How long the AI Voice buzzer tone stays on, in milliseconds.
+pub const BUZZER_TONE_MS: u32 = 400;
+
+/// PDM windows to dump after the tone starts.
+pub const TONE_DUMP_WINDOWS: u32 = 2;
 
 /// Silicon maximum concurrent touches (GT911 Rev.09 §1).
 pub const MAX_TOUCH_POINTS: usize = 5;
@@ -267,6 +282,40 @@ pub fn pcm_energy(samples: &[i16]) -> (u32, u32) {
     (isqrt_u64(mean_sq) as u32, peak)
 }
 
+/// Header before a PCM dump (`mic pcm hz=… n=…`).
+pub fn format_mic_pcm_header<'a>(
+    t_ms: u32,
+    hz: u32,
+    n: usize,
+    buf: &'a mut [u8],
+) -> Result<&'a str, FormatError> {
+    write_into(
+        buf,
+        format_args!("{LOG_PREFIX}: t={t_ms} mic pcm hz={hz} n={n}"),
+    )
+}
+
+/// One row of signed i16 samples (`pcm <offset> s0 s1 …`).
+pub fn format_mic_pcm_row<'a>(
+    offset: usize,
+    samples: &[i16],
+    buf: &'a mut [u8],
+) -> Result<&'a str, FormatError> {
+    let pos = {
+        let mut writer = SliceWriter { buf, pos: 0 };
+        writer
+            .write_fmt(format_args!("{LOG_PREFIX}: pcm {offset:03}"))
+            .map_err(|_| FormatError::Truncated)?;
+        for sample in samples {
+            writer
+                .write_fmt(format_args!(" {sample}"))
+                .map_err(|_| FormatError::Truncated)?;
+        }
+        writer.pos
+    };
+    str::from_utf8(&buf[..pos]).map_err(|_| FormatError::Truncated)
+}
+
 const fn isqrt_u64(value: u64) -> u64 {
     if value == 0 {
         return 0;
@@ -486,6 +535,25 @@ mod tests {
             "embassy-debug: t=1204 mic rms=12 peak=40"
         );
         assert_eq!(MIC_REPORT_MS, 250);
+        assert_eq!(PCM_WINDOW_SAMPLES, 256);
+        assert_eq!(PCM_ROW_SAMPLES, 16);
+        assert_eq!(BUZZER_TONE_HZ, 1000);
+        assert_eq!(BUZZER_TONE_MS, 400);
+        assert_eq!(TONE_DUMP_WINDOWS, 2);
+    }
+
+    #[test]
+    fn mic_pcm_dump_lines_match_the_agreed_shape() {
+        let mut buf = [0u8; LINE_CAPACITY];
+        assert_eq!(
+            format_mic_pcm_header(1204, 1000, 256, &mut buf).unwrap(),
+            "embassy-debug: t=1204 mic pcm hz=1000 n=256"
+        );
+        let row = [120i16, -30, 400, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+        assert_eq!(
+            format_mic_pcm_row(0, &row, &mut buf).unwrap(),
+            "embassy-debug: pcm 000 120 -30 400 0 1 2 3 4 5 6 7 8 9 10 11 12"
+        );
     }
 
     #[test]

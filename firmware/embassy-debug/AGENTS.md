@@ -21,7 +21,9 @@ Live-ask, never-erase, and flash I/O: root
   Legend, tones, and shapes stay USB-down portrait. OTP gray4 splash /
   legend / tones; OTP 1-bit shapes. No `0x32` LUT, no Lotus `0x21`.
 - Microphone: default image leaves `MicRail` disabled. `--features mic`
-  enables the rail and I2S PDM RX (16 kHz mono, unconfirmed). How-to:
+  enables the rail and I2S PDM RX (16 kHz mono left). AI Voice plays a
+  1 kHz buzzer tone and dumps two PCM windows; it does not change the
+  page. How-to:
   [README.md](README.md#microphone-test-instructions).
 - No deep sleep. No writes below `0x90000`. No Cargo `runner`.
 

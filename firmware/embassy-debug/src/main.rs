@@ -22,8 +22,9 @@ use bq25616::Charger;
 
 // Host-tested UART line format.
 use embassy_debug::{
-    format_event, format_git, format_latched, Event, ImuPose, Scene, TouchPoint, GIT_CAPACITY,
-    IMU_REPORT_SECS, LATCHED_CAPACITY, LINE_CAPACITY, LOG_PREFIX, MAX_TOUCH_POINTS,
+    format_event, format_git, format_latched, Event, ImuPose, Scene, TouchPoint, BUZZER_TONE_MS,
+    GIT_CAPACITY, IMU_REPORT_SECS, LATCHED_CAPACITY, LINE_CAPACITY, LOG_PREFIX, MAX_TOUCH_POINTS,
+    TONE_DUMP_WINDOWS,
 };
 
 // Embassy runtime: tasks, channels, time.
@@ -67,8 +68,18 @@ use seeed_reterminal_sticky::{imu, Latch, I2C_FREQUENCY_HZ};
 esp_bootloader_esp_idf::esp_app_desc!();
 
 static EVENTS: Channel<CriticalSectionRawMutex, Event, 32> = Channel::new();
-static BEEPS: Channel<CriticalSectionRawMutex, (), 4> = Channel::new();
+static BEEPS: Channel<CriticalSectionRawMutex, Beep, 4> = Channel::new();
 static DROPPED: AtomicU32 = AtomicU32::new(0);
+
+/// How many PDM windows the mic task should print as `pcm` rows.
+pub(crate) static TONE_CAPTURE: AtomicU32 = AtomicU32::new(0);
+
+/// Short chirp (keys / glass) or the 1 kHz AI Voice capture tone.
+#[derive(Clone, Copy)]
+enum Beep {
+    Chirp,
+    Tone,
+}
 
 /// The page the display task should paint next.
 pub(crate) static SCENE: Signal<CriticalSectionRawMutex, Scene> = Signal::new();
@@ -90,7 +101,13 @@ pub(crate) fn emit(event: Event) {
 
 /// Ask the buzzer for one short chirp (not a loudspeaker).
 fn ask_beep() {
-    let _ = BEEPS.try_send(());
+    let _ = BEEPS.try_send(Beep::Chirp);
+}
+
+/// Ask the buzzer for the 1 kHz capture tone (`--features mic`).
+#[cfg(feature = "mic")]
+fn ask_tone() {
+    let _ = BEEPS.try_send(Beep::Tone);
 }
 
 /// Pins we must hold for the run so they stay in a safe idle state.
@@ -438,8 +455,9 @@ async fn log_task() {
 
 /// Right-edge keys: log `btn 4`/`5`/`6`, beep, and change the page.
 ///
-/// Page Up goes to the previous drawing; Page Down and AI Voice go to
-/// the next (splash → shapes → legend → tones).
+/// Page Up goes to the previous drawing; Page Down (and AI Voice on the
+/// default image) go to the next. With `--features mic`, AI Voice plays
+/// the 1 kHz capture tone and does not change the page.
 #[embassy_executor::task]
 async fn button_task(
     mut ai_voice: Input<'static>,
@@ -472,13 +490,24 @@ async fn button_task(
             down,
         });
         if down {
-            ask_beep();
             match gpio {
+                4 => {
+                    #[cfg(feature = "mic")]
+                    ask_tone();
+                    #[cfg(not(feature = "mic"))]
+                    {
+                        ask_beep();
+                        scene = scene.next();
+                        SCENE.signal(scene);
+                    }
+                }
                 5 => {
+                    ask_beep();
                     scene = scene.prev();
                     SCENE.signal(scene);
                 }
-                4 | 6 => {
+                6 => {
+                    ask_beep();
                     scene = scene.next();
                     SCENE.signal(scene);
                 }
@@ -633,9 +662,17 @@ async fn buzzer_task(
     }
 
     loop {
-        BEEPS.receive().await;
+        let kind = BEEPS.receive().await;
         let _ = channel0.set_duty(50);
-        Timer::after(Duration::from_millis(80)).await;
+        match kind {
+            Beep::Chirp => {
+                Timer::after(Duration::from_millis(80)).await;
+            }
+            Beep::Tone => {
+                TONE_CAPTURE.store(TONE_DUMP_WINDOWS, Ordering::Relaxed);
+                Timer::after(Duration::from_millis(u64::from(BUZZER_TONE_MS))).await;
+            }
+        }
         let _ = channel0.set_duty(0);
     }
 }

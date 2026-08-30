@@ -81,8 +81,8 @@ espup install                       # installs the `esp` toolchain + Xtensa GCC
 . $HOME/export-esp.sh               # required in every new shell
 ```
 
-`--features operator` is only on `simple-debug-fw`; `--features epd` is only
-on `embassy-debug-fw`. Do not pass either to a host `cargo build`.
+`--features operator` is only on `simple-debug-fw`. Do not pass it to a
+host `cargo build`.
 
 The result is an ELF and `save-image` payload at
 `target/xtensa-esp32s3-none-elf/release-fw/simple-debug-fw` /
@@ -131,7 +131,8 @@ lines, and restore: [firmware/simple-debug/README.md](../firmware/simple-debug/R
 
 ### Path B — with Embassy (`embassy-debug`)
 
-Embassy event logger. Default image does **not** refresh the panel.
+Embassy event logger. The panel refreshes (splash, then GPIO5 / GPIO6
+cycle splash / shapes / legend / four-tone boxes).
 
 ```shell
 . $HOME/export-esp.sh
@@ -142,8 +143,8 @@ cargo xtask monitor
 
 Unattended you should see `embassy-debug: latched`, a GT911 ACK, then an
 IMU line about every 5 s. Buttons, glass, and tilt add `btn` / `touch` /
-pose lines and a short beep. Optional `--features epd` refreshes the
-glass. Full sequence and restore:
+pose lines and a short beep. Page Down reaches the four-tone boxes
+(`scene=tones`). Full sequence and restore:
 [firmware/embassy-debug/README.md](../firmware/embassy-debug/README.md).
 
 `flash-app` writes a `.bin`; it does not compile. If the build fails, do
@@ -181,8 +182,8 @@ factory `app0` with `cargo xtask flash-app` (latch, UART0; **no** panel
 refresh). The image heartbeats raw GPIO, gauge, and IMU levels.
 
 `firmware/embassy-debug` is a separate Embassy image (workspace member, not
-a default-member): latch, timestamped button / touch / IMU lines, and a
-buzzer. The panel is `--features epd` only.
+a default-member): latch, timestamped button / touch / IMU lines, a
+buzzer, and the panel (including four-tone OTP gray4 boxes).
 
 `cargo xtask` **has** talked to a Sticky: `detect-connected`, `--probe`,
 `backup-factory-firmware`, `flash-app`, `monitor`,
@@ -217,7 +218,7 @@ charge enable, latch timing, and sleep current remain human-approved work.
 | [`crates/simple-debug`](../crates/simple-debug) | Host-tested UART heartbeat and GPIO edge line format |
 | [`crates/embassy-debug`](../crates/embassy-debug) | Host-tested UART event lines for the Embassy image |
 | `firmware/simple-debug` | ESP32-S3 proof-of-life. Workspace member, not a default-member |
-| `firmware/embassy-debug` | ESP32-S3 Embassy event logger. Same membership; panel is `--features epd` |
+| `firmware/embassy-debug` | ESP32-S3 Embassy event logger. Same membership; panel always on |
 | `host/sticky-host/` | Host library: detect, factory backup, confirm, restore, `build-fw`, `flash-app`, learn-uart, monitor (`Layout` in; UART lock inside live methods) |
 | `xtask/` | Clap front-end at the repo root (`cargo xtask`) over `sticky-host` |
 | `developer-data/` | Gitignored private / personalized files. Sealed snapshots in `developer-data/backups/`; learn-uart YAML in `uart-inspection-records/<serial>/`; confirm reports in `confirm-records/<serial>/`; not in git |

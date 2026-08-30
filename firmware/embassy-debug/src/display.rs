@@ -1,4 +1,4 @@
-//! OTP 1-bit panel path. Compiled only with `--features epd`.
+//! OTP panel path: 1-bit full refresh, plus a four-tone OTP gray4 scene.
 
 use embassy_debug::{Event, Scene};
 use embassy_time::{with_timeout, Delay, Duration};
@@ -13,7 +13,7 @@ use esp_hal::time::Rate;
 use esp_println::println;
 use seeed_reterminal_sticky::display::{self, RefreshKind};
 use seeed_reterminal_sticky::rails::{Enabled, EpdRail};
-use ssd1677_gray4::planes::{mirror_x_plane, rotate180_mono};
+use ssd1677_gray4::planes::{gray, mirror_x_plane, rotate180_mono, write_mono, PlaneMapping};
 use ssd1677_gray4::Ssd1677;
 use static_cell::ConstStaticCell;
 
@@ -65,18 +65,25 @@ pub async fn display_task(parts: PanelParts, _rail: EpdRail<Output<'static>, Ena
     let busy = Input::new(parts.busy, InputConfig::default().with_pull(Pull::None));
 
     let mut driver = Ssd1677::new(bus, dc, rst, busy, Delay).expect("panel reset");
-    let config = RefreshKind::Full.controller_config();
-    driver.init(&config).expect("panel init");
+    let mut kind = RefreshKind::Full;
+    driver.init(&kind.controller_config()).expect("panel init");
 
     let draw = DRAW.take();
     let tx = TX.take();
 
     let mut scene = Scene::Splash;
-    refresh(&mut driver, draw, tx, scene).await;
+    refresh(&mut driver, draw, tx, scene, &mut kind).await;
 
     loop {
         scene = crate::SCENE.wait().await;
-        refresh(&mut driver, draw, tx, scene).await;
+        refresh(&mut driver, draw, tx, scene, &mut kind).await;
+    }
+}
+
+fn scene_kind(scene: Scene) -> RefreshKind {
+    match scene {
+        Scene::Tones => RefreshKind::Gray4,
+        Scene::Splash | Scene::Shapes | Scene::Legend => RefreshKind::Full,
     }
 }
 
@@ -85,33 +92,43 @@ async fn refresh<SPI, DC, RST, BUSY>(
     draw: &mut [u8; display::PLANE_BYTES],
     tx: &mut [u8; display::PLANE_BYTES],
     scene: Scene,
+    kind: &mut RefreshKind,
 ) where
     SPI: embedded_hal::spi::SpiDevice,
     DC: embedded_hal::digital::OutputPin,
     RST: embedded_hal::digital::OutputPin<Error = DC::Error>,
     BUSY: InputPin<Error = DC::Error> + Wait<Error = DC::Error>,
 {
-    draw_scene(scene, draw);
-    if rotate180_mono(draw, display::WIDTH as usize, display::HEIGHT as usize, tx).is_err() {
-        println!("embassy-debug: epd rotate failed");
-        return;
-    }
-    mirror_x_plane(tx);
-
-    draw.fill(0);
-    if driver.write_black_white_plane(tx).is_err() {
-        println!("embassy-debug: epd write failed");
-        return;
-    }
-    if driver.write_second_plane(draw).is_err() {
-        println!("embassy-debug: epd write failed");
-        return;
+    let next = scene_kind(scene);
+    if next != *kind {
+        if driver.init(&next.controller_config()).is_err() {
+            println!("embassy-debug: epd re-init failed");
+            return;
+        }
+        *kind = next;
     }
 
-    if driver
-        .start_update_sequence(RefreshKind::Full.sequence())
-        .is_err()
-    {
+    match next {
+        RefreshKind::Gray4 => {
+            if !write_tones(driver, draw, tx) {
+                return;
+            }
+        }
+        RefreshKind::Full | RefreshKind::Partial => {
+            if !write_mono_scene(driver, draw, tx, scene) {
+                return;
+            }
+        }
+    }
+
+    if let Some(temp) = next.temperature_override() {
+        if driver.write_temperature_register(temp).is_err() {
+            println!("embassy-debug: epd temperature failed");
+            return;
+        }
+    }
+
+    if driver.start_update_sequence(next.sequence()).is_err() {
         println!("embassy-debug: epd update failed");
         return;
     }
@@ -125,6 +142,64 @@ async fn refresh<SPI, DC, RST, BUSY>(
         }
         Ok(Err(_)) | Err(_) => println!("embassy-debug: epd busy timeout"),
     }
+}
+
+fn write_mono_scene<SPI, DC, RST, BUSY, DELAY>(
+    driver: &mut Ssd1677<SPI, DC, RST, BUSY, DELAY, ssd1677_gray4::Active>,
+    draw: &mut [u8; display::PLANE_BYTES],
+    tx: &mut [u8; display::PLANE_BYTES],
+    scene: Scene,
+) -> bool
+where
+    SPI: embedded_hal::spi::SpiDevice,
+    DC: embedded_hal::digital::OutputPin,
+    RST: embedded_hal::digital::OutputPin<Error = DC::Error>,
+    BUSY: InputPin<Error = DC::Error>,
+    DELAY: embedded_hal::delay::DelayNs,
+{
+    draw_scene(scene, draw);
+    if rotate180_mono(draw, display::WIDTH as usize, display::HEIGHT as usize, tx).is_err() {
+        println!("embassy-debug: epd rotate failed");
+        return false;
+    }
+    mirror_x_plane(tx);
+
+    draw.fill(0);
+    if driver.write_black_white_plane(tx).is_err() {
+        println!("embassy-debug: epd write failed");
+        return false;
+    }
+    if driver.write_second_plane(draw).is_err() {
+        println!("embassy-debug: epd write failed");
+        return false;
+    }
+    true
+}
+
+fn write_tones<SPI, DC, RST, BUSY, DELAY>(
+    driver: &mut Ssd1677<SPI, DC, RST, BUSY, DELAY, ssd1677_gray4::Active>,
+    bw: &mut [u8; display::PLANE_BYTES],
+    red: &mut [u8; display::PLANE_BYTES],
+) -> bool
+where
+    SPI: embedded_hal::spi::SpiDevice,
+    DC: embedded_hal::digital::OutputPin,
+    RST: embedded_hal::digital::OutputPin<Error = DC::Error>,
+    BUSY: InputPin<Error = DC::Error>,
+    DELAY: embedded_hal::delay::DelayNs,
+{
+    draw_tones(bw, red);
+    mirror_x_plane(bw);
+    mirror_x_plane(red);
+
+    if driver
+        .write_gray4_frame(&display::FULL_WINDOW, bw, red)
+        .is_err()
+    {
+        println!("embassy-debug: epd write failed");
+        return false;
+    }
+    true
 }
 
 fn draw_scene(scene: Scene, buf: &mut [u8]) {
@@ -145,7 +220,63 @@ fn draw_scene(scene: Scene, buf: &mut [u8]) {
             fill_rect(buf, 680, 200, 80, 80);
             fill_rect(buf, 680, 360, 80, 80);
         }
+        Scene::Tones => {}
     }
+}
+
+/// Four landscape boxes, one OTP gray level each (black → white).
+fn draw_tones(bw: &mut [u8], red: &mut [u8]) {
+    bw.fill(0);
+    red.fill(0);
+    const BOX_W: u16 = 140;
+    const BOX_H: u16 = 280;
+    const BOX_Y: u16 = 100;
+    const BOXES: [(u16, u8); 4] = [
+        (60, gray::BLACK),
+        (240, gray::DARK_GRAY),
+        (420, gray::LIGHT_GRAY),
+        (600, gray::WHITE),
+    ];
+    for (x, tone) in BOXES {
+        fill_rect_gray(bw, red, x, BOX_Y, BOX_W, BOX_H, tone);
+        stroke_rect_gray(bw, red, x, BOX_Y, BOX_W, BOX_H, gray::BLACK);
+    }
+}
+
+fn fill_rect_gray(bw: &mut [u8], red: &mut [u8], x: u16, y: u16, w: u16, h: u16, tone: u8) {
+    for yy in y..y.saturating_add(h).min(display::HEIGHT) {
+        for xx in x..x.saturating_add(w).min(display::WIDTH) {
+            set_gray(bw, red, xx, yy, tone);
+        }
+    }
+}
+
+fn stroke_rect_gray(bw: &mut [u8], red: &mut [u8], x: u16, y: u16, w: u16, h: u16, tone: u8) {
+    if w == 0 || h == 0 {
+        return;
+    }
+    let x1 = x.saturating_add(w).saturating_sub(1);
+    let y1 = y.saturating_add(h).saturating_sub(1);
+    for xx in x..=x1.min(display::WIDTH.saturating_sub(1)) {
+        set_gray(bw, red, xx, y, tone);
+        set_gray(bw, red, xx, y1, tone);
+    }
+    for yy in y..=y1.min(display::HEIGHT.saturating_sub(1)) {
+        set_gray(bw, red, x, yy, tone);
+        set_gray(bw, red, x1, yy, tone);
+    }
+}
+
+fn set_gray(bw: &mut [u8], red: &mut [u8], x: u16, y: u16, tone: u8) {
+    if x >= display::WIDTH || y >= display::HEIGHT {
+        return;
+    }
+    let width = display::WIDTH as usize;
+    let xr = usize::from(display::WIDTH - 1 - x);
+    let yr = usize::from(display::HEIGHT - 1 - y);
+    let (bw_bit, red_bit) = PlaneMapping::SEEED_OTP.bits_for(tone);
+    write_mono(bw, width, xr, yr, bw_bit);
+    write_mono(red, width, xr, yr, red_bit);
 }
 
 fn frame(buf: &mut [u8], inset: u16) {

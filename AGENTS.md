@@ -32,7 +32,7 @@ Host tools: [sticky-rs](.agents/skills/sticky-rs/SKILL.md)
 | `host/*` | Default-members. `host/sticky-host/` is the host library |
 | `xtask/` | Default-member at the repo root (`cargo xtask`) |
 | `firmware/simple-debug` | Workspace member, not a default-member |
-| `firmware/embassy-debug` | Workspace member, not a default-member. Panel is `--features epd` |
+| `firmware/embassy-debug` | Workspace member, not a default-member. Panel is always on |
 
 Host verify uses default-members. rust-analyzer excludes the two firmware
 packages via [rust-analyzer.toml](rust-analyzer.toml). Full path table:

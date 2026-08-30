@@ -39,7 +39,7 @@ impl FirmwareImage {
 pub struct BuildFwArgs {
     /// Which firmware package to build.
     pub image: FirmwareImage,
-    /// Cargo features on that package (`operator`, `epd`).
+    /// Cargo features on that package (`operator` on simple-debug).
     pub features: Vec<String>,
     /// `true` is `--profile release-fw` (the documented default).
     pub release: bool,

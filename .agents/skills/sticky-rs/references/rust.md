@@ -153,7 +153,7 @@ Do not flash this stack with `pio run` or `idf.py`.
 Pin `Cargo.lock`. PSRAM, LEDC, I2S/PDM, and some sleep APIs have lived behind
 `esp-hal` `unstable`. `firmware/simple-debug`
 is blocking `esp-hal` only — no Embassy, no RTOS. `firmware/embassy-debug`
-is the Embassy image (`esp-rtos` + executor); the panel is `--features epd`.
+is the Embassy image (`esp-rtos` + executor); the panel is always on.
 
 SPI: construct the bus with **only** SCLK/MOSI/MISO and the CS pins in the
 [pin map](../../seeed-sticky-hardware/references/pin-map.md). Do not attach
@@ -204,8 +204,7 @@ Load a custom image only after a factory original exists, with
 `firmware/simple-debug` (blocking `esp-hal` latch + I2C facts + UART
 heartbeat of raw levels; host-tested line format in `crates/simple-debug`)
 and `firmware/embassy-debug` (Embassy log task, buttons, GT911, IMU every
-5 s, buzzer; panel only with `--features epd`; host-tested lines in
-`crates/embassy-debug`).
+5 s, buzzer, panel; host-tested lines in `crates/embassy-debug`).
 
 ## Datasheet catalog vs crates
 

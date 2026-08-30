@@ -26,8 +26,8 @@ live in
 | `learn-uart` | yes | Heartbeat vet plus skippable human steps. Needs a matching original or capture. YAML + sidecar `*.uart.log` under `developer-data/uart-inspection-records/<serial>/` (factory serial, not MAC). `--image FILE` flashes `app0` first (needs `--yes`). `--restore-app0` puts factory `app0` back after (UART closed first; needs an original; one `--yes` covers both writes). `--report FILE` extra YAML copy. `--skip STEP` (`buttons`, `vbus`, `imu`, `sd_detect`, `touch`). `--only STEP` or `--unattended-only`. `--step-timeout-secs N`. Press `s` to skip a wait. Tilt waits for a rest pose after Enter. After each key, a human label (or `unknown`) and optional note. A finished session copies `learn-uart-latest.yaml` (`complete: true`); a crash does not. Firmware / host stamp `git=` / `package_git` |
 | `learn-uart-only` | yes | Same session as `learn-uart`, only named groups: `touch`, `buttons`, `vbus`, `imu`, `sd` (positional and/or `--only`). Example: `learn-uart-only touch --image FILE --yes --restore-app0` |
 | `diff-learn-uart` | no | Host-only compare of two YAML reports or factory serials. Default paste uses `UNIT_A` / `UNIT_B`; `--show-serials` prints serials locally |
-| `build-fw` | no | Host-only. `cargo +esp build -p <fw> --profile release-fw --target xtensa-esp32s3-none-elf -Zbuild-std=core,alloc --locked` then `espflash save-image` (no port). IMAGE is `simple-debug` or `embassy-debug`. `--features operator` / `epd`. ELF and `.bin` under workspace `target/xtensa-esp32s3-none-elf/release-fw/` |
-| `ci` | no | Host-only CI gate. `cargo fmt --check --all`; host clippy+test (default-members, `--all-features`, `ssd1677-gray4 --no-default-features`); `cargo +esp` clippy for `simple-debug-fw` (default and `operator`) and `embassy-debug-fw` (default and `epd`); then `rumdl check`, `cargo machete`, `cargo audit`. Missing extra tools print `cargo install …` and fail. Does not open a UART and does not refuse leftover `backups/` |
+| `build-fw` | no | Host-only. `cargo +esp build -p <fw> --profile release-fw --target xtensa-esp32s3-none-elf -Zbuild-std=core,alloc --locked` then `espflash save-image` (no port). IMAGE is `simple-debug` or `embassy-debug`. `--features operator` on simple-debug. ELF and `.bin` under workspace `target/xtensa-esp32s3-none-elf/release-fw/` |
+| `ci` | no | Host-only CI gate. `cargo fmt --check --all`; host clippy+test (default-members, `--all-features`, `ssd1677-gray4 --no-default-features`); `cargo +esp` clippy for `simple-debug-fw` (default and `operator`) and `embassy-debug-fw`; then `rumdl check`, `cargo machete`, `cargo audit`. Missing extra tools print `cargo install …` and fail. Does not open a UART and does not refuse leftover `backups/` |
 | `monitor` | yes | UART0 listen. Flags below; not nested subcommands. Pair with `flash-app` / `restore-factory-firmware` / `confirm-factory-firmware` |
 
 ```shell
@@ -174,8 +174,8 @@ has not. Bring-up has met latch, UART0, sensor I2C, and gauge reads; it
 has not refreshed the panel.
 
 `firmware/simple-debug` is the in-repo proof-of-life image.
-`firmware/embassy-debug` is a separate Embassy event-logger (panel only
-with `--features epd`). Earlier `firmware/bringup` and
+`firmware/embassy-debug` is a separate Embassy event-logger (panel always
+on). Earlier `firmware/bringup` and
 `firmware/learn` images were flashed the same way; after each,
 `restore --part app0` returned stock `reterminal_template` 1.1.0.
 `learn-uart` with the operator image has been run (right-edge `btn 4` /

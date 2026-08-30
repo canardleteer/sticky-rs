@@ -4,8 +4,8 @@ Embassy event-logger image for the reTerminal Sticky. It is not product
 firmware. Host-tested line format: [`crates/embassy-debug`](../../crates/embassy-debug).
 
 Default builds latch power, print timestamped button / GT911 / IMU lines on
-UART0 (CH343, 115200), and beep the passive buzzer. The panel is **off**
-unless you pass `--features epd`.
+UART0 (CH343, 115200), beep the passive buzzer, and refresh the panel
+(OTP 1-bit scenes plus a four-tone gray4 page).
 
 This image **cannot** close measurement-backlog electrical items. A UART
 snapshot is firmware-observed sequencing, not a meter or a schematic.
@@ -25,8 +25,8 @@ tries to compile `esp-hal`.
   Status clear then command `0`. No config-RAM write.
 - IMU: accel only. No `init_irqs`. Reports every 5 s (`IMU_REPORT_SECS`).
 - Buzzer: LEDC ~1 kHz on GPIO48, short beep on button down and first contact.
-- Panel: only with `--features epd`. OTP 1-bit full refresh, no `0x32` LUT,
-  no Lotus `0x21`.
+- Panel: OTP 1-bit full refresh for splash / shapes / legend, then OTP
+  gray4 for four tone boxes. No `0x32` LUT, no Lotus `0x21`.
 - No deep sleep. No writes below `0x90000`. No Cargo `runner`.
 
 ## What it prints
@@ -44,13 +44,14 @@ Touch coordinates are mapped with `touch::to_screen`. A pose that does not
 classify is `imu=none`; the raw sample is still printed. If the log channel
 overflows: `drop=N`.
 
-With `--features epd`, Page Up / Page Down cycle splash / shapes / legend
-and print `scene=…`.
+Page Up / Page Down cycle splash / shapes / legend / tones and print
+`scene=…`. The tones page is four boxes (black, dark gray, light gray,
+white) via OTP gray4.
 
 ## Desk demo
 
-This is the unattended-plus-hands check: flash the **default** image (no
-`--features epd`, so the glass is not refreshed), then watch UART0.
+This is the unattended-plus-hands check: flash the image, then watch
+UART0. The glass refreshes (splash first).
 
 First-time toolchain and both image paths:
 [docs/getting-started.md](../../docs/getting-started.md).
@@ -121,10 +122,8 @@ First-time toolchain and both image paths:
    cargo xtask restore-factory-firmware --part app0 --yes
    ```
 
-A second image with `cargo xtask build-fw embassy-debug --features epd`
-(then the same `flash-app` / `monitor`) also refreshes the panel: white clear,
-splash, then GPIO5 / GPIO6 cycle splash / shapes / legend and print
-`scene=…`. Skip that until you want glass updates. Do not invent a LUT.
+GPIO5 / GPIO6 cycle splash / shapes / legend / four-tone boxes and print
+`scene=…`. Do not invent a LUT.
 
 This image is not the `learn-uart` operator format (`simple-debug`
 `--features operator` is). Use `flash-app` then `monitor` here.

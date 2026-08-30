@@ -95,8 +95,7 @@ Host-only. Builds one firmware workspace member with cargo +esp \
 (--profile release-fw --target xtensa-esp32s3-none-elf -Zbuild-std=core,alloc \
 --locked) and packs a flash payload with espflash save-image (no port). ELF \
 and .bin land under workspace target/xtensa-esp32s3-none-elf/release-fw/. \
-IMAGE is simple-debug or embassy-debug. Features: operator (simple-debug), \
-epd (embassy-debug). \
+IMAGE is simple-debug or embassy-debug. Features: operator (simple-debug). \
 Needs the esp toolchain (source the script `espup` printed, often \
 `$HOME/export-esp.sh`) and espflash on PATH. Does not \
 open a UART and does not flash.";
@@ -105,8 +104,8 @@ const CI_ABOUT: &str = "\
 Host-only CI gate. Runs cargo fmt --check --all; host clippy and test on \
 default-members (default features, then --all-features), then \
 -p ssd1677-gray4 --no-default-features; cargo +esp clippy for \
-simple-debug-fw (default and operator) and embassy-debug-fw (default and \
-epd); then rumdl check, cargo machete, and cargo audit. Needs the esp \
+simple-debug-fw (default and operator) and embassy-debug-fw; then rumdl \
+check, cargo machete, and cargo audit. Needs the esp \
 toolchain (source the script `espup` printed, often `$HOME/export-esp.sh`) \
 for the firmware clippy steps. If rumdl, cargo-machete, or cargo-audit is \
 missing, prints `cargo install …` and fails that step. Does not open a \
@@ -328,7 +327,7 @@ impl From<FirmwareImageArg> for FirmwareImage {
 pub struct BuildFwCliArgs {
     /// `simple-debug` or `embassy-debug`.
     pub image: FirmwareImageArg,
-    /// Cargo features on that package (`operator`, `epd`).
+    /// Cargo features on that package (`operator` on simple-debug).
     #[arg(long)]
     pub features: Vec<String>,
     /// Build the debug profile instead of `--profile release-fw`.

@@ -1,8 +1,9 @@
 //! reTerminal Sticky Embassy event-logger image.
 //!
-//! Latch, then UART0 lines for buttons, GT911, and IMU. The panel is behind
-//! `--features epd`. Flash only via `cargo xtask flash-app` after a matching
-//! snapshot exists (original or capture).
+//! Latch, then UART0 lines for buttons, GT911, and IMU, plus the panel
+//! (OTP 1-bit scenes and a four-tone gray4 page). Flash only via
+//! `cargo xtask flash-app` after a matching snapshot exists (original or
+//! capture).
 //!
 //! # Before flashing anything
 //!
@@ -19,13 +20,14 @@ use core::sync::atomic::{AtomicU32, Ordering};
 
 use bq25616::Charger;
 use embassy_debug::{
-    format_event, format_git, format_latched, Event, ImuPose, TouchPoint, GIT_CAPACITY,
+    format_event, format_git, format_latched, Event, ImuPose, Scene, TouchPoint, GIT_CAPACITY,
     IMU_REPORT_SECS, LATCHED_CAPACITY, LINE_CAPACITY, LOG_PREFIX, MAX_TOUCH_POINTS,
 };
 use embassy_executor::Spawner;
 use embassy_futures::select::{select3, Either3};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
+use embassy_sync::signal::Signal;
 use embassy_time::{Duration, Instant, Timer};
 use embedded_hal::delay::DelayNs;
 use esp_backtrace as _;
@@ -48,18 +50,12 @@ use seeed_reterminal_sticky::touch::{
 };
 use seeed_reterminal_sticky::{imu, Latch, I2C_FREQUENCY_HZ};
 
-#[cfg(feature = "epd")]
-use embassy_debug::Scene;
-#[cfg(feature = "epd")]
-use embassy_sync::signal::Signal;
-
 esp_bootloader_esp_idf::esp_app_desc!();
 
 static EVENTS: Channel<CriticalSectionRawMutex, Event, 32> = Channel::new();
 static BEEPS: Channel<CriticalSectionRawMutex, (), 4> = Channel::new();
 static DROPPED: AtomicU32 = AtomicU32::new(0);
 
-#[cfg(feature = "epd")]
 pub(crate) static SCENE: Signal<CriticalSectionRawMutex, Scene> = Signal::new();
 
 /// Milliseconds since Embassy time started.
@@ -117,9 +113,6 @@ async fn main(spawner: Spawner) {
         peripherals.GPIO7,
         InputConfig::default().with_pull(Pull::Up),
     );
-
-    #[cfg(not(feature = "epd"))]
-    let _epd_cs = Output::new(peripherals.GPIO15, Level::High, OutputConfig::default());
 
     let _sd_cs = Output::new(peripherals.GPIO8, Level::High, OutputConfig::default());
     let _sd_rail: SdRail<_, _> = Rail::new(
@@ -210,7 +203,6 @@ async fn main(spawner: Spawner) {
         InputConfig::default().with_pull(Pull::Up),
     );
 
-    #[cfg(feature = "epd")]
     let epd_rail = {
         use seeed_reterminal_sticky::rails::EpdRail;
         let rail: EpdRail<_, _> = Rail::new(
@@ -231,36 +223,22 @@ async fn main(spawner: Spawner) {
     spawner.spawn(imu_task(sensor_i2c).expect("imu task"));
     spawner.spawn(buzzer_task(peripherals.LEDC, peripherals.GPIO48).expect("buzzer task"));
 
-    #[cfg(feature = "epd")]
-    {
-        spawner.spawn(
-            crate::display::display_task(
-                crate::display::PanelParts {
-                    spi: peripherals.SPI2,
-                    sclk: peripherals.GPIO13,
-                    mosi: peripherals.GPIO14,
-                    cs: peripherals.GPIO15,
-                    dc: peripherals.GPIO16,
-                    rst: peripherals.GPIO17,
-                    busy: peripherals.GPIO18,
-                },
-                epd_rail,
-            )
-            .expect("display task"),
-        );
-        SCENE.signal(Scene::Splash);
-    }
-
-    #[cfg(not(feature = "epd"))]
-    {
-        let _ = (peripherals.SPI2, peripherals.GPIO13, peripherals.GPIO14);
-        let _ = (
-            peripherals.GPIO16,
-            peripherals.GPIO17,
-            peripherals.GPIO18,
-            peripherals.GPIO47,
-        );
-    }
+    spawner.spawn(
+        crate::display::display_task(
+            crate::display::PanelParts {
+                spi: peripherals.SPI2,
+                sclk: peripherals.GPIO13,
+                mosi: peripherals.GPIO14,
+                cs: peripherals.GPIO15,
+                dc: peripherals.GPIO16,
+                rst: peripherals.GPIO17,
+                busy: peripherals.GPIO18,
+            },
+            epd_rail,
+        )
+        .expect("display task"),
+    );
+    SCENE.signal(Scene::Splash);
 
     let _keep_latched = latch;
     loop {
@@ -291,7 +269,6 @@ async fn log_task() {
 
 #[embassy_executor::task]
 async fn button_task(mut btn4: Input<'static>, mut btn5: Input<'static>, mut btn6: Input<'static>) {
-    #[cfg(feature = "epd")]
     let mut scene = Scene::Splash;
 
     loop {
@@ -319,19 +296,16 @@ async fn button_task(mut btn4: Input<'static>, mut btn5: Input<'static>, mut btn
         });
         if down {
             ask_beep();
-            #[cfg(feature = "epd")]
-            {
-                match gpio {
-                    5 => {
-                        scene = scene.prev();
-                        SCENE.signal(scene);
-                    }
-                    6 => {
-                        scene = scene.next();
-                        SCENE.signal(scene);
-                    }
-                    _ => {}
+            match gpio {
+                5 => {
+                    scene = scene.prev();
+                    SCENE.signal(scene);
                 }
+                6 => {
+                    scene = scene.next();
+                    SCENE.signal(scene);
+                }
+                _ => {}
             }
         }
     }
@@ -468,5 +442,4 @@ async fn buzzer_task(
     }
 }
 
-#[cfg(feature = "epd")]
 mod display;

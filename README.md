@@ -14,8 +14,10 @@
   - The goal here is that we can create a `sticky-cli`, but for now,
     `cargo xtask` is more efficient for development.
 - **Read [docs/SAFETY.md](docs/SAFETY.md) before flashing or probing a unit.**
-  - A mistake can destroy factory NVS (per-unit RF calibration), the fuel-gauge OTP, or the panel. 
-- [Getting started](docs/getting-started.md) (host verify, Xtensa, firmware install & run). 
+  - A mistake can destroy factory NVS (per-unit RF calibration), the
+    fuel-gauge OTP, or the panel.
+- [Getting started](docs/getting-started.md) (host verify, Xtensa, firmware
+  install & run).
 - [Snapshot HOWTO](docs/firmware-snapshot-management.md).
   - I highly recommend snapshotting the original firmware, before first use.
 - [Hardware details](.agents/skills/seeed-sticky-hardware/SKILL.md).
@@ -24,7 +26,10 @@
 
 > [!IMPORTANT]
 >
-> We haven't gotten the touchpanel working yet. Help here is appreciated.
+> We haven't gotten the touchpanel working yet (Help here is appreciated).
+>
+> Anything we haven't written a test for to confirm behavior, is likely still
+> misaligned (screen orientation enums, etc, are still backwards)
 
 ## Firmware Examples
 
@@ -34,7 +39,7 @@
 ## cargo xtask
 
 From the repo root (`cargo xtask <subcommand>`). `cargo xtask --help` lists
-flags. 
+flags.
 
 Live commands take `--port` or `ESPFLASH_PORT`; if unset they need
 exactly one QinHeng CH343 (`1a86:55d3`).

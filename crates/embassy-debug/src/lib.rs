@@ -80,7 +80,7 @@ pub struct TouchPoint {
     pub y: u16,
 }
 
-/// Pages the optional `epd` image can show.
+/// Pages the panel can show.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Scene {
     /// Cold-boot splash after the white clear.
@@ -89,11 +89,13 @@ pub enum Scene {
     Shapes,
     /// Button legend.
     Legend,
+    /// Four boxes, one OTP gray level each.
+    Tones,
 }
 
 impl Scene {
     /// Cycle order for Page Up / Page Down.
-    pub const ALL: [Self; 3] = [Self::Splash, Self::Shapes, Self::Legend];
+    pub const ALL: [Self; 4] = [Self::Splash, Self::Shapes, Self::Legend, Self::Tones];
 
     /// Token written after `scene=`.
     #[inline]
@@ -103,6 +105,7 @@ impl Scene {
             Self::Splash => "splash",
             Self::Shapes => "shapes",
             Self::Legend => "legend",
+            Self::Tones => "tones",
         }
     }
 
@@ -113,7 +116,8 @@ impl Scene {
         match self {
             Self::Splash => Self::Shapes,
             Self::Shapes => Self::Legend,
-            Self::Legend => Self::Splash,
+            Self::Legend => Self::Tones,
+            Self::Tones => Self::Splash,
         }
     }
 
@@ -122,9 +126,10 @@ impl Scene {
     #[must_use]
     pub const fn prev(self) -> Self {
         match self {
-            Self::Splash => Self::Legend,
+            Self::Splash => Self::Tones,
             Self::Shapes => Self::Splash,
             Self::Legend => Self::Shapes,
+            Self::Tones => Self::Legend,
         }
     }
 }
@@ -163,7 +168,7 @@ pub enum Event {
         /// Raw Z LSB.
         z: i16,
     },
-    /// The optional panel finished a scene (feature `epd` only).
+    /// The panel finished a scene.
     Scene {
         /// Milliseconds since boot.
         t_ms: u32,
@@ -424,14 +429,22 @@ mod tests {
     #[test]
     fn scene_wraps_in_both_directions() {
         assert_eq!(Scene::Splash.next(), Scene::Shapes);
-        assert_eq!(Scene::Legend.next(), Scene::Splash);
-        assert_eq!(Scene::Splash.prev(), Scene::Legend);
+        assert_eq!(Scene::Legend.next(), Scene::Tones);
+        assert_eq!(Scene::Tones.next(), Scene::Splash);
+        assert_eq!(Scene::Splash.prev(), Scene::Tones);
         assert_eq!(
             line(&Event::Scene {
                 t_ms: 9,
                 scene: Scene::Shapes,
             }),
             "embassy-debug: t=9 scene=shapes"
+        );
+        assert_eq!(
+            line(&Event::Scene {
+                t_ms: 11,
+                scene: Scene::Tones,
+            }),
+            "embassy-debug: t=11 scene=tones"
         );
     }
 

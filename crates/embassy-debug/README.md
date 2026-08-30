@@ -11,8 +11,8 @@ timestamped button, touch, and IMU events, and no identifier fields.
 The firmware prints these strings on UART0 at 115200 through a dedicated
 Embassy log task. Host tools: `cargo xtask build-fw embassy-debug`, then
 `cargo xtask flash-app` (writes the `.bin` only), then `cargo xtask monitor`
-(USB CDC listen; no ACM TTY). The panel is an opt-in `epd` feature on the
-firmware package, not this crate. Restore factory `app0` if the image wedges.
+(USB CDC listen; no ACM TTY). The firmware package drives the panel
+(including a four-tone page). Restore factory `app0` if the image wedges.
 
 ```text
 embassy-debug: latched

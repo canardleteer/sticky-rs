@@ -1,0 +1,38 @@
+[package]
+name = "sticky-host"
+version = "0.1.0"
+description = "Programmatic host API for Sticky UART detect, factory backup/confirm/restore, app0 flash-app, learn-uart, and no-reset monitor"
+readme = "README.md"
+publish = true
+edition.workspace = true
+# Matches cargo-espflash / espflash 4.5. Workspace crates stay 1.85.
+rust-version = "1.88"
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+# learn-uart operator prompts (TTY / NO_COLOR / CLICOLOR).
+anstream = "1.0.0"
+anstyle = "1.0.14"
+# learn-uart: cbreak so `s` skips a wait without Enter (no unsafe in this crate).
+rustix = { version = "1.1.4", features = ["termios"] }
+# Library used by cargo-espflash. The cargo plugin itself has no lib target.
+# `cli` is intentionally off: no SemVer, and we must not pull ELF-flash helpers.
+espflash = { version = "4.5.0", default-features = false, features = ["serialport"] }
+# Advisory flock for live UART commands (no unsafe in this crate).
+fs4 = "0.13.1"
+log = "0.4.27"
+# USB CDC listen without opening the ACM TTY (cdc-acm asserts DTR+RTS on open).
+nusb = "0.2.7"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
+noyalib = "0.0.28"
+simple-debug = { path = "../../crates/simple-debug", version = "0.1.0" }
+# Enumeration needs libudev; we only open ESPFLASH_PORT. Same as espflash.
+serialport = { version = "4.7.2", default-features = false }
+sha2 = "0.10.9"
+tempfile = "3.20.0"
+
+[lints]
+workspace = true

@@ -25,6 +25,8 @@ fs4 = "0.13.1"
 log = "0.4.27"
 # USB CDC listen without opening the ACM TTY (cdc-acm asserts DTR+RTS on open).
 nusb = "0.2.7"
+# Ctrl-C must run Drop so we reattach cdc-acm (not a process-kill).
+ctrlc = "3.4.7"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
 noyalib = "0.0.28"

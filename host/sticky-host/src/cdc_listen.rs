@@ -5,7 +5,10 @@
 //! path claims the USB interfaces instead and leaves the modem lines deasserted.
 
 use std::io::{self, Read};
-use std::time::Duration;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::OnceLock;
+use std::thread;
+use std::time::{Duration, Instant};
 
 use nusb::descriptors::TransferType;
 use nusb::transfer::{Bulk, ControlOut, ControlType, Direction, In, Recipient};
@@ -24,6 +27,28 @@ const CDC_DATA: u8 = 0x0A;
 
 const USB_TIMEOUT: Duration = Duration::from_millis(250);
 
+static INTERRUPT: AtomicBool = AtomicBool::new(false);
+static INTERRUPT_HANDLER: OnceLock<()> = OnceLock::new();
+
+/// Catch SIGINT/SIGTERM so [`CdcListen`] Drop can reattach `cdc-acm`.
+///
+/// A default Ctrl-C kills the process. That releases the UART flock (the
+/// kernel closes the fd) but leaves the kernel driver detached, so the
+/// next `flash-app` sees no QinHeng TTY until the cable is replugged.
+pub fn catch_interrupt() {
+    INTERRUPT_HANDLER.get_or_init(|| {
+        let _ = ctrlc::set_handler(|| {
+            INTERRUPT.store(true, Ordering::SeqCst);
+        });
+    });
+}
+
+/// True after Ctrl-C / SIGTERM. Listen loops should break so Drop runs.
+#[must_use]
+pub fn interrupt_requested() -> bool {
+    INTERRUPT.load(Ordering::Relaxed)
+}
+
 /// Open the CH343 as USB CDC and read UART bytes without pulsing EN/IO0.
 pub struct CdcListen {
     reader: Option<nusb::io::EndpointRead<Bulk>>,
@@ -37,6 +62,7 @@ pub struct CdcListen {
 impl CdcListen {
     /// Claim the USB device that backs `port`. Does not open the ACM node.
     pub fn open(port: &str) -> Result<Self, Error> {
+        catch_interrupt();
         crate::detect::require_sticky_ch343(port)?;
         let key = usb_device_key_for_port(port)?;
         if key.vid != QINHENG_VID || key.pid != QINHENG_PID {
@@ -109,8 +135,33 @@ impl Drop for CdcListen {
         self.reader = None;
         self.data = None;
         self.comm = None;
-        let _ = self.device.attach_kernel_driver(self.data_num);
-        let _ = self.device.attach_kernel_driver(self.comm_num);
+        reattach(&self.device, self.data_num, "data");
+        reattach(&self.device, self.comm_num, "comm");
+    }
+}
+
+fn reattach(device: &nusb::Device, iface: u8, name: &str) {
+    if let Err(error) = device.attach_kernel_driver(iface) {
+        log::warn!("reattach cdc-acm {name} (if {iface}): {error}");
+    }
+}
+
+/// True when inventory sees a QinHeng TTY again (kernel driver bound).
+#[must_use]
+pub fn wait_for_kernel_tty(timeout: Duration) -> bool {
+    let deadline = Instant::now() + timeout;
+    loop {
+        if crate::detect::scan().ok().is_some_and(|cands| {
+            cands.iter().any(|cand| {
+                cand.kind == crate::detect::PortKind::StickyCh343 && cand.preferred_port().is_some()
+            })
+        }) {
+            return true;
+        }
+        if Instant::now() >= deadline {
+            return false;
+        }
+        thread::sleep(Duration::from_millis(50));
     }
 }
 
@@ -224,6 +275,11 @@ mod tests {
             9, 4, 1, 0, 1, 0x0A, 0x00, 0x00, 0, // data
             7, 5, 0x81, 0x02, 64, 0, 0, // bulk IN
         ]
+    }
+
+    #[test]
+    fn interrupt_starts_clear() {
+        assert!(!super::interrupt_requested());
     }
 
     #[test]

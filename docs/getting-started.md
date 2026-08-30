@@ -142,6 +142,9 @@ cargo xtask flash-app --image target/xtensa-esp32s3-none-elf/release-fw/embassy-
 cargo xtask monitor
 ```
 
+Ctrl-C ends monitor and hands `cdc-acm` back so the next `flash-app`
+can see the CH343. Do not `kill -9` that listen.
+
 Unattended you should see `embassy-debug: latched`, a GT911 ACK, then an
 IMU line about every 5 s. Buttons, glass, and tilt add `btn` / `touch` /
 pose lines and a short beep. Page Down reaches the four-tone boxes

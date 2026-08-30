@@ -876,6 +876,9 @@ fn drain_until(
     let skip = SkipWatch::enter();
     let mut chunk = [0u8; 1024];
     while Instant::now() < until {
+        if crate::cdc_listen::interrupt_requested() {
+            return Err(Error::Device("listen interrupted".into()));
+        }
         if skip.poll_skip() {
             return Ok(DrainEnd::Skip);
         }

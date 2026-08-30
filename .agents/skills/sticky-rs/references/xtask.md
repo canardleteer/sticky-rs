@@ -73,8 +73,9 @@ for the whole listen. Default listen claims the CH343 over USB CDC so
 Linux `cdc-acm` never opens the ACM TTY (that open asserts DTR+RTS and
 pulses EN / `POWERON`). Baud is 115200. Needs write access on the usbfs
 node (`/dev/bus/usb/…`); a udev rule for `1a86:55d3` in group `dialout`
-is enough. `--acm-tty` is the old TTY path (embassy will reboot). Prefer
-`--for` / `--lines` over `timeout`(1) or killing the process.
+is enough. `--acm-tty` is the old TTY path (embassy will reboot).
+Ctrl-C reattaches `cdc-acm` so the next live command can see the TTY.
+Prefer `--for` / `--lines` over `timeout`(1) or `kill -9`.
 
 | Flag | What it does |
 | --- | --- |

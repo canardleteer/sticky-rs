@@ -35,41 +35,48 @@ pub struct MonitorOptions {
 /// activates the TTY (that open asserts DTR+RTS and pulses EN).
 /// [`MonitorOptions::acm_tty`] is the old ACM path. [`crate::monitor`] holds
 /// [`crate::uart_lock::UartSession`] for the whole read so backup, restore,
-/// etc. cannot reset the chip while this session is open. Ctrl-C
-/// (SIGINT) ends the process and closes the flock with the port fd.
+/// etc. cannot reset the chip while this session is open. Ctrl-C sets a
+/// flag so [`crate::cdc_listen::CdcListen`] Drop reattaches `cdc-acm`
+/// (a default SIGINT would leave the TTY gone until the cable is
+/// replugged). The flock still drops with the process.
 /// [`MonitorOptions::for_secs`] or [`MonitorOptions::lines`] end with
 /// [`Ok`] instead.
 pub fn monitor(port: &str, options: &MonitorOptions) -> Result<(), Error> {
     crate::detect::require_sticky_ch343(port)?;
-    let mut reader: Box<dyn Read> = if options.acm_tty {
-        Box::new(open_acm_tty(port)?)
-    } else {
-        Box::new(crate::cdc_listen::CdcListen::open(port)?)
-    };
+    {
+        let mut reader: Box<dyn Read> = if options.acm_tty {
+            Box::new(open_acm_tty(port)?)
+        } else {
+            Box::new(crate::cdc_listen::CdcListen::open(port)?)
+        };
 
-    let mut file = match &options.output {
-        Some(path) => Some(File::create(path).map_err(|error| {
-            Error::Device(format!("monitor --output {}: {error}", path.display()))
-        })?),
-        None => None,
-    };
-    let mut stdout = io::stdout();
-    let mut budget = ListenBudget::new(options.for_secs, options.lines);
-    let mut buf = [0u8; 4096];
-    loop {
-        if budget.is_exhausted() {
-            break;
-        }
-        match reader.read(&mut buf) {
-            Ok(0) => {}
-            Ok(n) => {
-                emit(&mut stdout, file.as_mut(), options.quiet, &buf[..n])?;
-                budget.note_bytes(&buf[..n]);
+        let mut file = match &options.output {
+            Some(path) => Some(File::create(path).map_err(|error| {
+                Error::Device(format!("monitor --output {}: {error}", path.display()))
+            })?),
+            None => None,
+        };
+        let mut stdout = io::stdout();
+        let mut budget = ListenBudget::new(options.for_secs, options.lines);
+        let mut buf = [0u8; 4096];
+        loop {
+            if budget.is_exhausted() || crate::cdc_listen::interrupt_requested() {
+                break;
             }
-            Err(error) if error.kind() == io::ErrorKind::TimedOut => {}
-            Err(error) if error.kind() == io::ErrorKind::Interrupted => break,
-            Err(error) => return Err(Error::Device(format!("UART read failed: {error}"))),
+            match reader.read(&mut buf) {
+                Ok(0) => {}
+                Ok(n) => {
+                    emit(&mut stdout, file.as_mut(), options.quiet, &buf[..n])?;
+                    budget.note_bytes(&buf[..n]);
+                }
+                Err(error) if error.kind() == io::ErrorKind::TimedOut => {}
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => break,
+                Err(error) => return Err(Error::Device(format!("UART read failed: {error}"))),
+            }
         }
+    }
+    if !options.acm_tty && !crate::cdc_listen::wait_for_kernel_tty(Duration::from_secs(2)) {
+        log::warn!("cdc-acm did not reappear; unplug/replug if flash-app cannot see the CH343");
     }
     Ok(())
 }

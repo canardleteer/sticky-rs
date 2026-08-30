@@ -34,7 +34,9 @@
 ## Firmware Examples
 
 - [plain](./firmware/simple-debug)
+  - [quick install](./docs/getting-started.md#path-a--without-embassy-simple-debug)
 - [embassy-rs](./firmware/embassy-debug)
+  - [quick install](./docs/getting-started.md#path-b--with-embassy-embassy-debug)
 
 ## cargo xtask
 

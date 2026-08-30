@@ -159,6 +159,15 @@ Firmware that has run this on production Stickys
 That is a **working recipe**, not a close of
 [nyc-mic-pdm](../resources/not-yet-confirmed.md#nyc-mic-pdm). Sample rate,
 slot, and which way the hole faces vs the waveform are still unmeasured.
+
+Enabling GPIO38 and attaching I2S PDM RX is **not** a
+[safety.md](safety.md) destroy-the-board row. USB-C
+debug is the CH343 on UART0, so 19/20 are free for PDM while that cable
+is plugged in. Embassy-debug `--features mic` uses the same `flash-app`
+path as the default image. Always-zero or always-max UART energy is a
+mux, slot, or rail miss. Do not use native USB-Serial/JTAG on USB-C
+while those pins are PDM. After deep sleep, disable the USB pad before
+PDM (above). Hold GPIO38 low when unused.
 The GPIO38 switch is named **TPS22916** only in that firmware; treat the
 part number like the capsule ID until a schematic confirms it.
 

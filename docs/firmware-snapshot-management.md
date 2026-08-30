@@ -3,7 +3,9 @@
 How to capture, classify, flash, and restore a Seeed reTerminal Sticky
 without destroying data you cannot get back.
 
-Hazard rules stay in [SAFETY.md](SAFETY.md). This page is the operator
+Hazard rules stay in the hardware skill
+[safety.md](../.agents/skills/seeed-sticky-hardware/references/safety.md)
+(`docs/SAFETY.md` is a symlink). This page is the operator
 manual: what lives on disk, what xtask prints, and which commands to run.
 Flag catalog: [`.agents/skills/sticky-rs/references/xtask.md`](../.agents/skills/sticky-rs/references/xtask.md).
 

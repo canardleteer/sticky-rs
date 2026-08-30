@@ -35,8 +35,9 @@ exclude = [
     "CHANGELOG.md",
     "LICENSE.md",
     "examples/README.md",
-    # Symlink of resources/datasheets.md; lint the real file once.
+    # Symlinks into the hardware skill; lint the real files once.
     "docs/DATASHEETS.md",
+    "docs/SAFETY.md",
     # Vendor PDFs and pdftotext extracts (also gitignored).
     ".agents/skills/seeed-sticky-hardware/resources/datasheets/md/**",
     ".agents/skills/seeed-sticky-hardware/resources/datasheets/pdf/**",

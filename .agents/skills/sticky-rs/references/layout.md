@@ -10,7 +10,7 @@
 | `xtask/` | Clap front-end at the repo root (`cargo xtask`). Maps flags to `sticky-host`; `repo_root()` is the parent of this package |
 | `developer-data/` | Gitignored private / personalized files. Sealed dumps under `developer-data/backups/` (`original/<serial>/`, `captures/<unit-id>/<slug>/`). Learn-uart YAML under `uart-inspection-records/<serial>/`. Confirm reports under `confirm-records/<serial>/`. Not in git. Leftover repo-root `backups/` is also ignored; do not use it |
 | `firmware/*` | Workspace members, not default-members. ELFs in workspace `target/` |
-| `docs/` | [SAFETY.md](../../../../docs/SAFETY.md), [getting-started.md](../../../../docs/getting-started.md), [firmware-snapshot-management.md](../../../../docs/firmware-snapshot-management.md), [API-RULES.md](../../../../docs/API-RULES.md), [CRATES.md](../../../../docs/CRATES.md), [ssd1677.md](../../../../docs/ssd1677.md), [DATASHEETS.md](../../../../docs/DATASHEETS.md) (symlink into the hardware skill) |
+| `docs/` | [SAFETY.md](../../../../docs/SAFETY.md) (symlink into the hardware skill), [getting-started.md](../../../../docs/getting-started.md), [firmware-snapshot-management.md](../../../../docs/firmware-snapshot-management.md), [API-RULES.md](../../../../docs/API-RULES.md), [CRATES.md](../../../../docs/CRATES.md), [ssd1677.md](../../../../docs/ssd1677.md), [DATASHEETS.md](../../../../docs/DATASHEETS.md) (symlink into the hardware skill) |
 | `rust-analyzer.toml` | Excludes `simple-debug-fw` and `embassy-debug-fw` from host check |
 | `.agents/skills/seeed-sticky-hardware/` | Board contract |
 | `.agents/skills/sticky-rs/` | This skill |

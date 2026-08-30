@@ -26,10 +26,10 @@ hardware unless marked otherwise.
 | 16 | Output | EPD D/C | |
 | 17 | Output | EPD RST | 10 ms low, 10 ms high works |
 | 18 | Input | EPD BUSY | Busy when **high**. Prefer an edge interrupt over polling |
-| 19 | Output | PDM mic clock | Also ESP32-S3 USB D− / USB-Serial-JTAG pad. After deep sleep the USB function reclaims it; disable the pad before PDM RX. Factory ACK. |
-| 20 | Input | PDM mic data | Also ESP32-S3 USB D+ / USB-Serial-JTAG pad. Same reclaim. Factory ACK. |
+| 19 | Output | PDM mic clock | Also ESP32-S3 USB D− / USB-Serial-JTAG pad. USB-C debug is the CH343 on UART0, so this pad is free for PDM while that cable is plugged in. After deep sleep the USB function reclaims it; disable the pad before PDM RX. Factory ACK. |
+| 20 | Input | PDM mic data | Also ESP32-S3 USB D+ / USB-Serial-JTAG pad. Same CH343 / reclaim notes as GPIO19. Factory ACK. |
 | 21 | I/O | GT911 INT | Address-select during reset, then input. **No default pull** at/after reset (v2.2 Table 2-1). RTC-capable. |
-| 38 | Output | Mic power enable | Active-high load switch. Hold low in sleep; cycle low after wake before recording. |
+| 38 | Output | Mic power enable | Active-high load switch. Hold low when unused and in sleep (floating across sleep can leave the capsule half-powered). Cycle low after wake before recording. Enabling the rail is not a [safety.md](safety.md) destroy-the-board row. |
 | 39 | Output | BQ25616 charge enable | **Active low**. Default IO MUX F0 is JTAG `MTCK` (v2.2 Table 2-4); mux to GPIO before driving. |
 | 40 | Input | BQ25616 `CHARGE_STATE` | Wired in compiled profiles; polarity unconfirmed. Default F0 is JTAG `MTDO`. |
 | 41 | Output | GT911 RST | Address-select sequence. Default F0 is JTAG `MTDI` (input); mux to GPIO. After reset: IE, no pull. |

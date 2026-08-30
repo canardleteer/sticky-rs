@@ -4,10 +4,11 @@ description: >-
   Use when writing or reviewing firmware or software for the Seeed Studio
   reTerminal Sticky (ESP32-S3R8, 800x480 SSD1677 e-paper, GT911, CH343P UART),
   including GPIO and bus maps, power-latch bring-up, display/touch/IMU/battery
-  wiring, shared SPI, deep sleep, flashing geometry, or when sources disagree
-  about this board. Vendor datasheet citations use the skill catalog and a
-  gitignored local PDF/markdown cache; populate that cache when the work is
-  registers, opcodes, or timings. Also use when the user mentions Sticky,
+  wiring, shared SPI, deep sleep, flashing geometry, destroy-the-board
+  hazards, or when sources disagree about this board. Vendor datasheet
+  citations use the skill catalog and a gitignored local PDF/markdown
+  cache; populate that cache when the work is registers, opcodes, or
+  timings. Also use when the user mentions Sticky,
   reTerminal Sticky, seeed-sticky, or vendor C++ / PlatformIO / Playground
   firmware as evidence of how this board is wired.
 ---
@@ -26,30 +27,33 @@ path here.
 
 1. **Authority** — [references/sources.md](references/sources.md). Precedence
    and the conflict inventory. The skill user weighs disagreements.
-2. **Observed silicon** — [references/measure.md](references/measure.md). Chip,
+2. **Hazards** — [references/safety.md](references/safety.md). Destroy the
+   board or irreplaceable data. A consuming repo may symlink this page as
+   `docs/SAFETY.md`.
+3. **Observed silicon** — [references/measure.md](references/measure.md). Chip,
    flash, USB UART, factory image, and which peripherals ACK **on a Sticky
    in hand**. That beats SDK/DevKit profiles when they disagree on those
    fields.
-3. **Enclosure** — [references/enclosure.md](references/enclosure.md). Where
+4. **Enclosure** — [references/enclosure.md](references/enclosure.md). Where
    keys, holes, USB-C, and the SD slot sit. Vendored Seeed diagram:
    [resources/enclosure/appearance_en.png](resources/enclosure/appearance_en.png).
    The glass is the panel, not a key.
-4. **Pin map and rails** — remaining hardware pages (not available from ROM
+5. **Pin map and rails** — remaining hardware pages (not available from ROM
    `board-info`; they come from firmware that has run on this product).
-5. **Official docs and firmware catalog** —
+6. **Official docs and firmware catalog** —
    [references/catalog.md](references/catalog.md).
-6. **Vendor datasheets** — [resources/datasheets.md](resources/datasheets.md).
+7. **Vendor datasheets** — [resources/datasheets.md](resources/datasheets.md).
    Registers, opcodes, timings for parts confirmed on this model. **Vendor
    the local cache** when that work needs a sheet (see
    [Vendor datasheets](#vendor-datasheets-local-cache)).
-7. **Vendor C++ evidence** —
+8. **Vendor C++ evidence** —
    [references/cpp-platformio.md](references/cpp-platformio.md). Sequences
    from ESP-IDF / PlatformIO trees that ran on glass (third-party unless
    the vendor published them).
-8. **Measurement backlog** — GPIO7 is on the pin map; other open nets and
+9. **Measurement backlog** — GPIO7 is on the pin map; other open nets and
    confirmation recipes live in
    [resources/not-yet-confirmed.md](resources/not-yet-confirmed.md).
-9. **External skills and sources** — including
+10. **External skills and sources** — including
    [varo6/reTerminal-sticky-skill](https://github.com/varo6/reTerminal-sticky-skill)
    and on-glass ESPHome audio in
    [sira-fiinikkusu/reterminal-sticky-voice-companion](https://github.com/sira-fiinikkusu/reterminal-sticky-voice-companion)
@@ -205,6 +209,7 @@ Factory firmware also ACKs the PDM microphone and SD slot.
 
 | Question | Read |
 | --- | --- |
+| What can destroy the board or irreplaceable data | [references/safety.md](references/safety.md) |
 | How to read chip, flash, USB, factory image on your unit | [references/measure.md](references/measure.md) |
 | Where keys, holes, USB-C, and the SD slot sit | [references/enclosure.md](references/enclosure.md) |
 | GPIO, I2C, SPI, part numbers | [references/pin-map.md](references/pin-map.md) |
@@ -244,6 +249,12 @@ Factory firmware also ACKs the PDM microphone and SD slot.
 - Treat USB-C as CMSIS-DAP / JTAG / RTT, or log on native USB CDC.
 - Leave the ESP32-S3 USB-Serial-JTAG pad enabled on GPIO19/20 if the PDM
   microphone must work after deep sleep ([sensors.md](references/sensors.md#pdm-microphone)).
+- Use native USB-Serial/JTAG or `probe-rs` on USB-C while GPIO19/20 are
+  PDM. Debug stays on the CH343 (UART0). Enabling the mic rail and
+  running PDM RX is not a [safety.md](references/safety.md)
+  destroy-the-board row; mute energy is a failed experiment.
+- Leave GPIO38 floating across deep sleep (the load switch / capsule can
+  sit half-powered). Hold it low when unused.
 - Copy PDM clock/data from reTerminal **E-series** wiki pages (GPIO42/41).
 - Assume GT911 `0x5D` without the INT-during-reset sequence (probe `0x14` first).
 - Leave GPIO41 (`MTDI`) / GPIO42 (`MTMS`) on their default JTAG pad functions

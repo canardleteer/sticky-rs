@@ -87,14 +87,22 @@ where
     let mut scanner = Scanner::new(central);
     let config = BleScanConfig::default();
 
+    // One session per report window, same as Wi-Fi `scan_async`. A single
+    // long-lived enable can look frozen: trouble-host's scan docs say to
+    // call `scan` again after a report, and some controllers keep their
+    // own duplicate filter for the whole enable.
     let scan = async {
-        let Ok(_session) = scanner.scan(&config).await else {
-            println!("{LOG}: ble scan failed");
-            return;
-        };
         loop {
-            Timer::after(Duration::from_secs(u64::from(RADIO_REPORT_SECS))).await;
-            printer.flush();
+            match scanner.scan(&config).await {
+                Ok(_session) => {
+                    Timer::after(Duration::from_secs(u64::from(RADIO_REPORT_SECS))).await;
+                    printer.flush();
+                }
+                Err(_) => {
+                    println!("{LOG}: ble scan failed");
+                    Timer::after(Duration::from_secs(u64::from(RADIO_REPORT_SECS))).await;
+                }
+            }
         }
     };
 
@@ -137,6 +145,31 @@ impl NamePrinter {
             names.clear();
         });
     }
+
+    fn consider(&self, name: &str, rssi: i8) {
+        self.names.lock(|cell| {
+            let mut names = cell.borrow_mut();
+            if let Some((_, seen_rssi)) = names.iter_mut().find(|(seen, _)| seen.as_str() == name)
+            {
+                if rssi > *seen_rssi {
+                    *seen_rssi = rssi;
+                }
+                return;
+            }
+            let Ok(stored) = heapless::String::try_from(name) else {
+                return;
+            };
+            if !names.is_full() {
+                let _ = names.push((stored, rssi));
+                return;
+            }
+            if let Some((i, _)) = names.iter().enumerate().min_by_key(|(_, (_, r))| *r) {
+                if rssi > names[i].1 {
+                    names[i] = (stored, rssi);
+                }
+            }
+        });
+    }
 }
 
 impl EventHandler for NamePrinter {
@@ -147,18 +180,7 @@ impl EventHandler for NamePrinter {
             let raw_name = adv_local_name(report.data).unwrap_or(b"");
             let mut label = [0u8; RADIO_LABEL_MAX];
             let name = sanitize_radio_label(raw_name, &mut label);
-            self.names.lock(|cell| {
-                let mut names = cell.borrow_mut();
-                if names.iter().any(|(seen, _)| seen.as_str() == name) {
-                    return;
-                }
-                if names.is_full() {
-                    return;
-                }
-                if let Ok(stored) = heapless::String::try_from(name) {
-                    let _ = names.push((stored, report.rssi));
-                }
-            });
+            self.consider(name, report.rssi);
         }
     }
 }

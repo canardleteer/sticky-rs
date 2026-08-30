@@ -203,21 +203,30 @@ embassy-debug: t=1800 ble n=1
 embassy-debug: t=1800 ble name=Phone rssi=-70
 ```
 
-`n=0` is a pass if the scan finished and the room is empty. A name of
-`?` means an advertisement had no local name (still not a MAC).
+`n=0` is a pass if that scan finished (no hang). A name of `?` means
+the advertisement had no local name (still not a MAC).
 
 Right-edge keys still change the page and play the short chirp.
 
-### Step 4: Optional — something to hear
+### Step 4: Optional — a known AP or BLE advertiser
 
-Turn on a phone's Bluetooth or sit near a known AP. Those numbers
-should go up, or a new `ssid=` / `name=` line should appear. That is
-the "whistle" analog. An empty list in a quiet RF room is not a fail.
+Sit near an access point you already know, or put a phone in BLE
+advertising / pairing so it has a local name. Wait for the next
+ten-second print (each `ble n=` is a fresh scan, same as Wi-Fi).
+
+You should see that SSID or name, or `wifi n=` / `ble n=` go up.
+At most eight `ssid=` lines and eight `name=` lines; a stronger
+RSSI can displace a weaker one. Classic Bluetooth (not BLE
+advertising) will not appear. Missing one extra device is not a
+fail if Step 3 already printed both radios.
 
 ### Step 5: Observe and report
 
 - **Both radios**: `wifi n=` and `ble n=` both appear in one
-  `monitor` session. That is concurrent use.
+  `monitor` session. That is concurrent use. On glass: one listen
+  printed `wifi n=8` (line cap) and `ble n=` well over 100, with
+  `imu=` still running. Facts:
+  [pin-map.md](../../.agents/skills/seeed-sticky-hardware/references/pin-map.md#on-glass-embassy-debug-radio-feature).
 - **Fail**: hang, panic, or only one of `wifi` / `ble` ever prints.
 
 This is a stack / RF-cal-after-`flash-app` check, not an NYC pin. Do

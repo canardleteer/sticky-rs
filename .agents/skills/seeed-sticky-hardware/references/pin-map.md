@@ -114,6 +114,16 @@ pins above. In ESP-IDF, unused `quadwp` / `quadhd` / `data4`–`data7` must be
 | USB-UART | WCH CH343P | UART0 GPIO43/44, USB `1a86:55d3` |
 | Microphone | MEMSensing **MSM261DDB020** | PDM GPIO19/20; EN GPIO38 is **TPS22916CYFPR**. No loudspeaker. Pins 19/20 are also USB-Serial-JTAG; see [sensors.md](sensors.md#pdm-microphone). |
 | Buzzer | **FUET-5018** (passive) | GPIO48 PWM through CJ2324 |
-| Antenna | On-board ANT1 | 2.4 GHz match. Shared Wi-Fi / BLE. No external antenna |
+| Antenna | On-board ANT1 | 2.4 GHz match. Shared Wi-Fi / BLE. No external antenna. On glass: [below](#on-glass-embassy-debug-radio-feature) |
 
 No frontlight. No 4-bit SDMMC; MicroSD is SPI only.
+
+### On glass (embassy-debug radio feature)
+
+embassy-debug `--features radio` scanned Wi-Fi and BLE together on
+ANT1. One listen printed `wifi n=` and `ble n=` while `imu=` kept
+running. Wi-Fi hit the eight-SSID line cap; BLE windows reported
+well over a hundred advertisements and a few unique local names
+(plus `name=?` when the ad had no name). Printed SSID RSSI ran from
+the high −40s to the mid −90s. Scan only: no STA join, no BLE
+connect, no MAC or BSSID on UART. Not an NYC pin.

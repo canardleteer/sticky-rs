@@ -80,7 +80,7 @@ not wrap them:
 
 | Feature | Notes | On glass |
 | --- | --- | --- |
-| Wi-Fi 802.11 and Bluetooth LE | Radio on the ESP32-S3; schematic on-board **ANT1** (2.4 GHz). Use the firmware stack (`esp-hal` / `esp-idf`); no pin map entry. | no |
+| Wi-Fi 802.11 and Bluetooth LE | Radio on the ESP32-S3; schematic on-board **ANT1** (2.4 GHz). Use the firmware stack (`esp-hal` / `esp-idf`); no pin map entry. Embassy-debug `--features radio` scanned both in one UART listen. | yes |
 | 8 MB in-package octal PSRAM | MCU/HAL init. | no |
 | 32 MB external quad flash | MCU/HAL. Factory NVS is per-unit. | no |
 | Deep sleep | Hold documented GPIO levels across entry (see this crate's rustdoc). Wake on `BUTTON_OK`. Sequencing is firmware. | no |

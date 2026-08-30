@@ -72,6 +72,7 @@ weighs them.
 | GPIO40 | UART `gpio40=1` with `/CE` parked (not charging) | Schematic: BQ25616 STAT. Low while charging when `/CE` is enabled; high-Z/high when done or parked |
 | GT911 | UART `touch=ok`; learning image ACKs `0x14`. Bunny on glass reads points (100 kHz, 30 ms, `0x814E = 0` only, tap on release). Crate `init()` extra `0x8040` write is not Bunny. Earlier operator `NotReady`→`poll failed` was a host/image miss, not “no touch.” | Datasheet / FreeInk default `0x5D` / 800×480 raw |
 | **GPIO7** | Unused in on-glass IMU poll (input, low, no edges) | Schematic: shared LSM6DS3TR-C INT1 (`6D_INTn`) and BQ27220 GPOUT (`BFG_INT`). Seeed and `sticky-2048` named the same pin. Do not drive. |
+| ANT1 / radio | UART `wifi n=` and `ble n=` in one embassy-debug `--features radio` listen; `imu=` still running | Schematic on-board ANT1, shared 2.4 GHz |
 
 Software rows (CPU, DIO/QIO, 16 MB n16r8) are decided as software choices.
 Electrical rows that still need a meter or a missing glass PN are in

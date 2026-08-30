@@ -28,8 +28,9 @@ Live-ask, never-erase, and flash I/O: root
   the page. How-to:
   [README.md](README.md#microphone-test-instructions).
 - Radio: default image leaves Wi-Fi and BLE off. `--features radio`
-  scans both at once on the on-board antenna. Scan only; no NVS
-  writes; no MAC / BSSID. How-to:
+  scans both at once on the on-board antenna (on glass: `wifi n=`
+  and `ble n=` in one listen). Scan only; no NVS writes; no MAC /
+  BSSID. How-to:
   [README.md](README.md#radio-test-instructions).
 - No deep sleep. No writes below `0x90000`. No Cargo `runner`.
 

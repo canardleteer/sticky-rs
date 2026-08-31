@@ -182,7 +182,10 @@ Addresses: BQ27220 `0x55`, PCF8563 `0x51`, LSM6DS3 `0x6A`.
 
 `components/seeed_epaper` documents SSD1677 as “reTerminal E1005”; Sticky uses
 that driver class. That driver is **OTP** (no 0x32). Do not port a FreeInk
-`Ssd1677Driver` MCU LUT onto this glass.
+`Ssd1677Driver` MCU LUT onto this glass. Stock `reterminal_template`
+1.1.0 adds `ssd1677_standby` / `ssd1677_resume` (`0x22 = 0x03` then
+`0x20`; `0x22 = 0xC0` then `0x20`). UC8179 leaves both NULL. The 2048
+tree’s SSD1677 driver has only `.sleep` (`0x10 = 0x03`).
 
 Source map: `src/board/` power, charger, buses, pins; `src/display/`;
 `src/input/` touch+buttons; `src/sensors/` IMU; `src/devices/` battery, RTC,

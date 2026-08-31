@@ -55,8 +55,13 @@ impl UpdateSequence {
     /// Disable clock only (`0x01`).
     pub const DISABLE_CLOCK: Self = Self(0x01);
     /// Enable clock, then analog (`0xC0`).
+    ///
+    /// Stock `ssd1677_resume` writes this, then Master Activation.
     pub const ENABLE_CLOCK_AND_ANALOG: Self = Self(0xc0);
     /// Disable analog, then clock (`0x03`).
+    ///
+    /// Stock `ssd1677_standby` writes this, then Master Activation.
+    /// Controller RAM stays; this is not Deep Sleep (`0x10`).
     pub const DISABLE_ANALOG_AND_CLOCK: Self = Self(0x03);
     /// Enable clock and analog, DISPLAY Mode 1, then power down (`0xC7`).
     pub const DISPLAY_MODE_1: Self = Self(0xc7);
@@ -209,6 +214,7 @@ mod tests {
         assert_eq!(UpdateSequence::SEEED_GRAY4.byte(), 0xd7);
         assert_eq!(UpdateSequence::DISPLAY_MODE_1.byte(), 0xc7);
         assert_eq!(UpdateSequence::ENABLE_CLOCK_AND_ANALOG.byte(), 0xc0);
+        assert_eq!(UpdateSequence::DISABLE_ANALOG_AND_CLOCK.byte(), 0x03);
     }
 
     #[test]

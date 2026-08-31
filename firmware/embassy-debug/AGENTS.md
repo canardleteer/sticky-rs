@@ -51,7 +51,15 @@ Live-ask, never-erase, and flash I/O: root
   and `ble n=` in one listen). Scan only; no NVS writes; no MAC /
   BSSID. How-to:
   [README.md](README.md#radio-test-instructions).
-- No deep sleep. No writes below `0x90000`. No Cargo `runner`.
+- Deep sleep: hold Page Down 4 s. The image paints a sleep card, sends
+  SSD1677 `0x10`, cuts `EPD_EN`, keeps the latch high, and wakes on
+  GPIO6 `ext1` ANY_LOW. Hold Page Down 1 s after wake to restore the
+  same card. Early release re-sleeps without painting. Recessed Reset
+  or a USB unplug/replug is a POWERON (splash). GPIO4 is still the
+  stock/docs wake pin; this image uses GPIO6 because the gesture is
+  Page Down. Do not `Latch::release`. Sit with
+  `cargo xtask monitor` **without** `--acm-tty` (`--acm-tty` pulses EN
+  and is a POWERON). No writes below `0x90000`. No Cargo `runner`.
 
 ## Flash and UART
 

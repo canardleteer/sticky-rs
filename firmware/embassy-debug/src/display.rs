@@ -10,8 +10,9 @@ use crate::{emit, now_ms};
 
 // Embassy time + UART scene token.
 use embassy_debug::{Event, Scene};
-use embassy_futures::select::{select, Either};
+use embassy_futures::select::{select3, Either3};
 use embassy_time::{with_timeout, Delay, Duration};
+use embedded_hal::delay::DelayNs;
 
 // Draw splash with built-in mono fonts.
 use embedded_graphics::mono_font::ascii::FONT_10X20;
@@ -31,7 +32,7 @@ use esp_hal::spi::Mode;
 use esp_hal::time::Rate;
 use esp_println::println;
 use seeed_reterminal_sticky::display::{self, PageRotation, RefreshKind};
-use seeed_reterminal_sticky::rails::{Enabled, EpdRail};
+use seeed_reterminal_sticky::rails::{Enabled, EpdRail, PanelParked};
 use ssd1677_gray4::planes::{gray, rotate180_mono, write_mono, PlaneMapping};
 use ssd1677_gray4::Ssd1677;
 use static_cell::ConstStaticCell;
@@ -78,14 +79,19 @@ pub struct PanelParts {
     pub sd: crate::sd::SdParts,
 }
 
-/// Bring the panel up, paint splash, then wait for a key or an IMU pose.
+/// Bring the panel up, paint the start card, then wait for a key or an IMU pose.
 ///
 /// On the unit: splash stays upright in the four in-plane holds. FaceUp /
 /// FaceDown keep the last of those. Other pages stay USB-down. In the
 /// MCU: OTP gray4 for splash, the key legend, and tones; OTP 1-bit for
-/// shapes.
+/// shapes. A 4 s Page Down paints the sleep card and parks the panel.
 #[embassy_executor::task]
-pub async fn display_task(parts: PanelParts, _rail: EpdRail<Output<'static>, Enabled>) {
+pub async fn display_task(
+    parts: PanelParts,
+    rail: EpdRail<Output<'static>, Enabled>,
+    start: Scene,
+    start_rotation: PageRotation,
+) {
     #[cfg(feature = "sd")]
     let start_hz = seeed_reterminal_sticky::sd::INIT_HZ;
     #[cfg(not(feature = "sd"))]
@@ -123,8 +129,8 @@ pub async fn display_task(parts: PanelParts, _rail: EpdRail<Output<'static>, Ena
     let busy = Input::new(parts.busy, InputConfig::default().with_pull(Pull::None));
 
     let mut driver = Ssd1677::new(bus, dc, rst, busy, Delay).expect("panel reset");
-    let mut scene = Scene::Splash;
-    let mut rotation = PageRotation::Portrait0;
+    let mut scene = start;
+    let mut rotation = start_rotation;
     let mut kind = scene_kind(scene);
     driver.init(&kind.controller_config()).expect("panel init");
 
@@ -134,18 +140,34 @@ pub async fn display_task(parts: PanelParts, _rail: EpdRail<Output<'static>, Ena
     refresh(&mut driver, draw, tx, scene, rotation, &mut kind).await;
 
     loop {
-        match select(crate::SCENE.wait(), crate::PAGE_ROTATION.wait()).await {
-            Either::First(next) => {
+        match select3(
+            crate::SCENE.wait(),
+            crate::PAGE_ROTATION.wait(),
+            crate::sleep::SLEEP_REQUEST.wait(),
+        )
+        .await
+        {
+            Either3::First(next) => {
                 scene = next;
                 refresh(&mut driver, draw, tx, scene, rotation, &mut kind).await;
             }
-            Either::Second(next) => {
+            Either3::Second(next) => {
                 if next == rotation {
                     continue;
                 }
                 rotation = next;
                 if scene == Scene::Splash {
                     refresh(&mut driver, draw, tx, scene, rotation, &mut kind).await;
+                }
+            }
+            Either3::Third(()) => {
+                crate::sleep::persist(scene, rotation);
+                if paint_sleep_card(&mut driver, draw, tx, &mut kind).await {
+                    park_panel(driver, rail);
+                }
+                crate::sleep::PANEL_PARKED.signal(());
+                loop {
+                    embassy_time::Timer::after(embassy_time::Duration::from_secs(3_600)).await;
                 }
             }
         }
@@ -218,6 +240,96 @@ async fn refresh<SPI, DC, RST, BUSY>(
         }
         Ok(Err(_)) | Err(_) => println!("embassy-debug: epd busy timeout"),
     }
+}
+
+/// Sleep card, then wait BUSY. Returns false if the write or wait failed.
+async fn paint_sleep_card<SPI, DC, RST, BUSY>(
+    driver: &mut Ssd1677<SPI, DC, RST, BUSY, Delay, ssd1677_gray4::Active>,
+    bw: &mut [u8; display::PLANE_BYTES],
+    red: &mut [u8; display::PLANE_BYTES],
+    kind: &mut RefreshKind,
+) -> bool
+where
+    SPI: embedded_hal::spi::SpiDevice,
+    DC: embedded_hal::digital::OutputPin,
+    RST: embedded_hal::digital::OutputPin<Error = DC::Error>,
+    BUSY: InputPin<Error = DC::Error> + Wait<Error = DC::Error>,
+{
+    let next = RefreshKind::Gray4;
+    if next != *kind {
+        if driver.init(&next.controller_config()).is_err() {
+            println!("embassy-debug: epd re-init failed");
+            return false;
+        }
+        *kind = next;
+    }
+    draw_sleep_card(bw, red);
+    if driver
+        .write_gray4_frame(&display::FULL_WINDOW, bw, red)
+        .is_err()
+    {
+        println!("embassy-debug: epd write failed");
+        return false;
+    }
+    if driver.start_update_sequence(next.sequence()).is_err() {
+        println!("embassy-debug: epd update failed");
+        return false;
+    }
+    match with_timeout(REFRESH_TIMEOUT, driver.wait_until_idle_async()).await {
+        Ok(Ok(())) => {
+            emit(Event::Sleeping { t_ms: now_ms() });
+            true
+        }
+        Ok(Err(_)) | Err(_) => {
+            println!("embassy-debug: epd busy timeout");
+            false
+        }
+    }
+}
+
+/// `0x10 = 0x03`, wait, cut `EPD_EN`, hold the pad.
+fn park_panel<SPI, DC, RST, BUSY>(
+    driver: Ssd1677<SPI, DC, RST, BUSY, Delay, ssd1677_gray4::Active>,
+    rail: EpdRail<Output<'static>, Enabled>,
+) where
+    SPI: embedded_hal::spi::SpiDevice,
+    DC: embedded_hal::digital::OutputPin,
+    RST: embedded_hal::digital::OutputPin<Error = DC::Error>,
+    BUSY: InputPin<Error = DC::Error>,
+{
+    let Ok(asleep) = driver.sleep() else {
+        println!("embassy-debug: epd sleep failed");
+        return;
+    };
+    let _ = asleep.release();
+    Delay.delay_ms(100);
+    let disabled = rail
+        .disable_after_panel_sleep(PanelParked::after_deep_sleep_command())
+        .expect("driving the panel rail cannot fail");
+    let mut pin = disabled.release();
+    crate::sleep::hold_output(&mut pin);
+    core::mem::forget(pin);
+}
+
+/// USB-down portrait: box plus the resume hint.
+fn draw_sleep_card(bw: &mut [u8], red: &mut [u8]) {
+    const ROT: PageRotation = PageRotation::Portrait0;
+    clear_gray(bw, red, gray::WHITE, ROT);
+    fill_rect_gray(bw, red, 40, 280, 400, 200, gray::WHITE, ROT);
+    stroke_rect_gray(bw, red, 40, 280, 400, 200, gray::BLACK, ROT);
+    let style = MonoTextStyle::new(&FONT_10X20, BinaryColor::On);
+    let cx = i32::from(display::PAGE_WIDTH / 2);
+    let _ = Text::with_alignment("sleeping,", Point::new(cx, 340), style, Alignment::Center)
+        .draw(&mut GrayInk::new(bw, red, 2, ROT));
+    let _ = Text::with_alignment(
+        "hold page down",
+        Point::new(cx, 380),
+        style,
+        Alignment::Center,
+    )
+    .draw(&mut GrayInk::new(bw, red, 2, ROT));
+    let _ = Text::with_alignment("to resume", Point::new(cx, 420), style, Alignment::Center)
+        .draw(&mut GrayInk::new(bw, red, 2, ROT));
 }
 
 /// Draw a 1-bit portrait page, rotate 180°, then write both RAM planes

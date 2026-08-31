@@ -32,12 +32,10 @@ a second status column.
 | [nyc-sleep-current](#nyc-sleep-current) | Deep-sleep current | [power-and-sleep.md](../references/power-and-sleep.md) |
 | [nyc-gauge-profile](#nyc-gauge-profile) | BQ27220 CEDV values and chemistry on a factory unit | [sensors.md](../references/sensors.md) |
 | [nyc-mic-pdm](#nyc-mic-pdm) | PDM high-fidelity rate / slot / hole | [sensors.md](../references/sensors.md) |
-| [nyc-panel-glass](#nyc-panel-glass) | Glass part, analog rails, temp LUT | [display.md](../references/display.md) |
+| [nyc-panel-glass](#nyc-panel-glass) | Official glass PN (candidate sheet on file) | [display.md](../references/display.md) |
 | [nyc-esphome-orient](#nyc-esphome-orient) | ESPHome `mirror_x` vs on-glass 180° | [display.md](../references/display.md) |
 | [nyc-charge-stat](#nyc-charge-stat) | Charge-to-done and gauge current scale | [power-and-sleep.md](../references/power-and-sleep.md) |
-| [nyc-deep-sleep-wake](#nyc-deep-sleep-wake) | In-repo deep sleep and GPIO4 wake | [power-and-sleep.md](../references/power-and-sleep.md) |
 | [nyc-gpio7-edge](#nyc-gpio7-edge) | GPIO7 edges with IMU or gauge armed | [sensors.md](../references/sensors.md) |
-| [nyc-display-standby](#nyc-display-standby) | Vendor panel standby sequence | [display.md](../references/display.md) |
 | [nyc-buzzer-spl](#nyc-buzzer-spl) | Buzzer resonance / SPL | [input-storage.md](../references/input-storage.md) |
 
 Software knobs (CPU 160 vs 240 MHz, flash DIO vs QIO, partition tables, SKU
@@ -173,29 +171,24 @@ rail, not a different connector. Sheet pin 19 is **VPP FOR TEST**;
 Seeed brings it out to `TP17`. Pins 6–7 are NC on the sheet; Seeed
 has `R66` 10 kΩ there.
 
-Safe next checks (no new waveform, no analog trim, no OTP program):
-
-- FPC silkscreen / label (`GDEY0397T81P`, `GDEM0397T81P`, `FPC-7750`)
-  if the tail is visible **without** prying the glass. The sheet
-  warns that disassembly damages the module.
-- Wall-clock BUSY on the **existing** Seeed OTP path only. The sheet
-  quotes 3 / 1.5 / 0.3 s full / fast / partial at 25 °C (typical
-  power 28.2 mW). A match is weak; a large miss is a negative hint.
-- Do **not** send this sheet's MCU LUT, `0x32`, or `0x03` / `0x04` /
-  `0x2C` analog bytes. Command-table pages in the PDF are images;
-  do not invent opcodes from them. SSD1677 `0x2E` can read a 10-byte
-  User ID; that is not the waveform table, we have no expected bytes
-  from this sheet, and it is not a close.
+Do **not** ask to inspect the FPC tail. It is not visible on an
+assembled unit and will not be. Do **not** treat wall-clock BUSY as
+a part-number proof. Do **not** send this sheet's MCU LUT, `0x32`,
+or `0x03` / `0x04` / `0x2C` analog bytes. Command-table pages in
+the PDF are images; do not invent opcodes from them. SSD1677 `0x2E`
+can read a 10-byte User ID; that is not the waveform table and is
+not a close.
 
 The SSD1677 does not read the factory **waveform** table back over
 SPI. Host UART/flash tools do not talk to the panel. Closing this
 item is **not** “uncomment FreeInk after a bench run.”
 
-- Schematic, BOM, or marking for the glass part number. Temperature-band
-  which-set stays unpublished until a vendor document or that marking
-  says so.
-- Confirmed with glass PN from those sources — still not a 105-byte
-  `0x32` table.
+Keep the candidate sheet on file. Close only with **official**
+evidence that names this board's glass SKU (Seeed BOM, a schematic
+that prints the PN, or a vendor doc for this product). Third-party
+labels stay hints. Temperature-band which-set stays unpublished
+until that same class of document says so. Still not a 105-byte
+`0x32` table.
 
 ### nyc-esphome-orient
 
@@ -218,16 +211,6 @@ and the charger LED green/yellow.
 - Charge-to-done and a credible current scale are still open. Do
   not leave `/CE` enabled in default images.
 
-### nyc-deep-sleep-wake
-
-Rail table and GPIO4 `ext1` ANY_LOW are written. In-repo debug images
-do **not** enter deep sleep. Sleep current is
-[nyc-sleep-current](#nyc-sleep-current).
-
-- From an image that uses the rail table: enter deep sleep on battery,
-  wake on GPIO4, latch first, UART returns. Confirmed with that wake
-  (and that the last panel image stayed).
-
 ### nyc-gpio7-edge
 
 Schematic: GPIO7 is IMU INT1 and gauge GPOUT. Polled IMU on glass
@@ -238,18 +221,13 @@ the pin an input. Do not enable both chips as push-pull.
   GPOUT — only with [nyc-charge-stat](#nyc-charge-stat) parked after).
   Confirmed when GPIO7 edges match that source.
 
-### nyc-display-standby
-
-Stock firmware exports `ssd1677_standby` / `ssd1677_resume`. The
-confirmed in-repo path is active OTP plus deep sleep (`0x10 = 0x03`).
-Do not invent a standby opcode.
-
-- Read the stock / Seeed sequence (or a sheet that names it). Confirmed
-  with those bytes — still not a 0x32 LUT.
-
 ### nyc-buzzer-spl
 
-GPIO48 PWM beeps on glass. Resonance and SPL are unmeasured.
+GPIO48 PWM beeps on glass. Embassy-debug `--features mic` already
+heard the 1 kHz AI Voice tone on the PDM path (left slot, ~16-sample
+period). That is enclosure / EMI coupling, not a calibrated SPL.
 
-- Drive a known PWM, meter or note peak SPL / resonance. Confirmed with
-  a number and the drive used. Not a destroy-the-board row.
+- Sweep a known PWM on GPIO48 and record on-board `mic rms=` /
+  `peak=` (or a PCM dump) vs frequency. Confirmed with a relative
+  resonance (which Hz peaked). Absolute dB SPL stays unmeasured
+  unless someone later meters. Not a destroy-the-board row.

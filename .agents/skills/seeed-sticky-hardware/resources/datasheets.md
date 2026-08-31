@@ -101,6 +101,12 @@ stress:
   Position (44h)`, `8.4 Set RAM Y… (45h)`, `8.5 Set RAM Address Counter`).
   Keep these in datasheet address units; do **not** silently divide by 8.
 - **Deep sleep is 0x10 with `A[1:0] = 0b11`**, and BUSY stays high afterwards.
+- **Stock "standby" is not a 0x10 mode.** `ssd1677_standby` runs
+  Display Update Control 2 `0x22 = 0x03` (disable analog, then
+  clock) and Master Activation `0x20`. `ssd1677_resume` runs
+  `0x22 = 0xC0` (enable clock, then analog) and `0x20`. Table 7-1
+  already names those stage combinations. RAM stays until deep
+  sleep.
 
 ## Verified against the GT911 datasheet
 
@@ -159,12 +165,11 @@ plausible-looking constant:
 | --- | --- |
 | BQ27220 CEDV data-memory *block* addresses beyond SLUUBD4 `3 Data Memory Interface` headings | Standard Commands live in `crates/bq27220` `Command` (SLUUBD4 `Table 2-1`). Use a raw read/write for garbled extract rows; do not infer block maps. |
 | BQ27220 CEDV data-memory block addresses and subcommand codes | Stock firmware reads the CEDV core and thresholds; the block layout must come from SLUUBD4, not from inference. |
-| Vendor "standby" display state | Stock driver exposes a distinct standby; its command sequence is unconfirmed. Confirmed path is active and deep sleep. [nyc-display-standby](not-yet-confirmed.md#nyc-display-standby). |
 | Four-gray LUT contents for this glass | No default LUT. The Sticky confirmed path is OTP (no 0x32). An MCU table stays optional and attributed; record its source and license here before adding one. |
 | GT911 coordinate / command / status bit encodings | Rev.09 deleted the register map (Rev.07). Remaining encodings are on-glass `GT911_REG_*` names, not a Rev.09 table. Do not invent a 186-byte config. |
 | ESP32-S3 GPIO hold, pad-JTAG eFuse, `ext1` register details | Datasheet v2.2 names the pads. The TRM is catalogued (`esp32-s3-trm`); search the local markdown cache when citing it. |
 | GT911 contacts this FPC actually delivers | **5** on glass (Rev.09 §1 silicon max). |
-| Glass part number on this FPC | Schematic Rev 01 names analog rails, not a glass PN. [nyc-panel-glass](not-yet-confirmed.md). |
+| Glass part number on this FPC | Schematic Rev 01 names analog rails, not a glass PN. Candidate GDEY0397T81P sheet on file. Close only with official evidence. [nyc-panel-glass](not-yet-confirmed.md). |
 
 ## Verified against the schematic
 

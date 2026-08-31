@@ -113,7 +113,18 @@ Send the SSD1677 deep-sleep command **while EPD_EN is still high**, then drop
 EPD_EN. The last image stays on glass with the analog rail off.
 
 Sleep current: [nyc-sleep-current](../resources/not-yet-confirmed.md#nyc-sleep-current).
-In-repo enter/wake: [nyc-deep-sleep-wake](../resources/not-yet-confirmed.md#nyc-deep-sleep-wake).
-Which keys request sleep is application policy (top-button hold vs both side
-keys); electrically, GPIO4 is the proven wake input and GPIO5/6 are ordinary
-active-low keys.
+
+Which keys request sleep is application policy (top-button hold vs
+both side keys). Electrically, GPIO4 is the stock/docs `ext1`
+**ANY_LOW** wake pin; GPIO5/6 are ordinary active-low keys and can
+use the same path. In-repo default `embassy-debug` (2026-08-30,
+USB-C down, no `charge`): hold Page Down 4 s paints a sleep card,
+UART `scene=sleeping` then `embassy-debug: sleeping`, factory
+bootloader `rst:0x5 (DSLEEP)`. Wake is GPIO6 ANY_LOW. Hold 1 s
+after wake restored the same card (`scene=tones`). Early release
+after `woke` re-slept without panel init (sleep card stayed; no
+`gt911` dance). A short press while asleep still asserts the pad
+(the chip resets) and the image goes back to sleep without
+painting. Latch stayed high. The CH343 stayed enumerated; UART0
+went quiet until wake. Sit with `cargo xtask monitor` without
+`--acm-tty`. GPIO4 was not the wake pin on that image.

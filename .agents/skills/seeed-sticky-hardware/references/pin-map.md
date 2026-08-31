@@ -13,7 +13,7 @@ hardware unless marked otherwise.
 | 3 | OD data | GT911 SDA | Dedicated touch bus. **Strapping pin** (JTAG source, v2.2 §3.4): floating at reset, then ordinary IO. Schematic Rev 01. |
 | 4 | Input | AI / OK / power | Active low, external 10 kΩ. RTC `ext1` wake. Seeed: **AI Voice Button**, right-edge top (glass facing you, USB-C down) |
 | 5 | Input | Up / left | Active low, external 10 kΩ. Seeed: **Page Up Button**, right-edge middle |
-| 6 | Input | Down / right | Active low, external 10 kΩ. Seeed: **Page Down Button**, right-edge bottom |
+| 6 | Input | Down / right | Active low, external 10 kΩ. Seeed: **Page Down Button**, right-edge bottom. In-repo embassy-debug: `ext1` ANY_LOW wake ([power-and-sleep.md](power-and-sleep.md)) |
 | 7 | Input | IMU INT1 + gauge GPOUT | Schematic: LSM6DS3TR-C INT1 (`6D_INTn`) and BQ27220 GPOUT (`BFG_INT`) share this pin. **Do not drive as output.** |
 | 8 | Output | MicroSD CS | Shared SPI; idle high |
 | 9 | Input | External power (`PWR_IN_VOLT`) | Digital, edge-driven: high = VBUS present. Schematic: 5.1 kΩ / 5.1 kΩ from `VIN_5V` (~½ VBUS). 2.5 V at 5 V still reads as GPIO high |

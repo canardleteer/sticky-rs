@@ -148,6 +148,31 @@ impl Scene {
         }
     }
 
+    /// Packed byte for RTC-persistent resume. Not a UART token.
+    #[inline]
+    #[must_use]
+    pub const fn persist_byte(self) -> u8 {
+        match self {
+            Self::Splash => 0,
+            Self::Shapes => 1,
+            Self::Legend => 2,
+            Self::Tones => 3,
+        }
+    }
+
+    /// Inverse of [`Self::persist_byte`].
+    #[inline]
+    #[must_use]
+    pub const fn from_persist_byte(byte: u8) -> Option<Self> {
+        match byte {
+            0 => Some(Self::Splash),
+            1 => Some(Self::Shapes),
+            2 => Some(Self::Legend),
+            3 => Some(Self::Tones),
+            _ => None,
+        }
+    }
+
     /// Next scene, wrapping.
     #[inline]
     #[must_use]
@@ -170,6 +195,65 @@ impl Scene {
             Self::Legend => Self::Shapes,
             Self::Tones => Self::Legend,
         }
+    }
+}
+
+/// How long Page Down must stay low to request deep sleep, in milliseconds.
+pub const PAGE_DOWN_SLEEP_MS: u32 = 4_000;
+
+/// How long Page Down must stay low after a deep-sleep wake to resume, in
+/// milliseconds.
+pub const PAGE_DOWN_RESUME_MS: u32 = 1_000;
+
+/// Page Down hold while awake: short press versus sleep request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SleepHold {
+    /// Still low, under [`PAGE_DOWN_SLEEP_MS`].
+    Waiting,
+    /// Released before the sleep threshold.
+    Short,
+    /// Held through [`PAGE_DOWN_SLEEP_MS`].
+    RequestSleep,
+}
+
+/// Classifies an awake Page Down hold.
+#[inline]
+#[must_use]
+pub const fn classify_sleep_hold(held_ms: u32, still_low: bool) -> SleepHold {
+    if still_low {
+        if held_ms >= PAGE_DOWN_SLEEP_MS {
+            SleepHold::RequestSleep
+        } else {
+            SleepHold::Waiting
+        }
+    } else if held_ms < PAGE_DOWN_SLEEP_MS {
+        SleepHold::Short
+    } else {
+        SleepHold::RequestSleep
+    }
+}
+
+/// Page Down hold after `ext1` wake: resume versus go back to sleep.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResumeHold {
+    /// Still low, under [`PAGE_DOWN_RESUME_MS`].
+    Waiting,
+    /// Held through [`PAGE_DOWN_RESUME_MS`].
+    Ready,
+    /// Released before the resume threshold.
+    Abort,
+}
+
+/// Classifies a post-wake Page Down hold.
+#[inline]
+#[must_use]
+pub const fn classify_resume_hold(held_ms: u32, still_low: bool) -> ResumeHold {
+    if !still_low {
+        ResumeHold::Abort
+    } else if held_ms >= PAGE_DOWN_RESUME_MS {
+        ResumeHold::Ready
+    } else {
+        ResumeHold::Waiting
     }
 }
 
@@ -253,6 +337,16 @@ pub enum Event {
         t_ms: u32,
         /// How many events were discarded.
         dropped: u32,
+    },
+    /// Sleep card is on glass; MCU will enter deep sleep after release.
+    Sleeping {
+        /// Milliseconds since boot.
+        t_ms: u32,
+    },
+    /// Reset reason was deep-sleep wake (before the 1 s resume hold).
+    Woke {
+        /// Milliseconds since this wake.
+        t_ms: u32,
     },
 }
 
@@ -445,7 +539,16 @@ pub fn format_event<'a>(event: &Event, buf: &'a mut [u8]) -> Result<&'a str, For
         Event::Overflow { t_ms, dropped } => {
             write_into(buf, format_args!("{LOG_PREFIX}: t={t_ms} drop={dropped}"))
         }
+        Event::Sleeping { t_ms } => {
+            write_into(buf, format_args!("{LOG_PREFIX}: t={t_ms} scene=sleeping"))
+        }
+        Event::Woke { t_ms } => write_into(buf, format_args!("{LOG_PREFIX}: t={t_ms} woke")),
     }
+}
+
+/// Writes `embassy-debug: sleeping` (MCU about to `sleep_deep`).
+pub fn format_sleeping(buf: &mut [u8]) -> Result<&str, FormatError> {
+    write_into(buf, format_args!("{LOG_PREFIX}: sleeping"))
 }
 
 /// Integer RMS and peak of a PCM window. Empty window is `(0, 0)`.
@@ -950,6 +1053,50 @@ mod tests {
                 scene: Scene::Tones,
             }),
             "embassy-debug: t=11 scene=tones"
+        );
+    }
+
+    #[test]
+    fn page_down_holds_classify_short_sleep_and_resume() {
+        assert_eq!(PAGE_DOWN_SLEEP_MS, 4_000);
+        assert_eq!(PAGE_DOWN_RESUME_MS, 1_000);
+        assert_eq!(classify_sleep_hold(20, true), SleepHold::Waiting);
+        assert_eq!(classify_sleep_hold(20, false), SleepHold::Short);
+        assert_eq!(
+            classify_sleep_hold(PAGE_DOWN_SLEEP_MS, true),
+            SleepHold::RequestSleep
+        );
+        assert_eq!(
+            classify_sleep_hold(PAGE_DOWN_SLEEP_MS, false),
+            SleepHold::RequestSleep
+        );
+        assert_eq!(classify_resume_hold(20, true), ResumeHold::Waiting);
+        assert_eq!(classify_resume_hold(20, false), ResumeHold::Abort);
+        assert_eq!(
+            classify_resume_hold(PAGE_DOWN_RESUME_MS, true),
+            ResumeHold::Ready
+        );
+    }
+
+    #[test]
+    fn scene_persist_round_trips() {
+        for scene in Scene::ALL {
+            assert_eq!(Scene::from_persist_byte(scene.persist_byte()), Some(scene));
+        }
+        assert_eq!(Scene::from_persist_byte(9), None);
+    }
+
+    #[test]
+    fn sleep_and_wake_lines_match_the_agreed_shape() {
+        assert_eq!(
+            line(&Event::Sleeping { t_ms: 9 }),
+            "embassy-debug: t=9 scene=sleeping"
+        );
+        assert_eq!(line(&Event::Woke { t_ms: 11 }), "embassy-debug: t=11 woke");
+        let mut buf = [0u8; LINE_CAPACITY];
+        assert_eq!(
+            format_sleeping(&mut buf).unwrap(),
+            "embassy-debug: sleeping"
         );
     }
 

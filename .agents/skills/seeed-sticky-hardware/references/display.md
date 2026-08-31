@@ -100,9 +100,17 @@ Refresh is expensive; glass holds pixels without power.
 - **Gray4**: OTP `SEEED_GRAY4_TEMPERATURE` then
   `UpdateSequence::SEEED_GRAY4` (`0xD7`), dual planes with Seeed’s inverted
   polarity (`PlaneMapping::SEEED_OTP`). Not an MCU 0x32 table.
-- Deep sleep: `0x10` = `DEEP_SLEEP_ENTER` (`0x03`), wait ~100 ms, then `EPD_EN=0`.
-  Vendor standby (not this path):
-  [nyc-display-standby](../resources/not-yet-confirmed.md#nyc-display-standby).
+- Deep sleep: `0x10` = `DEEP_SLEEP_ENTER` (`0x03`), wait ~100 ms, then
+  `EPD_EN=0`. That drops controller RAM.
+- Stock panel **standby** (keeps RAM): `0x22` =
+  `UpdateSequence::DISABLE_ANALOG_AND_CLOCK` (`0x03`) then Master
+  Activation `0x20`. **Resume:** `0x22` =
+  `UpdateSequence::ENABLE_CLOCK_AND_ANALOG` (`0xC0`) then `0x20`.
+  Same Table 7-1 stage bits the crate already names. Not a new
+  opcode. Stock `ssd1677_standby` / `ssd1677_resume` send those
+  bytes. The 2048 `seeed_epaper` copy has no vtable slots.
+  UC8179 slots are NULL (`driver standby not supported`). Crate
+  typestate stays `Active` / `Asleep`.
 
 Seeed’s open `seeed_epaper` SSD1677 driver and stock `reterminal_template`
 agree on that OTP path. They do **not** write a 105-byte LUT. A FreeInk MCU
@@ -115,5 +123,8 @@ Do not invent a four-gray LUT from a generic SSD1677 example. Crate
 
 Schematic Rev 01 names the panel analog rails on the 24-pin FPC: **VGH**,
 **VGL**, **VSH1**, **VSH2**, **VCOM**, **VPP**, and `EP_3V3`. There is
-**no glass part number** on that sheet.
-[nyc-panel-glass](../resources/not-yet-confirmed.md#nyc-panel-glass).
+**no glass part number** on that sheet. A Good Display
+**GDEY0397T81P** sheet is on file as a candidate only. Close
+[nyc-panel-glass](../resources/not-yet-confirmed.md#nyc-panel-glass)
+with official evidence that names this board's SKU. Do not inspect
+the FPC. Do not treat BUSY time as a PN.

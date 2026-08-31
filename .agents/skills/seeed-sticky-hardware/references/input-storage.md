@@ -15,7 +15,10 @@ on the right edge**, not the glass. Locations:
 
 AI and “OK/power” are the **same** GPIO4. On stock firmware a ~3 s hold of
 that key powers the unit on. Debounce times and whether sleep is a GPIO4
-hold or a GPIO5+GPIO6 chord are application policy.
+hold or a GPIO5+GPIO6 chord are application policy. In-repo default
+`embassy-debug` (2026-08-30): hold Page Down 4 s to sleep, wake on
+GPIO6, hold 1 s to restore the same card
+([power-and-sleep.md](power-and-sleep.md)).
 
 Those GPIO names are **firmware claims**; the enclosure names above are
 Seeed's diagram. UART prints `btn 4` / `btn 5` / `btn 6`. Attended

@@ -32,6 +32,15 @@ On the unit:
 - Tilt the card for `imu=…`. A short beep answers a key-down. Tap the
   glass for `touch n=` (Rev.09 INT-low address select; on glass
   through `n=5`).
+- Page Down under 4 s walks to the next drawing. Hold 4 s to sleep:
+  the glass shows "sleeping, hold page down to resume", UART prints
+  `scene=sleeping` then `embassy-debug: sleeping`, and UART0 goes
+  quiet. The CH343 stays enumerated (the board does not drop USB).
+  Hold Page Down about 1 s to wake the **same** page. A shorter press
+  after wake goes back to sleep without painting. Recessed Reset or
+  unplug/replug USB starts at splash. Listen with
+  `cargo xtask monitor` **without** `--acm-tty`. `--acm-tty` pulses
+  EN and is a POWERON, not a resume.
 
 Agent / toolchain:
 

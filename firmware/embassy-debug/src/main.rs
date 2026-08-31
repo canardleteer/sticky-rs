@@ -1,8 +1,10 @@
 //! reTerminal Sticky Embassy event-logger image.
 //!
 //! On the unit: splash stays upright in the four in-plane holds; right-edge
-//! keys change the drawing; taps and tilts print on UART0; a short beep
-//! answers a key or the first finger on the glass.
+//! keys change the drawing; a 4 s Page Down hold paints a sleep card and
+//! deep-sleeps; hold Page Down 1 s after wake to restore that card; taps
+//! and tilts print on UART0; a short beep answers a key or the first
+//! finger on the glass.
 //!
 //! In the MCU: latch power, park the charger and unused rails, bring up
 //! the two I2C buses and the panel OTP path. `--features charge` may
@@ -24,15 +26,16 @@ use bq25616::Charger;
 
 // Host-tested UART line format.
 use embassy_debug::{
-    format_event, format_git, format_latched, Event, ImuPose, Scene, TouchPoint, GIT_CAPACITY,
-    IMU_REPORT_SECS, LATCHED_CAPACITY, LINE_CAPACITY, LOG_PREFIX, MAX_TOUCH_POINTS,
+    classify_sleep_hold, format_event, format_git, format_latched, Event, ImuPose, ResumeHold,
+    Scene, SleepHold, TouchPoint, GIT_CAPACITY, IMU_REPORT_SECS, LATCHED_CAPACITY, LINE_CAPACITY,
+    LOG_PREFIX, MAX_TOUCH_POINTS, PAGE_DOWN_SLEEP_MS,
 };
 #[cfg(feature = "mic")]
 use embassy_debug::{BUZZER_TONE_MS, TONE_DUMP_WINDOWS};
 
 // Embassy runtime: tasks, channels, time.
 use embassy_executor::Spawner;
-use embassy_futures::select::{select3, Either3};
+use embassy_futures::select::{select, select3, Either, Either3};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::signal::Signal;
@@ -49,6 +52,7 @@ use esp_hal::ledc::timer::{self, TimerIFace};
 use esp_hal::ledc::{LSGlobalClkSource, Ledc, LowSpeed};
 #[cfg(feature = "radio")]
 use esp_hal::ram;
+use esp_hal::rtc_cntl::sleep::LowPower;
 use esp_hal::time::Rate;
 use esp_hal::timer::timg::TimerGroup;
 use esp_hal::Blocking;
@@ -127,15 +131,14 @@ fn ask_tone() {
 /// dark. GPIO7 is not a key — IMU INT1 and gauge GPOUT share it.
 struct ParkedHazards {
     /// Held so `/CE` stays parked. `--features charge` reassigns after the pulse.
-    #[allow(dead_code)]
     charger: Charger<Output<'static>, bq25616::Disabled>,
-    _gpio7: Input<'static>,
+    gpio7: Input<'static>,
     #[cfg(not(feature = "sd"))]
-    _sd_cs: Output<'static>,
+    sd_cs: Output<'static>,
     #[cfg(not(feature = "sd"))]
-    _sd_rail: SdRail<Output<'static>, Disabled>,
+    sd_rail: SdRail<Output<'static>, Disabled>,
     #[cfg(not(feature = "mic"))]
-    _mic_rail: MicRail<Output<'static>, Disabled>,
+    mic_rail: MicRail<Output<'static>, Disabled>,
 }
 
 /// Latch before any rail so the board stays up on battery.
@@ -186,13 +189,40 @@ fn park_charger_and_unused(
     .expect("driving the mic rail cannot fail");
     ParkedHazards {
         charger,
-        _gpio7: gpio7,
+        gpio7,
         #[cfg(not(feature = "sd"))]
-        _sd_cs: sd_cs,
+        sd_cs,
         #[cfg(not(feature = "sd"))]
-        _sd_rail: sd_rail,
+        sd_rail,
         #[cfg(not(feature = "mic"))]
-        _mic_rail: mic_rail,
+        mic_rail,
+    }
+}
+
+/// Hold parked `/CE`, GPIO7, and unused rails across deep sleep.
+fn hold_parked(parked: ParkedHazards) {
+    let mut ce = parked.charger.release();
+    crate::sleep::hold_output(&mut ce);
+    core::mem::forget(ce);
+
+    let mut gpio7 = parked.gpio7;
+    crate::sleep::hold_input(&mut gpio7);
+    core::mem::forget(gpio7);
+
+    #[cfg(not(feature = "sd"))]
+    {
+        let mut cs = parked.sd_cs;
+        crate::sleep::hold_output(&mut cs);
+        core::mem::forget(cs);
+        let mut sd = parked.sd_rail.release();
+        crate::sleep::hold_output(&mut sd);
+        core::mem::forget(sd);
+    }
+    #[cfg(not(feature = "mic"))]
+    {
+        let mut mic = parked.mic_rail.release();
+        crate::sleep::hold_output(&mut mic);
+        core::mem::forget(mic);
     }
 }
 
@@ -330,11 +360,12 @@ struct SpawnParts {
     epd_rail: seeed_reterminal_sticky::rails::EpdRail<Output<'static>, Enabled>,
 }
 
-/// Start UART log, keys, glass, IMU, beep, and panel. First page is splash.
-fn spawn_tasks(spawner: &Spawner, parts: SpawnParts) {
+/// Start UART log, keys, glass, IMU, beep, and panel.
+fn spawn_tasks(spawner: &Spawner, parts: SpawnParts, start: Scene, rotation: PageRotation) {
     spawner.spawn(log_task().expect("log task"));
-    spawner
-        .spawn(button_task(parts.ai_voice, parts.page_up, parts.page_down).expect("button task"));
+    spawner.spawn(
+        button_task(parts.ai_voice, parts.page_up, parts.page_down, start).expect("button task"),
+    );
     spawner.spawn(
         touch_task(
             parts.touch_i2c,
@@ -345,16 +376,19 @@ fn spawn_tasks(spawner: &Spawner, parts: SpawnParts) {
         )
         .expect("touch task"),
     );
-    spawner.spawn(imu_task(parts.sensor_i2c).expect("imu task"));
+    spawner.spawn(imu_task(parts.sensor_i2c, rotation).expect("imu task"));
     spawner.spawn(buzzer_task(parts.ledc, parts.buzzer).expect("buzzer task"));
-    spawner.spawn(crate::display::display_task(parts.panel, parts.epd_rail).expect("display task"));
-    SCENE.signal(Scene::Splash);
+    spawner.spawn(
+        crate::display::display_task(parts.panel, parts.epd_rail, start, rotation)
+            .expect("display task"),
+    );
 }
 
 /// Latch, park hazards, bring up buses, then hand the unit to Embassy.
 ///
 /// On the unit: power stays on, UART says we latched, the glass shows
-/// Ferris + `sticky-rs`, and a right-edge key changes the drawing.
+/// Ferris + `sticky-rs` (or the restored card after a deep-sleep wake),
+/// and a right-edge key changes the drawing. A 4 s Page Down hold sleeps.
 #[esp_hal::main]
 async fn main(spawner: Spawner) {
     let peripherals = esp_hal::init(esp_hal::Config::default());
@@ -369,6 +403,7 @@ async fn main(spawner: Spawner) {
 
     let mut delay = Delay::new();
     let latch = acquire_latch(peripherals.GPIO45, peripherals.GPIO46, &mut delay);
+    let lpwr = LowPower::new(peripherals.LPWR);
 
     {
         let mut buf = [0u8; LATCHED_CAPACITY];
@@ -421,7 +456,27 @@ async fn main(spawner: Spawner) {
         );
     }
 
-    let _parked = parked;
+    let resume = crate::sleep::resume_snap();
+    let mut page_down = crate::sleep::page_down_input(peripherals.GPIO6);
+    let (start_scene, start_rotation) = if let Some(snap) = resume {
+        {
+            let mut buf = [0u8; LINE_CAPACITY];
+            if let Ok(line) = format_event(&Event::Woke { t_ms: 0 }, &mut buf) {
+                println!("{line}");
+            }
+        }
+        match crate::sleep::wait_resume_hold(&page_down, &mut delay) {
+            ResumeHold::Ready => (snap.scene, snap.rotation),
+            ResumeHold::Abort | ResumeHold::Waiting => {
+                crate::sleep::park_epd_en_low(peripherals.GPIO47);
+                hold_parked(parked);
+                crate::sleep::hold_latch(latch);
+                crate::sleep::arm_page_down_and_sleep(&mut page_down, lpwr);
+            }
+        }
+    } else {
+        (Scene::Splash, PageRotation::Portrait0)
+    };
 
     let touch_i2c = I2c::new(
         peripherals.I2C1,
@@ -450,11 +505,6 @@ async fn main(spawner: Spawner) {
         peripherals.GPIO5,
         InputConfig::default().with_pull(Pull::Up),
     );
-    let page_down = Input::new(
-        peripherals.GPIO6,
-        InputConfig::default().with_pull(Pull::Up),
-    );
-
     let epd_rail = enable_epd_rail(peripherals.GPIO47, latch.witness(), &mut delay);
 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
@@ -493,6 +543,8 @@ async fn main(spawner: Spawner) {
             },
             epd_rail,
         },
+        start_scene,
+        start_rotation,
     );
 
     #[cfg(feature = "mic")]
@@ -510,10 +562,11 @@ async fn main(spawner: Spawner) {
     #[cfg(feature = "radio")]
     spawner.spawn(crate::radio::radio_task(peripherals.WIFI, peripherals.BT).expect("radio task"));
 
-    let _keep_latched = latch;
-    loop {
-        Timer::after(Duration::from_secs(60)).await;
-    }
+    crate::sleep::PANEL_PARKED.wait().await;
+    crate::sleep::WAKE_ARMED.wait().await;
+    hold_parked(parked);
+    crate::sleep::hold_latch(latch);
+    crate::sleep::enter_deep_sleep(lpwr);
 }
 
 /// Print timestamped lines on UART0 (CH343, USB-C).
@@ -540,17 +593,17 @@ async fn log_task() {
 
 /// Right-edge keys: log `btn 4`/`5`/`6`, beep, and change the page.
 ///
-/// Page Up goes to the previous drawing; Page Down (and AI Voice on the
-/// default image) go to the next. With `--features mic`, AI Voice plays
-/// the 1 kHz capture tone and does not change the page.
+/// Page Up goes to the previous drawing; a short Page Down (and AI Voice
+/// on the default image) go to the next. Hold Page Down 4 s to sleep.
+/// With `--features mic`, AI Voice plays the 1 kHz capture tone and does
+/// not change the page.
 #[embassy_executor::task]
 async fn button_task(
     mut ai_voice: Input<'static>,
     mut page_up: Input<'static>,
     mut page_down: Input<'static>,
+    mut scene: Scene,
 ) {
-    let mut scene = Scene::Splash;
-
     loop {
         let gpio = match select3(
             ai_voice.wait_for_any_edge(),
@@ -574,30 +627,63 @@ async fn button_task(
             gpio,
             down,
         });
-        if down {
-            match gpio {
-                4 => {
-                    #[cfg(feature = "mic")]
-                    ask_tone();
-                    #[cfg(not(feature = "mic"))]
-                    {
-                        ask_beep();
-                        scene = scene.next();
-                        SCENE.signal(scene);
-                    }
-                }
-                5 => {
-                    ask_beep();
-                    scene = scene.prev();
-                    SCENE.signal(scene);
-                }
-                6 => {
+        if !down {
+            continue;
+        }
+        match gpio {
+            4 => {
+                #[cfg(feature = "mic")]
+                ask_tone();
+                #[cfg(not(feature = "mic"))]
+                {
                     ask_beep();
                     scene = scene.next();
                     SCENE.signal(scene);
                 }
-                _ => {}
             }
+            5 => {
+                ask_beep();
+                scene = scene.prev();
+                SCENE.signal(scene);
+            }
+            6 => {
+                let mut held = 20u32;
+                loop {
+                    match classify_sleep_hold(held, page_down.is_low()) {
+                        SleepHold::Waiting => {
+                            Timer::after(Duration::from_millis(20)).await;
+                            held = held.saturating_add(20);
+                            if held > PAGE_DOWN_SLEEP_MS {
+                                held = PAGE_DOWN_SLEEP_MS;
+                            }
+                        }
+                        SleepHold::Short => {
+                            ask_beep();
+                            emit(Event::Button {
+                                t_ms: now_ms(),
+                                gpio: 6,
+                                down: false,
+                            });
+                            scene = scene.next();
+                            SCENE.signal(scene);
+                            break;
+                        }
+                        SleepHold::RequestSleep => {
+                            crate::sleep::request_sleep();
+                            crate::sleep::wait_release_and_arm(&mut page_down).await;
+                            emit(Event::Button {
+                                t_ms: now_ms(),
+                                gpio: 6,
+                                down: false,
+                            });
+                            loop {
+                                Timer::after(Duration::from_secs(3_600)).await;
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
         }
     }
 }
@@ -607,9 +693,9 @@ async fn button_task(
 #[embassy_executor::task]
 async fn touch_task(
     mut i2c: I2c<'static, Blocking>,
-    _rst: Output<'static>,
-    _int: Flex<'static>,
-    _rail: TouchRail<Output<'static>, Enabled>,
+    mut rst: Output<'static>,
+    mut int: Flex<'static>,
+    rail: TouchRail<Output<'static>, Enabled>,
     addr: Option<u8>,
 ) {
     let Some(addr) = addr else {
@@ -621,6 +707,21 @@ async fn touch_task(
     let mut last_status_uart: Option<Instant> = None;
 
     loop {
+        if crate::sleep::is_requested() {
+            rst.set_low();
+            crate::sleep::hold_output(&mut rst);
+            core::mem::forget(rst);
+            int.set_output_enable(false);
+            int.set_pad_hold(true);
+            core::mem::forget(int);
+            let disabled = rail.disable().expect("driving the touch rail cannot fail");
+            let mut en = disabled.release();
+            crate::sleep::hold_output(&mut en);
+            core::mem::forget(en);
+            loop {
+                Timer::after(Duration::from_secs(3_600)).await;
+            }
+        }
         let status_due = STATUS_HEARTBEAT.interval_secs().is_some_and(|secs| {
             last_status_uart.is_none_or(|t| {
                 Instant::now().saturating_duration_since(t) >= Duration::from_secs(u64::from(secs))
@@ -702,7 +803,7 @@ async fn touch_task(
 /// Tilt the card: splash follows in-plane pose; UART about every
 /// [`IMU_REPORT_SECS`].
 #[embassy_executor::task]
-async fn imu_task(i2c: I2c<'static, Blocking>) {
+async fn imu_task(i2c: I2c<'static, Blocking>, start_rotation: PageRotation) {
     const POLL_MS: u64 = 250;
 
     let settings = LsmSettings::default().with_accel(
@@ -717,8 +818,13 @@ async fn imu_task(i2c: I2c<'static, Blocking>) {
     }
 
     let mut last_uart: Option<Instant> = None;
-    let mut last_rotation = Some(PageRotation::Portrait0);
+    let mut last_rotation = Some(start_rotation);
     loop {
+        if crate::sleep::is_requested() {
+            loop {
+                Timer::after(Duration::from_secs(3_600)).await;
+            }
+        }
         if let Ok(xyz) = imu_dev.read_accel_raw() {
             let classified = imu::classify(xyz.x, xyz.y, xyz.z);
             if let Some(rotation) = classified.and_then(imu::Orientation::page_rotation) {
@@ -795,7 +901,24 @@ async fn buzzer_task(
     }
 
     loop {
-        let kind = BEEPS.receive().await;
+        let kind = match select(BEEPS.receive(), Timer::after(Duration::from_millis(50))).await {
+            Either::First(kind) => kind,
+            Either::Second(()) => {
+                if crate::sleep::is_requested() {
+                    let _ = channel0.set_duty(0);
+                    loop {
+                        Timer::after(Duration::from_secs(3_600)).await;
+                    }
+                }
+                continue;
+            }
+        };
+        if crate::sleep::is_requested() {
+            let _ = channel0.set_duty(0);
+            loop {
+                Timer::after(Duration::from_secs(3_600)).await;
+            }
+        }
         let _ = channel0.set_duty(50);
         match kind {
             Beep::Chirp => {
@@ -820,3 +943,4 @@ mod mic;
 mod radio;
 #[cfg(feature = "sd")]
 mod sd;
+mod sleep;

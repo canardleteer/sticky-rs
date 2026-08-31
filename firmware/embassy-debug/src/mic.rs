@@ -48,7 +48,7 @@ pub async fn mic_task(
     dma: DMA_CH0<'static>,
     clk: GPIO19<'static>,
     din: GPIO20<'static>,
-    _rail: MicRail<Output<'static>, Enabled>,
+    rail: MicRail<Output<'static>, Enabled>,
 ) {
     let rx_cfg = PdmRxConfig::new_pcm_default(Rate::from_hz(16_000), PdmSlotMode::Mono);
     let Ok(i2s) = I2s::new_pdm(i2s, dma, PdmConfig::rx_only(rx_cfg)) else {
@@ -64,6 +64,15 @@ pub async fn mic_task(
     println!("{LOG}: pdm rx 16kHz mono left; AI Voice dumps pcm @ 1kHz buzzer");
 
     loop {
+        if crate::sleep::is_requested() {
+            let disabled = rail.disable().expect("driving the mic rail cannot fail");
+            let mut pin = disabled.release();
+            crate::sleep::hold_output(&mut pin);
+            core::mem::forget(pin);
+            loop {
+                Timer::after(Duration::from_secs(3_600)).await;
+            }
+        }
         buffer.set_length(WINDOW_BYTES);
         let dump = TONE_CAPTURE.load(Ordering::Relaxed) > 0;
         match rx.read(buffer) {

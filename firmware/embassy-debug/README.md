@@ -113,8 +113,9 @@ first `st=0x80`. Attended taps printed `touch n=1` / `n=2` /
 ## Microphone Test Instructions
 
 Default `embassy-debug` leaves `MicRail` disabled. This feature enables
-the rail and I2S PDM RX (16 kHz, 16-bit, left; a community recipe
-(source?), and not yet confirmed on this unit). Snapshot first:
+the rail and I2S PDM RX (16 kHz, 16-bit, left). On glass that path
+prints live `mic rms=` / `peak=` energy; high-fidelity hole vs
+waveform is still `nyc-mic-pdm`. Snapshot first:
 [docs/getting-started.md](../../docs/getting-started.md).
 
 To perform the test:

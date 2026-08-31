@@ -43,8 +43,8 @@ in the lockfile).
 | [`ssd1677-gray4`](../crates/ssd1677-gray4) | Four-gray on mono film via dual planes plus OTP (optional MCU LUT) is the whole point, and no existing crate does it. |
 | [`bq25616`](../crates/bq25616) | A GPIO-only charger has no I2C driver to adopt; the value is making active-low `/CE` impossible to get wrong. |
 | [`seeed-reterminal-sticky`](../crates/seeed-reterminal-sticky) | No board crate exists for this product. |
-| [`simple-debug`](../crates/simple-debug) | UART heartbeat and GPIO edge line format; host-tested because the Xtensa simple-debug image cannot run `cargo test` on the host compiler. |
-| [`embassy-debug`](../crates/embassy-debug) | Timestamped button / touch / IMU UART lines for the Embassy image; host-tested because the Xtensa embassy-debug image cannot run `cargo test` on the host compiler. |
+| [`simple-debug`](../crates/simple-debug) | UART heartbeat, GPIO edges, and [`IdleListen`](../crates/simple-debug/src/idle.rs) for unattended `vet-idle-log`. Host-tested because the Xtensa image cannot run `cargo test` on the host compiler. |
+| [`embassy-debug`](../crates/embassy-debug) | Timestamped button / touch / IMU / mic / radio lines and [`IdleListen`](../crates/embassy-debug/src/idle.rs) for unattended `vet-idle-log`. Host-tested because the Xtensa image cannot run `cargo test` on the host compiler. |
 
 ## Infrastructure
 

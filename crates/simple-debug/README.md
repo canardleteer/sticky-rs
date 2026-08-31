@@ -15,7 +15,8 @@ simple-debug: rtc y=26 mo=8 d=30 h=15 mi=14 s=0 vl=0
 ```
 
 [`IdleListen`] vets an unattended `monitor` capture (latch, gauge type,
-heartbeat, SHT, RTC). Host: `cargo xtask vet-idle-log --simple FILE`.
+heartbeat, SHT, RTC). Host:
+`cargo xtask vet-idle-log --simple idle-simple.log`.
 
 `sht t=` is milli °C; `rh=` is milli % RH. `rtc` year is 0–99. `vl`
 is the NXP seconds-register VL bit. Failed reads print `sht none` or
@@ -24,10 +25,12 @@ is the NXP seconds-register VL bit. Failed reads print `sht none` or
 
 GPIO edges only: `btn 4 down`, `vbus 1 -> 0`, `sd_cd 1 -> 0`, and the
 same for `gpio7` / `gpio40`. An operator image may also print
-`simple-debug: prompt <step_id>` at boot, `simple-debug: contacts=<n>`
-when GT911 contact count changes (`n` is 0..=5 on this FPC), and
-`simple-debug: gt911 st=0xNN` plus `simple-debug: gt911 int=0` when
-board `touch::STATUS_HEARTBEAT` is on. Boot may print
+`simple-debug: prompt <step_id>` at boot, and may format
+`simple-debug: contacts=<n>` (`n` is 0..=5). That operator poll is
+INT-high and has **never** printed `contacts=` on this FPC; use
+embassy-debug INT-low for `touch n=`. When `STATUS_HEARTBEAT` is on,
+the operator image also prints `gt911 st=0xNN` and `gt911 int=`.
+Boot may print
 `simple-debug: git=<hash> dirty=<0|1>` and `simple-debug: gt911 id=911`.
 Host-tested formatters: `format_prompt`, `format_contacts`,
 `format_git`, `format_gt911_status`, `format_gt911_id`,

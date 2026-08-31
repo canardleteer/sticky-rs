@@ -53,6 +53,7 @@ cargo xtask confirm-factory-firmware
 # host-only: cargo xtask build-fw embassy-debug
 # host-only: cargo xtask ci
 # host-only: cargo xtask vet-idle-log --embassy idle-embassy.log
+# host-only: cargo xtask vet-idle-log --simple idle-simple.log
 # cargo xtask monitor
 ```
 
@@ -179,7 +180,8 @@ has not refreshed the panel.
 `firmware/simple-debug` is the in-repo proof-of-life image.
 `firmware/embassy-debug` is a separate Embassy event-logger (panel always
 on). `learn-uart` with the operator image has been run (right-edge
-`btn 4` / `5` / `6`, USB-C unplug, IMU poses). Attended polls have not
-yet printed `contacts=`. Those runs do not close measurement-backlog
-electrical items — see
+`btn 4` / `5` / `6`, USB-C unplug, IMU poses). That image's INT-high
+poll has not printed `contacts=`. embassy-debug INT-low printed
+`touch n=5`. Those runs do not close measurement-backlog electrical
+items — see
 [not-yet-confirmed.md](../../seeed-sticky-hardware/resources/not-yet-confirmed.md).

@@ -24,7 +24,8 @@ embassy-debug: t=1204 ble name=Phone rssi=-70
 ```
 
 [`IdleListen`] vets an unattended `monitor` capture (boot dance, idle
-`imu=`, `gt911 st=`). Host: `cargo xtask vet-idle-log --embassy FILE`.
+`imu=`, `gt911 st=`). Host:
+`cargo xtask vet-idle-log --embassy idle-embassy.log`.
 
 IMU reports use [`IMU_REPORT_SECS`] (5). A read-only `gt911 st=` line
 follows board `touch::STATUS_HEARTBEAT` (`EverySecs(10)` or `Off`).

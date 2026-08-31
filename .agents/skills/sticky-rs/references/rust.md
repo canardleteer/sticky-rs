@@ -203,8 +203,9 @@ Load a custom image only after a factory original exists, with
 `cargo xtask build-fw` produces the flash-app payload. In-repo images:
 `firmware/simple-debug` (blocking `esp-hal` latch + I2C facts + UART
 heartbeat of raw levels; host-tested line format in `crates/simple-debug`)
-and `firmware/embassy-debug` (Embassy log task, buttons, GT911, IMU every
-5 s, buzzer, panel; host-tested lines in `crates/embassy-debug`).
+and `firmware/embassy-debug` (Embassy log task, buttons, GT911 INT-low
+`touch n=5`, IMU every 5 s, `gt911 st=` every 10 s, buzzer, panel;
+host-tested lines and `IdleListen` in `crates/embassy-debug`).
 
 ## Datasheet catalog vs crates
 

@@ -126,7 +126,9 @@ cargo xtask learn-uart \
 ```
 
 Omit `--features operator` for the quieter 1 s heartbeat image. Or flash
-and watch without prompts: `flash-app` then `monitor`. Envelope, UART
+and watch without prompts: `flash-app` then `monitor` (host check:
+`vet-idle-log --simple idle-simple.log`). That image's INT-high GT911
+dance does not print contacts; embassy-debug INT-low does. Envelope, UART
 lines, and restore:
 [firmware/simple-debug/AGENTS.md](../firmware/simple-debug/AGENTS.md).
 
@@ -145,10 +147,13 @@ cargo xtask monitor
 Ctrl-C ends monitor and hands `cdc-acm` back so the next `flash-app`
 can see the CH343. Do not `kill -9` that listen.
 
-Unattended you should see `embassy-debug: latched`, a GT911 ACK, then an
-IMU line about every 5 s. Buttons, glass, and tilt add `btn` / `touch` /
-pose lines and a short beep. Page Down reaches the four-tone boxes
-(`scene=tones`). Full sequence and restore:
+Unattended you should see `embassy-debug: latched`, INT-low `0x5d ack`
+(and `0x14 nak`), `imu accel init ok`, `imu=` about every 5 s, and
+`gt911 st=` about every 10 s. Splash prints `scene=splash`. Host check:
+`cargo xtask monitor --for 22 --output idle-embassy.log` then
+`cargo xtask vet-idle-log --embassy idle-embassy.log`. Buttons, glass,
+and tilt add `btn` / `touch` / pose lines and a short beep. Page Down
+reaches the four-tone boxes (`scene=tones`). Full sequence and restore:
 [firmware/embassy-debug/AGENTS.md](../firmware/embassy-debug/AGENTS.md).
 
 `flash-app` writes a `.bin`; it does not compile. If the build fails, do

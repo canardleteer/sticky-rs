@@ -56,7 +56,8 @@ message (`detect-connected --probe`, live `backup-factory-firmware`,
 `confirm-factory-firmware`, `restore-factory-firmware`, `flash-app`,
 `learn-uart`, `learn-uart-only`, or `monitor`). Host-only xtask
 (`detect-connected` without `--probe`, `backup-factory-firmware --import`,
-`diff-learn-uart`, `build-fw`, `ci`) does not open a UART.
+`diff-learn-uart`, `vet-idle-log`, `build-fw`, `ci`) does not open a
+UART.
 
 When a live ask is present, the **only** in-repo device I/O is `cargo xtask`.
 `flash-app` does not compile; `cargo xtask build-fw` first. Flag catalog:
@@ -65,8 +66,10 @@ When a live ask is present, the **only** in-repo device I/O is `cargo xtask`.
 
 A device may be attached for unrelated reasons; ignore it. There is no Cargo
 `runner`, so `cargo run` cannot flash. Never commit a MAC address, serial
-number, USB serial string, NVS blob, or flash image. `developer-data/` is
-gitignored on purpose. Put per-unit dumps, learn-uart YAML, and any other
+number, USB serial string, NVS blob, flash image, or a `monitor --output`
+capture. Host-check examples use the static names `idle-embassy.log` and
+`idle-simple.log` (local only). `developer-data/` is gitignored on
+purpose. Put per-unit dumps, learn-uart YAML, and any other
 private or personalized files there (`developer-data/backups/` for
 sealed snapshots, `developer-data/uart-inspection-records/` for learn-uart,
 `developer-data/confirm-records/` for confirm reports). Do not use a leftover

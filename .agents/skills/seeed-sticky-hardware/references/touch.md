@@ -165,9 +165,10 @@ transform must change with it.
 
 After mapping, taps are physical 800×480. Rotated pages convert physical →
 logical with the same rotation as drawing. 2026-08-30, default
-embassy-debug after that map: ink-corner first `p0=` was `795,470`,
-`795,4`, `4,475`, `4,4`. Mid-axis slides before the fix had keys-side
-`y≈195`; after the fix the keys-side corners sit at `y≈4`.
+embassy-debug after that map: finger-pad taps near the ink corners
+(in one sample) printed first `p0=` `795,470`, `795,4`, `4,475`,
+`4,4`. Mid-axis slides before the fix had keys-side `y≈195`; after
+the fix those same keys-side pads sat at `y≈4`.
 
 Polling rate, tap slop, and stuck-contact recovery are software policy, not
 hardware. Re-run the reset/address sequence if the controller stops ACKing.

@@ -113,8 +113,9 @@ Status-clear ACKed `0x14` and stayed at `st=0x00` with no
 `touch n=`. INT-low address select: `gt911 int=0`, `0x5d ack`,
 first `st=0x80`. Attended taps printed `touch n=1` / `n=2` /
 **`n=5`** and `gt911 st=0x85`. This FPC delivers five contacts
-(Rev.09 §1). USB-down ink corners after the 480×800 `to_screen` map:
-`795,470`, `795,4`, `4,475`, `4,4`. Facts:
+(Rev.09 §1). USB-down finger-pad taps near the ink corners (in one
+sample) after the 480×800 `to_screen` map: `795,470`, `795,4`,
+`4,475`, `4,4`. Facts:
 [touch.md](../../.agents/skills/seeed-sticky-hardware/references/touch.md#on-glass-embassy-debug).
 
 ## Microphone Test Instructions

@@ -196,7 +196,9 @@ ESPHome preset: `mirror_x`, 10 MHz, no packed 180° rotate. Bunny glass:
 `mirror_x` + 180° packed rotate.
 
 - Flash the ESPHome e-paper example, draw a known corner. Confirmed whether
-  the preset already matches glass or needs the extra rotate.
+  the preset already matches glass or needs the extra rotate. A 2026.8.2
+  Playground `.factory.bin` is a merge (app at `0x10000`); extract that
+  slice for `flash-app`. An incomplete write here did not sit orientation.
 
 ### nyc-charge-stat
 

@@ -50,7 +50,9 @@ On-glass mapping (both 7-bit addresses ACK on this unit):
 INT=0 → `0x5D` delivered contacts (`touch n=5`). INT=1 → `0x14`
 ACKed; an init `StatusWrite::Clear` path stayed at `st=0x00`. Probe
 the address the dance selected. Do not silently flip
-`addresses::GT911_PRIMARY` (`0x14`).
+`addresses::GT911_PRIMARY` (`0x14`). The 2026.8.2 Playground YAML
+hard-codes the ESPHome `gt911` component at `0x5D` (INT GPIO21, RST
+GPIO41, touch bus 100 kHz) and does not probe `0x14`.
 
 I2C must stay at or below **400 kbps** (Rev.09 §6.1). embassy-debug
 uses that cap. simple-debug uses 100 kHz (inside the cap).

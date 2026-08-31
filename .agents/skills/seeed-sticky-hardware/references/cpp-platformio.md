@@ -225,9 +225,16 @@ physical `Serial0` / ROM UART, not USB CDC.
 ## ESPHome
 
 Preset `seeed-reterminal-sticky`: EPD CS/DC/RST/BUSY/EN 15/16/17/18/47,
-`mirror_x`, 10 MHz. Sensor I2C GPIO1/0. Boot automation (priority 600) raises
-GPIO45/46. The Playground example does not implement touch, IMU, SD, mic, or
-deep sleep. Charge enable on GPIO39 is inverted but not always set at boot.
+`mirror_x`, 10 MHz. Sensor I2C GPIO1/0 at 400 kHz; touch I2C GPIO3/2 at
+100 kHz. Boot automation (priority 600) raises GPIO45/46. A 2026.8.2
+Playground “everything” YAML also raises mic GPIO38, touch GPIO42, and
+SD GPIO10, enables PDM (19/20), GT911 `0x5D` (INT 21 / RST 41), SHT40,
+PCF8563, BQ27220 register reads, and GPIO4 `ext1` deep sleep after 30 s.
+IMU stays commented (no native LSM6DS3). SD CS GPIO8 is named in the
+header only. Charge enable on GPIO39 is inverted and not turned on at
+boot. Do not flash a Playground `.factory.bin` at `0x0`: that image’s
+table puts `nvs` at `0x1fa0000` and would destroy factory NVS. Extract
+the app at `0x10000` and write factory `app0` only.
 
 [sira-fiinikkusu/reterminal-sticky-voice-companion](https://github.com/sira-fiinikkusu/reterminal-sticky-voice-companion)
 does use the PDM mic and deep sleep on this product. Audio wiring and the

@@ -49,7 +49,7 @@ sequences: [cpp-platformio.md](cpp-platformio.md).
 | [Playground registry](https://github.com/Seeed-Projects/reterminal-sticky-playground-registry) | Third-party (catalog) | `integration.json`, `sticky-2048` in-tree source |
 | [Lukilyy/reterminal-sticky-2048-eink-game](https://github.com/Lukilyy/reterminal-sticky-2048-eink-game) | Third-party | ESP-IDF app; GPIO7 as `PIN_BFG_INT` |
 | FreeInk `STICKY` board profile | Third-party | Mic / SHT40 / GPIO40 *wiring intent*; GPIO39 left undriven (prefer this over Bunny boot-enable). 40 MHz / `NO_FLIP` still pending |
-| ESPHome `seeed-reterminal-sticky` | Third-party | 10 MHz, `mirror_x`, sensor I2C example |
+| ESPHome `seeed-reterminal-sticky` | Third-party | 10 MHz, `mirror_x`. 2026.8.2 Playground “everything” YAML: dual I2C, GT911 `0x5D`, PDM, GPIO4 sleep. Not a glass sit. [cpp-platformio.md](cpp-platformio.md) |
 | [sira-fiinikkusu/reterminal-sticky-voice-companion](https://github.com/sira-fiinikkusu/reterminal-sticky-voice-companion) | Third-party (on-glass) | ESPHome: PDM 16 kHz left on GPIO19/20, GPIO38 rail, USB-Serial-JTAG pad reclaim after deep sleep |
 
 Do not cite a host checkout path, a one-off dump directory, or another

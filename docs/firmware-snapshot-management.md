@@ -143,6 +143,13 @@ cargo xtask confirm-factory-firmware --capture after-their-flash
 
 ### flash-app (original vs capture only)
 
+`--image` must be an application payload (espflash `save-image` or an
+extracted app), not an ELF and not a merged Playground `.factory.bin`.
+A 2026.8.2 Sticky factory dump starts with the bootloader at `0x0` and
+puts the app at `0x10000`; its own table parks `nvs` at `0x1fa0000`.
+Writing that file at `0x0` would destroy factory NVS. Extract the app
+and pass that slice to `flash-app` (factory `app0` at `0x90000` only).
+
 ```shell
 # source the script espup printed (example: . $HOME/export-esp.sh)
 cargo xtask build-fw simple-debug --features operator

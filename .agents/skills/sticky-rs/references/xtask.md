@@ -105,7 +105,9 @@ cargo xtask vet-idle-log --embassy idle-embassy.log
 # or: cargo xtask monitor --lines 80 --quiet --output uart.log
 ```
 
-`flash-app` does not build that `.bin` (`build-fw` does). If the listen
+`flash-app` does not build that `.bin` (`build-fw` does). A Playground
+`.factory.bin` is a merge, not a `save-image` payload: extract the app
+at `0x10000` first. Do not write that merge at `0x0`. If the listen
 shows a boot loop (checksum / “not bootable”) or the image wedges:
 `restore-factory-firmware`
 (`--part app0` or full, `--yes` of **that unit's** original; never erase),

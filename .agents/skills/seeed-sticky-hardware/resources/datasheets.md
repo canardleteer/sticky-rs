@@ -106,7 +106,10 @@ stress:
   clock) and Master Activation `0x20`. `ssd1677_resume` runs
   `0x22 = 0xC0` (enable clock, then analog) and `0x20`. Table 7-1
   already names those stage combinations. RAM stays until deep
-  sleep.
+  sleep. On this Sticky, `0xC0` then `0x20` after standby did
+  not drop BUSY; `0x80` then `0x20` did not either. Recovery
+  was a hardware reset (see
+  [display.md](../references/display.md)).
 
 ## Verified against the GT911 datasheet
 

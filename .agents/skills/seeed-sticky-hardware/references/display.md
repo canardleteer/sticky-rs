@@ -111,7 +111,11 @@ Refresh is expensive; glass holds pixels without power.
   bytes. The 2048 `seeed_epaper` copy has no vtable slots.
   UC8179 slots are NULL (`driver standby not supported`). Crate
   `Ssd1677::standby` / `resume` stay on `Active`. Deep sleep is
-  still `sleep` → `Asleep`.
+  still `sleep` → `Asleep`. On this Sticky (embassy-debug Page
+  Up 2 s): after standby, BUSY stayed high. Stock `0xC0` and
+  Table 7-1 `0x80` left `busy=1`. Recovery was hardware reset +
+  OTP init + redraw (`epd resume rst`). That is not RAM-keep
+  resume. The MCU stayed awake (`imu=` / `gt911` continued).
 
 Seeed’s open `seeed_epaper` SSD1677 driver and stock `reterminal_template`
 agree on that OTP path. They do **not** write a 105-byte LUT. A FreeInk MCU

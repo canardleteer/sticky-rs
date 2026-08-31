@@ -49,8 +49,10 @@
 //! the hardware reset the datasheet requires.
 //!
 //! Stock panel **standby** is not a type state. [`Ssd1677::standby`] and
-//! [`Ssd1677::resume`] stay on [`Active`]: they run Table 7-1 `0x22`
-//! sequences (disable analog+clock / enable clock+analog) and keep RAM.
+//! [`Ssd1677::resume`] stay on [`Active`]: they run
+//! [`UpdateSequence::STANDBY`] / [`UpdateSequence::RESUME`] (then
+//! [`Command::MasterActivation`]). On this Sticky, `resume` left
+//! BUSY high.
 
 #![no_std]
 #![forbid(unsafe_code)]
@@ -74,7 +76,7 @@ use embedded_hal::digital::{InputPin, OutputPin};
 use embedded_hal::spi::SpiDevice;
 
 pub use crate::analog::{AnalogVoltages, GateVoltage, SourceVoltage, Vcom};
-pub use crate::command::Command;
+pub use crate::command::{Command, DeepSleep, DEEP_SLEEP_ENTER};
 pub use crate::lut::{Lut, LUT_LEN};
 pub use crate::planes::{PackError, PlaneMapping};
 pub use crate::sequence::{BoosterSoftStart, GateScan, UpdateSequence};
@@ -427,13 +429,14 @@ where
         self.write_second_plane(second)
     }
 
-    /// Starts an update: `Display Update Control 2` (0x22) then
-    /// `Master Activation` (0x20).
+    /// Starts an update: [`Command::DisplayUpdateControl2`] then
+    /// [`Command::MasterActivation`].
     ///
     /// `sequence` selects which stages run. Sticky OTP uses
     /// [`UpdateSequence::DISPLAY_MODE_1_WITH_TEMP`] (full),
     /// [`UpdateSequence::DISPLAY_MODE_2_WITH_TEMP`] (partial), or
-    /// [`UpdateSequence::SEEED_GRAY4`].
+    /// [`UpdateSequence::SEEED_GRAY4`]. Standby / resume use
+    /// [`UpdateSequence::STANDBY`] / [`UpdateSequence::RESUME`].
     ///
     /// BUSY goes high. Wait for it before the next command.
     pub fn start_update(&mut self, sequence: UpdateSequence) -> DriverResult<(), SPI, DC> {
@@ -472,32 +475,36 @@ where
         Ok(())
     }
 
-    /// Stock standby: disable analog, then clock (`0x22` = `0x03`, then
-    /// `0x20`).
+    /// Stock standby: [`UpdateSequence::STANDBY`] then
+    /// [`Command::MasterActivation`].
     ///
-    /// Table 7-1 [`UpdateSequence::DISABLE_ANALOG_AND_CLOCK`]. Controller
-    /// RAM stays and the type stays [`Active`]. This is not
-    /// [`Ssd1677::sleep`]. BUSY goes high; wait before the next command.
+    /// Controller RAM is meant to stay and the type stays [`Active`].
+    /// This is not [`Ssd1677::sleep`]. Clock is off, so BUSY may stay
+    /// high. Do not wait for idle here. On this Sticky,
+    /// [`Ssd1677::resume`] also left BUSY high.
     pub fn standby(&mut self) -> DriverResult<(), SPI, DC> {
-        self.start_update(UpdateSequence::DISABLE_ANALOG_AND_CLOCK)
+        self.start_update(UpdateSequence::STANDBY)
     }
 
-    /// Stock resume after [`Ssd1677::standby`]: enable clock, then analog
-    /// (`0x22` = `0xC0`, then `0x20`).
+    /// Stock resume after [`Ssd1677::standby`]: [`UpdateSequence::RESUME`]
+    /// then [`Command::MasterActivation`].
     ///
-    /// Table 7-1 [`UpdateSequence::ENABLE_CLOCK_AND_ANALOG`]. The type
-    /// stays [`Active`]. BUSY goes high; wait before the next command.
+    /// The type stays [`Active`]. On this Sticky the sequence did not
+    /// drop BUSY; do not wait a full refresh timeout. Callers that
+    /// need a working panel after a failed wait should hardware-reset
+    /// and [`Ssd1677::init`].
     pub fn resume(&mut self) -> DriverResult<(), SPI, DC> {
-        self.start_update(UpdateSequence::ENABLE_CLOCK_AND_ANALOG)
+        self.start_update(UpdateSequence::RESUME)
     }
 
-    /// Enters deep sleep (0x10 with `A[1:0] = 0b11`).
+    /// Enters deep sleep ([`Command::DeepSleepMode`] with
+    /// [`DeepSleep::Enter`]).
     ///
     /// The returned value has no command methods: reviving the controller
     /// requires [`Ssd1677::wake`]. Issue this **before** dropping the panel
     /// power rail.
     pub fn sleep(mut self) -> SleepResult<SPI, DC, RST, BUSY, DELAY> {
-        match self.write(Command::DeepSleepMode, &[command::DEEP_SLEEP_ENTER]) {
+        match self.write(Command::DeepSleepMode, &[DeepSleep::Enter.byte()]) {
             Ok(()) => Ok(Ssd1677 {
                 spi: self.spi,
                 dc: self.dc,
@@ -651,10 +658,8 @@ mod tests {
 
     #[test]
     fn deep_sleep_sends_the_documented_parameter() {
-        let mut expected = command_txns(
-            Command::DeepSleepMode.opcode(),
-            &[command::DEEP_SLEEP_ENTER],
-        );
+        let mut expected =
+            command_txns(Command::DeepSleepMode.opcode(), &[DeepSleep::Enter.byte()]);
         let spi = SpiMock::new(&expected.split_off(0));
 
         let dc = PinMock::new(&[
@@ -686,12 +691,12 @@ mod tests {
         let mut expected = Vec::new();
         expected.extend(command_txns(
             Command::DisplayUpdateControl2.opcode(),
-            &[UpdateSequence::DISABLE_ANALOG_AND_CLOCK.byte()],
+            &[UpdateSequence::STANDBY.byte()],
         ));
         expected.extend(command_txns(Command::MasterActivation.opcode(), &[]));
         expected.extend(command_txns(
             Command::DisplayUpdateControl2.opcode(),
-            &[UpdateSequence::ENABLE_CLOCK_AND_ANALOG.byte()],
+            &[UpdateSequence::RESUME.byte()],
         ));
         expected.extend(command_txns(Command::MasterActivation.opcode(), &[]));
 

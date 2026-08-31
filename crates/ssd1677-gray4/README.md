@@ -64,6 +64,9 @@ path and no Sticky OTP sequences.
   `wait_until_idle_async` (feature `async`).
 - Deep sleep as a **type state**: `Asleep` has no command methods, and `wake`
   performs the hardware reset the datasheet requires.
-- Stock **standby** / **resume** on `Active`: `0x22` Table 7-1
-  `DISABLE_ANALOG_AND_CLOCK` / `ENABLE_CLOCK_AND_ANALOG` then `0x20`.
-  RAM stays. Not a third `0x10` mode.
+- Stock **standby** / **resume** on `Active`:
+  `UpdateSequence::STANDBY` / `RESUME` then
+  `Command::MasterActivation`. RAM is meant to stay. On this
+  Sticky, `RESUME` left BUSY high; do not wait a full refresh
+  timeout. Deep sleep is
+  `Command::DeepSleepMode` / `DeepSleep::Enter`.

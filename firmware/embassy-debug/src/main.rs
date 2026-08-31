@@ -1,8 +1,9 @@
 //! reTerminal Sticky Embassy event-logger image.
 //!
 //! On the unit: splash stays upright in the four in-plane holds; right-edge
-//! keys change the drawing; a 4 s Page Down hold paints a sleep card and
-//! deep-sleeps; hold Page Down 1 s after wake to restore that card; taps
+//! keys change the drawing; a 2 s Page Up hold runs panel standby then
+//! resume; a 4 s Page Down hold paints a sleep card and deep-sleeps;
+//! hold Page Down 1 s after wake to restore that card; taps
 //! and tilts print on UART0; a short beep answers a key or the first
 //! finger on the glass.
 //!
@@ -26,9 +27,10 @@ use bq25616::Charger;
 
 // Host-tested UART line format.
 use embassy_debug::{
-    classify_sleep_hold, format_event, format_git, format_latched, Event, ImuPose, ResumeHold,
-    Scene, SleepHold, TouchPoint, GIT_CAPACITY, IMU_REPORT_SECS, LATCHED_CAPACITY, LINE_CAPACITY,
-    LOG_PREFIX, MAX_TOUCH_POINTS, PAGE_DOWN_SLEEP_MS,
+    classify_sleep_hold, classify_standby_hold, format_event, format_git, format_latched, Event,
+    ImuPose, ResumeHold, Scene, SleepHold, StandbyHold, TouchPoint, GIT_CAPACITY, IMU_REPORT_SECS,
+    LATCHED_CAPACITY, LINE_CAPACITY, LOG_PREFIX, MAX_TOUCH_POINTS, PAGE_DOWN_SLEEP_MS,
+    PAGE_UP_STANDBY_MS,
 };
 #[cfg(feature = "mic")]
 use embassy_debug::{BUZZER_TONE_MS, TONE_DUMP_WINDOWS};
@@ -98,6 +100,9 @@ enum Beep {
 
 /// The page the display task should paint next.
 pub(crate) static SCENE: Signal<CriticalSectionRawMutex, Scene> = Signal::new();
+
+/// Display task: run panel `standby()` / `resume()` on the current card.
+pub(crate) static STANDBY_REQUEST: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 
 /// In-plane splash page. Face-up / face-down / unknown do not signal.
 pub(crate) static PAGE_ROTATION: Signal<CriticalSectionRawMutex, PageRotation> = Signal::new();
@@ -593,8 +598,9 @@ async fn log_task() {
 
 /// Right-edge keys: log `btn 4`/`5`/`6`, beep, and change the page.
 ///
-/// Page Up goes to the previous drawing; a short Page Down (and AI Voice
-/// on the default image) go to the next. Hold Page Down 4 s to sleep.
+/// A short Page Up goes to the previous drawing; a short Page Down (and
+/// AI Voice on the default image) go to the next. Hold Page Up 2 s for
+/// panel standby/resume. Hold Page Down 4 s to sleep.
 /// With `--features mic`, AI Voice plays the 1 kHz capture tone and does
 /// not change the page.
 #[embassy_executor::task]
@@ -642,9 +648,41 @@ async fn button_task(
                 }
             }
             5 => {
-                ask_beep();
-                scene = scene.prev();
-                SCENE.signal(scene);
+                let mut held = 20u32;
+                loop {
+                    match classify_standby_hold(held, page_up.is_low()) {
+                        StandbyHold::Waiting => {
+                            Timer::after(Duration::from_millis(20)).await;
+                            held = held.saturating_add(20);
+                            if held > PAGE_UP_STANDBY_MS {
+                                held = PAGE_UP_STANDBY_MS;
+                            }
+                        }
+                        StandbyHold::Short => {
+                            ask_beep();
+                            emit(Event::Button {
+                                t_ms: now_ms(),
+                                gpio: 5,
+                                down: false,
+                            });
+                            scene = scene.prev();
+                            SCENE.signal(scene);
+                            break;
+                        }
+                        StandbyHold::RequestStandby => {
+                            crate::STANDBY_REQUEST.signal(());
+                            if page_up.is_low() {
+                                page_up.wait_for_high().await;
+                            }
+                            emit(Event::Button {
+                                t_ms: now_ms(),
+                                gpio: 5,
+                                down: false,
+                            });
+                            break;
+                        }
+                    }
+                }
             }
             6 => {
                 let mut held = 20u32;

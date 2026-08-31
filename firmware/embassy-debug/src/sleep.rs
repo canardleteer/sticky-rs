@@ -25,7 +25,7 @@ use seeed_reterminal_sticky::power::Latch;
 
 /// Display task: paint the sleep card, park the panel, then signal.
 pub(crate) static SLEEP_REQUEST: Signal<CriticalSectionRawMutex, ()> = Signal::new();
-/// Panel rail is off after `0x10`.
+/// Panel rail is off after [`ssd1677_gray4::Ssd1677::sleep`].
 pub(crate) static PANEL_PARKED: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 /// GPIO6 is released, listening, and on the low-power wake path.
 pub(crate) static WAKE_ARMED: Signal<CriticalSectionRawMutex, ()> = Signal::new();

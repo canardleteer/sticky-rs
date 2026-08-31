@@ -21,8 +21,7 @@ pub enum Command {
     SourceDrivingVoltage = 0x04,
     /// Table 7-1 `Booster Soft-start Control` (0x0C).
     BoosterSoftStart = 0x0c,
-    /// Table 7-1 `Deep Sleep mode` (0x10). `A[1:0] = 11` enters deep sleep;
-    /// `00` is Normal Mode (POR). `01` does **not** sleep.
+    /// Table 7-1 `Deep Sleep mode`. Parameter is [`DeepSleep`].
     DeepSleepMode = 0x10,
     /// Table 7-1 `Data Entry mode setting` (0x11). Section `8.2 Data Entry
     /// Mode Setting (11h)`.
@@ -41,14 +40,14 @@ pub enum Command {
     ReadTemperatureRegister = 0x1b,
     /// Table 7-1 `Temperature Sensor` write command to external sensor (0x1C).
     WriteExternalTemperature = 0x1c,
-    /// Table 7-1 `Master Activation` (0x20).
+    /// Table 7-1 `Master Activation`. Follows [`Self::DisplayUpdateControl2`].
     MasterActivation = 0x20,
     /// Table 7-1 `Display Update` RAM content option (0x21).
     ///
     /// Seeed Sticky OTP init never sends this. Lotus / bb_epaper payloads stay
     /// commented in [`crate::sequence`].
     DisplayUpdateControl1 = 0x21,
-    /// Table 7-1 `Display Update Sequence Option` (0x22).
+    /// Table 7-1 `Display Update Sequence Option`. Parameter is [`crate::UpdateSequence`].
     DisplayUpdateControl2 = 0x22,
     /// Table 7-1 `Write RAM (Black White)` (0x24). Section `6.5 RAM`.
     WriteRamBlackWhite = 0x24,
@@ -139,11 +138,32 @@ impl Command {
     }
 }
 
-/// Parameter for [`Command::DeepSleepMode`]: `A[1:0] = 0b11`.
+/// Table 7-1 parameter for [`Command::DeepSleepMode`].
 ///
-/// Table 7-1 `Deep Sleep mode`: `11` enters deep sleep; BUSY stays high.
-/// Exit needs HWRESET.
-pub const DEEP_SLEEP_ENTER: u8 = 0b11;
+/// Hex belongs only here and in the opcode test. Callers use the variant
+/// name. [`Self::Enter`] is the only value that sleeps.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum DeepSleep {
+    /// `A[1:0] = 00` — Normal Mode (POR). Not a sleep.
+    Normal = 0b00,
+    /// `A[1:0] = 01` — does **not** sleep (Lotus / bb_epaper “keep RAM”).
+    Inactive = 0b01,
+    /// `A[1:0] = 11` — enter deep sleep. BUSY stays high. Exit needs HWRESET.
+    Enter = 0b11,
+}
+
+impl DeepSleep {
+    /// The byte written after [`Command::DeepSleepMode`].
+    #[inline]
+    #[must_use]
+    pub const fn byte(self) -> u8 {
+        self as u8
+    }
+}
+
+/// [`DeepSleep::Enter`] as a byte. Prefer [`DeepSleep::Enter`] in new code.
+pub const DEEP_SLEEP_ENTER: u8 = DeepSleep::Enter.byte();
 
 /// Parameter for [`Command::TemperatureSensorControl`] selecting the internal
 /// sensor (`0x80`). Table 7-1 temperature-sensor selection; POR for the
@@ -173,6 +193,7 @@ mod tests {
         assert_eq!(Command::SetRamXStartEnd.opcode(), 0x44);
         assert_eq!(Command::SetRamYCounter.opcode(), 0x4f);
         assert_eq!(Command::MasterActivation.opcode(), 0x20);
+        assert_eq!(Command::DisplayUpdateControl2.opcode(), 0x22);
         assert_eq!(Command::DeepSleepMode.opcode(), 0x10);
         assert_eq!(Command::BoosterSoftStart.opcode(), 0x0c);
         assert_eq!(Command::GateDrivingVoltage.opcode(), 0x03);
@@ -185,6 +206,14 @@ mod tests {
         assert_eq!(Command::DitheringEngine.opcode(), 0x4d);
         assert_eq!(Command::AutoWriteRedRam.opcode(), 0x46);
         assert_eq!(Command::AutoWriteBwRam.opcode(), 0x47);
+    }
+
+    #[test]
+    fn deep_sleep_param_matches_table_7_1() {
+        assert_eq!(DeepSleep::Normal.byte(), 0b00);
+        assert_eq!(DeepSleep::Inactive.byte(), 0b01);
+        assert_eq!(DeepSleep::Enter.byte(), 0b11);
+        assert_eq!(DEEP_SLEEP_ENTER, DeepSleep::Enter.byte());
     }
 
     #[test]

@@ -205,6 +205,14 @@ pub const PAGE_DOWN_SLEEP_MS: u32 = 4_000;
 /// milliseconds.
 pub const PAGE_DOWN_RESUME_MS: u32 = 1_000;
 
+/// How long Page Up must stay low to run panel standby then resume, in
+/// milliseconds.
+pub const PAGE_UP_STANDBY_MS: u32 = 2_000;
+
+/// How long the glass sits after panel `standby()` so a human can
+/// confirm the last card stayed.
+pub const STANDBY_LOOK_MS: u32 = 2_000;
+
 /// Page Down hold while awake: short press versus sleep request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SleepHold {
@@ -242,6 +250,34 @@ pub enum ResumeHold {
     Ready,
     /// Released before the resume threshold.
     Abort,
+}
+
+/// Page Up hold while awake: short press versus panel standby.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StandbyHold {
+    /// Still low, under [`PAGE_UP_STANDBY_MS`].
+    Waiting,
+    /// Released before the standby threshold.
+    Short,
+    /// Held through [`PAGE_UP_STANDBY_MS`].
+    RequestStandby,
+}
+
+/// Classifies an awake Page Up hold.
+#[inline]
+#[must_use]
+pub const fn classify_standby_hold(held_ms: u32, still_low: bool) -> StandbyHold {
+    if still_low {
+        if held_ms >= PAGE_UP_STANDBY_MS {
+            StandbyHold::RequestStandby
+        } else {
+            StandbyHold::Waiting
+        }
+    } else if held_ms < PAGE_UP_STANDBY_MS {
+        StandbyHold::Short
+    } else {
+        StandbyHold::RequestStandby
+    }
 }
 
 /// Classifies a post-wake Page Down hold.
@@ -346,6 +382,19 @@ pub enum Event {
     /// Reset reason was deep-sleep wake (before the 1 s resume hold).
     Woke {
         /// Milliseconds since this wake.
+        t_ms: u32,
+    },
+    /// Panel `standby()` finished; analog is down, RAM kept.
+    Standby {
+        /// Milliseconds since boot.
+        t_ms: u32,
+    },
+    /// Panel can take commands again after the standby sit.
+    ///
+    /// On this glass that may follow a hardware reset
+    /// (`epd resume rst`), not a successful stock `0xC0`.
+    Resumed {
+        /// Milliseconds since boot.
         t_ms: u32,
     },
 }
@@ -543,6 +592,8 @@ pub fn format_event<'a>(event: &Event, buf: &'a mut [u8]) -> Result<&'a str, For
             write_into(buf, format_args!("{LOG_PREFIX}: t={t_ms} scene=sleeping"))
         }
         Event::Woke { t_ms } => write_into(buf, format_args!("{LOG_PREFIX}: t={t_ms} woke")),
+        Event::Standby { t_ms } => write_into(buf, format_args!("{LOG_PREFIX}: t={t_ms} standby")),
+        Event::Resumed { t_ms } => write_into(buf, format_args!("{LOG_PREFIX}: t={t_ms} resume")),
     }
 }
 
@@ -1076,6 +1127,14 @@ mod tests {
             classify_resume_hold(PAGE_DOWN_RESUME_MS, true),
             ResumeHold::Ready
         );
+        assert_eq!(PAGE_UP_STANDBY_MS, 2_000);
+        assert_eq!(STANDBY_LOOK_MS, 2_000);
+        assert_eq!(classify_standby_hold(20, true), StandbyHold::Waiting);
+        assert_eq!(classify_standby_hold(20, false), StandbyHold::Short);
+        assert_eq!(
+            classify_standby_hold(PAGE_UP_STANDBY_MS, true),
+            StandbyHold::RequestStandby
+        );
     }
 
     #[test]
@@ -1093,6 +1152,14 @@ mod tests {
             "embassy-debug: t=9 scene=sleeping"
         );
         assert_eq!(line(&Event::Woke { t_ms: 11 }), "embassy-debug: t=11 woke");
+        assert_eq!(
+            line(&Event::Standby { t_ms: 13 }),
+            "embassy-debug: t=13 standby"
+        );
+        assert_eq!(
+            line(&Event::Resumed { t_ms: 15 }),
+            "embassy-debug: t=15 resume"
+        );
         let mut buf = [0u8; LINE_CAPACITY];
         assert_eq!(
             format_sleeping(&mut buf).unwrap(),

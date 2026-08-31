@@ -51,15 +51,22 @@ Live-ask, never-erase, and flash I/O: root
   and `ble n=` in one listen). Scan only; no NVS writes; no MAC /
   BSSID. How-to:
   [README.md](README.md#radio-test-instructions).
+- Panel standby sit: hold Page Up 2 s.
+  `UpdateSequence::STANDBY` then `MasterActivation`, look 2 s.
+  Stock `RESUME` (`0xC0`) and `ENABLE_CLOCK` (`0x80`) left BUSY
+  high on this unit. Firmware pulses RST, OTP `init`, UART
+  `epd resume rst` / `resume` / same `scene=`. `EPD_EN` stays
+  high. Not MCU deep sleep. Not RAM-keep resume.
 - Deep sleep: hold Page Down 4 s. The image paints a sleep card, sends
-  SSD1677 `0x10`, cuts `EPD_EN`, keeps the latch high, and wakes on
-  GPIO6 `ext1` ANY_LOW. Hold Page Down 1 s after wake to restore the
-  same card. Early release re-sleeps without painting. Recessed Reset
-  or a USB unplug/replug is a POWERON (splash). GPIO4 is still the
-  stock/docs wake pin; this image uses GPIO6 because the gesture is
-  Page Down. Do not `Latch::release`. Sit with
-  `cargo xtask monitor` **without** `--acm-tty` (`--acm-tty` pulses EN
-  and is a POWERON). No writes below `0x90000`. No Cargo `runner`.
+  SSD1677 `DeepSleepMode` / `DeepSleep::Enter`, cuts `EPD_EN`, keeps
+  the latch high, and wakes on GPIO6 `ext1` ANY_LOW. Hold Page Down
+  1 s after wake to restore the same card. Early release re-sleeps
+  without painting. Recessed Reset or a USB unplug/replug is a
+  POWERON (splash). GPIO4 is still the stock/docs wake pin; this
+  image uses GPIO6 because the gesture is Page Down. Do not
+  `Latch::release`. Sit with `cargo xtask monitor` **without**
+  `--acm-tty` (`--acm-tty` pulses EN and is a POWERON). No writes
+  below `0x90000`. No Cargo `runner`.
 
 ## Flash and UART
 

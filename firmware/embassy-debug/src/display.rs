@@ -9,9 +9,9 @@
 use crate::{emit, now_ms};
 
 // Embassy time + UART scene token.
-use embassy_debug::{Event, Scene};
-use embassy_futures::select::{select3, Either3};
-use embassy_time::{with_timeout, Delay, Duration};
+use embassy_debug::{Event, Scene, STANDBY_LOOK_MS};
+use embassy_futures::select::{select4, Either4};
+use embassy_time::{with_timeout, Delay, Duration, Instant, Timer};
 use embedded_hal::delay::DelayNs;
 
 // Draw splash with built-in mono fonts.
@@ -34,11 +34,13 @@ use esp_println::println;
 use seeed_reterminal_sticky::display::{self, PageRotation, RefreshKind};
 use seeed_reterminal_sticky::rails::{Enabled, EpdRail, PanelParked};
 use ssd1677_gray4::planes::{gray, rotate180_mono, write_mono, PlaneMapping};
-use ssd1677_gray4::Ssd1677;
+use ssd1677_gray4::{Ssd1677, UpdateSequence};
 use static_cell::ConstStaticCell;
 
 const WHITE: u8 = 0xff;
 const REFRESH_TIMEOUT: Duration = Duration::from_secs(15);
+/// After clock-off, BUSY can stay high. Do not sit on it for a full refresh.
+const RESUME_POLL: Duration = Duration::from_millis(2000);
 
 /// 240×160 packed 2bpp Ferris; provenance in `assets/SOURCE.md`.
 const FERRIS: &[u8] = include_bytes!("../assets/ferris.g4");
@@ -84,7 +86,8 @@ pub struct PanelParts {
 /// On the unit: splash stays upright in the four in-plane holds. FaceUp /
 /// FaceDown keep the last of those. Other pages stay USB-down. In the
 /// MCU: OTP gray4 for splash, the key legend, and tones; OTP 1-bit for
-/// shapes. A 4 s Page Down paints the sleep card and parks the panel.
+/// shapes. A 2 s Page Up runs panel standby then resume. A 4 s Page
+/// Down paints the sleep card and parks the panel.
 #[embassy_executor::task]
 pub async fn display_task(
     parts: PanelParts,
@@ -140,18 +143,19 @@ pub async fn display_task(
     refresh(&mut driver, draw, tx, scene, rotation, &mut kind).await;
 
     loop {
-        match select3(
+        match select4(
             crate::SCENE.wait(),
             crate::PAGE_ROTATION.wait(),
             crate::sleep::SLEEP_REQUEST.wait(),
+            crate::STANDBY_REQUEST.wait(),
         )
         .await
         {
-            Either3::First(next) => {
+            Either4::First(next) => {
                 scene = next;
                 refresh(&mut driver, draw, tx, scene, rotation, &mut kind).await;
             }
-            Either3::Second(next) => {
+            Either4::Second(next) => {
                 if next == rotation {
                     continue;
                 }
@@ -160,7 +164,7 @@ pub async fn display_task(
                     refresh(&mut driver, draw, tx, scene, rotation, &mut kind).await;
                 }
             }
-            Either3::Third(()) => {
+            Either4::Third(()) => {
                 crate::sleep::persist(scene, rotation);
                 if paint_sleep_card(&mut driver, draw, tx, &mut kind).await {
                     park_panel(driver, rail);
@@ -169,6 +173,9 @@ pub async fn display_task(
                 loop {
                     embassy_time::Timer::after(embassy_time::Duration::from_secs(3_600)).await;
                 }
+            }
+            Either4::Fourth(()) => {
+                run_standby_resume(&mut driver, draw, tx, scene, rotation, &mut kind).await;
             }
         }
     }
@@ -242,6 +249,109 @@ async fn refresh<SPI, DC, RST, BUSY>(
     }
 }
 
+fn print_busy<SPI, DC, RST, BUSY>(
+    driver: &mut Ssd1677<SPI, DC, RST, BUSY, Delay, ssd1677_gray4::Active>,
+    tag: &str,
+) where
+    SPI: embedded_hal::spi::SpiDevice,
+    DC: embedded_hal::digital::OutputPin,
+    RST: embedded_hal::digital::OutputPin<Error = DC::Error>,
+    BUSY: InputPin<Error = DC::Error>,
+{
+    match driver.is_busy() {
+        Ok(true) => println!("embassy-debug: epd {tag} busy=1"),
+        Ok(false) => println!("embassy-debug: epd {tag} busy=0"),
+        Err(_) => println!("embassy-debug: epd {tag} busy=?"),
+    }
+}
+
+/// Poll BUSY. After clock-off, `wait_for_low` can sit until the refresh timeout.
+async fn busy_cleared<SPI, DC, RST, BUSY>(
+    driver: &mut Ssd1677<SPI, DC, RST, BUSY, Delay, ssd1677_gray4::Active>,
+    timeout: Duration,
+) -> bool
+where
+    SPI: embedded_hal::spi::SpiDevice,
+    DC: embedded_hal::digital::OutputPin,
+    RST: embedded_hal::digital::OutputPin<Error = DC::Error>,
+    BUSY: InputPin<Error = DC::Error>,
+{
+    if matches!(driver.is_busy(), Ok(false)) {
+        return true;
+    }
+    let start = Instant::now();
+    while Instant::now() - start < timeout {
+        Timer::after(Duration::from_millis(20)).await;
+        match driver.is_busy() {
+            Ok(false) => return true,
+            Ok(true) => {}
+            Err(_) => return false,
+        }
+    }
+    matches!(driver.is_busy(), Ok(false))
+}
+
+/// [`Ssd1677::standby`], look, [`Ssd1677::resume`], then the same card.
+///
+/// `EPD_EN` stays high. This is not [`Ssd1677::sleep`]. Clock-off can leave
+/// BUSY high; stock `0xC0` may not drop it. Try [`UpdateSequence::ENABLE_CLOCK`]
+/// next, then a hardware reset + init so the card can refresh.
+async fn run_standby_resume<SPI, DC, RST, BUSY>(
+    driver: &mut Ssd1677<SPI, DC, RST, BUSY, Delay, ssd1677_gray4::Active>,
+    draw: &mut [u8; display::PLANE_BYTES],
+    tx: &mut [u8; display::PLANE_BYTES],
+    scene: Scene,
+    rotation: PageRotation,
+    kind: &mut RefreshKind,
+) where
+    SPI: embedded_hal::spi::SpiDevice,
+    DC: embedded_hal::digital::OutputPin,
+    RST: embedded_hal::digital::OutputPin<Error = DC::Error>,
+    BUSY: InputPin<Error = DC::Error> + Wait<Error = DC::Error>,
+{
+    if driver.standby().is_err() {
+        println!("embassy-debug: epd standby failed");
+        return;
+    }
+    emit(Event::Standby { t_ms: now_ms() });
+    Timer::after(Duration::from_millis(u64::from(STANDBY_LOOK_MS))).await;
+    print_busy(driver, "look");
+    if driver.resume().is_err() {
+        println!("embassy-debug: epd resume failed");
+        return;
+    }
+    print_busy(driver, "c0");
+    if busy_cleared(driver, RESUME_POLL).await {
+        emit(Event::Resumed { t_ms: now_ms() });
+        refresh(driver, draw, tx, scene, rotation, kind).await;
+        return;
+    }
+    if driver
+        .start_update_sequence(UpdateSequence::ENABLE_CLOCK)
+        .is_err()
+    {
+        println!("embassy-debug: epd resume failed");
+        return;
+    }
+    print_busy(driver, "clk");
+    if busy_cleared(driver, RESUME_POLL).await && driver.resume().is_ok() {
+        print_busy(driver, "c0b");
+        if busy_cleared(driver, RESUME_POLL).await {
+            println!("embassy-debug: epd resume clk");
+            emit(Event::Resumed { t_ms: now_ms() });
+            refresh(driver, draw, tx, scene, rotation, kind).await;
+            return;
+        }
+    }
+    println!("embassy-debug: epd resume rst");
+    if driver.hardware_reset().is_err() || driver.init(&kind.controller_config()).is_err() {
+        println!("embassy-debug: epd re-init failed");
+        return;
+    }
+    emit(Event::Resumed { t_ms: now_ms() });
+    refresh(driver, draw, tx, scene, rotation, kind).await;
+}
+
 /// Sleep card, then wait BUSY. Returns false if the write or wait failed.
 async fn paint_sleep_card<SPI, DC, RST, BUSY>(
     driver: &mut Ssd1677<SPI, DC, RST, BUSY, Delay, ssd1677_gray4::Active>,
@@ -287,7 +397,9 @@ where
     }
 }
 
-/// `0x10 = 0x03`, wait, cut `EPD_EN`, hold the pad.
+/// [`Ssd1677::sleep`] ([`ssd1677_gray4::Command::DeepSleepMode`] /
+/// [`ssd1677_gray4::DeepSleep::Enter`]), wait
+/// [`display::SLEEP_HOLD_MS`], cut `EPD_EN`, hold the pad.
 fn park_panel<SPI, DC, RST, BUSY>(
     driver: Ssd1677<SPI, DC, RST, BUSY, Delay, ssd1677_gray4::Active>,
     rail: EpdRail<Output<'static>, Enabled>,
@@ -302,7 +414,7 @@ fn park_panel<SPI, DC, RST, BUSY>(
         return;
     };
     let _ = asleep.release();
-    Delay.delay_ms(100);
+    Delay.delay_ms(display::SLEEP_HOLD_MS);
     let disabled = rail
         .disable_after_panel_sleep(PanelParked::after_deep_sleep_command())
         .expect("driving the panel rail cannot fail");

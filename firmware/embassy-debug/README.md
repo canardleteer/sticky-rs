@@ -32,6 +32,14 @@ On the unit:
 - Tilt the card for `imu=…`. A short beep answers a key-down. Tap the
   glass for `touch n=` (Rev.09 INT-low address select; on glass
   through `n=5`).
+- Page Up under 2 s walks to the previous drawing. Hold 2 s to
+  send panel `standby()` on the **current** card (`EPD_EN` stays
+  high). UART prints `standby` at once (BUSY may stay high). After
+  a 2 s look, stock `resume()` (`0xC0`) and `ENABLE_CLOCK`
+  (`0x80`) left `busy=1` on this unit. The image then pulses RST,
+  OTP-inits, prints `epd resume rst` then `resume`, and redraws
+  the same `scene=`. That is not MCU deep sleep and not RAM-keep
+  resume.
 - Page Down under 4 s walks to the next drawing. Hold 4 s to sleep:
   the glass shows "sleeping, hold page down to resume", UART prints
   `scene=sleeping` then `embassy-debug: sleeping`, and UART0 goes

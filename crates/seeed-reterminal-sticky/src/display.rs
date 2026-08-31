@@ -167,7 +167,8 @@ impl RefreshKind {
         }
     }
 
-    /// Whether `init` should send 0x12. Seeed only does this on full refresh.
+    /// Whether `init` should send [`ssd1677_gray4::Command::SoftwareReset`].
+    /// Seeed only does this on full refresh.
     #[inline]
     #[must_use]
     pub const fn software_reset(self) -> bool {
@@ -175,7 +176,8 @@ impl RefreshKind {
     }
 
     /// Temperature register (0x1A) written immediately before Master Activation
-    /// on gray4. `None` for black/white modes (0x22 loads temperature itself).
+    /// on gray4. `None` for black/white modes
+    /// ([`UpdateSequence`] loads temperature itself).
     #[inline]
     #[must_use]
     pub const fn temperature_override(self) -> Option<[u8; 2]> {

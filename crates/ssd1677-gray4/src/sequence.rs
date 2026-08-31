@@ -56,13 +56,19 @@ impl UpdateSequence {
     pub const DISABLE_CLOCK: Self = Self(0x01);
     /// Enable clock, then analog (`0xC0`).
     ///
-    /// Stock `ssd1677_resume` writes this, then Master Activation.
+    /// Written after [`crate::Command::DisplayUpdateControl2`], then
+    /// [`crate::Command::MasterActivation`]. Stock `ssd1677_resume`.
     pub const ENABLE_CLOCK_AND_ANALOG: Self = Self(0xc0);
     /// Disable analog, then clock (`0x03`).
     ///
-    /// Stock `ssd1677_standby` writes this, then Master Activation.
-    /// Controller RAM stays; this is not Deep Sleep (`0x10`).
+    /// Written after [`crate::Command::DisplayUpdateControl2`], then
+    /// [`crate::Command::MasterActivation`]. Stock `ssd1677_standby`.
+    /// Controller RAM stays; this is not [`crate::Command::DeepSleepMode`].
     pub const DISABLE_ANALOG_AND_CLOCK: Self = Self(0x03);
+    /// Stock standby: [`Self::DISABLE_ANALOG_AND_CLOCK`].
+    pub const STANDBY: Self = Self::DISABLE_ANALOG_AND_CLOCK;
+    /// Stock resume: [`Self::ENABLE_CLOCK_AND_ANALOG`].
+    pub const RESUME: Self = Self::ENABLE_CLOCK_AND_ANALOG;
     /// Enable clock and analog, DISPLAY Mode 1, then power down (`0xC7`).
     pub const DISPLAY_MODE_1: Self = Self(0xc7);
     /// Enable clock and analog, DISPLAY Mode 2, then power down (`0xCF`).
@@ -215,6 +221,14 @@ mod tests {
         assert_eq!(UpdateSequence::DISPLAY_MODE_1.byte(), 0xc7);
         assert_eq!(UpdateSequence::ENABLE_CLOCK_AND_ANALOG.byte(), 0xc0);
         assert_eq!(UpdateSequence::DISABLE_ANALOG_AND_CLOCK.byte(), 0x03);
+        assert_eq!(
+            UpdateSequence::STANDBY,
+            UpdateSequence::DISABLE_ANALOG_AND_CLOCK
+        );
+        assert_eq!(
+            UpdateSequence::RESUME,
+            UpdateSequence::ENABLE_CLOCK_AND_ANALOG
+        );
     }
 
     #[test]

@@ -80,8 +80,10 @@ pub const fn page_to_framebuffer(px: u16, py: u16, rotation: PageRotation) -> Op
     Some(match rotation {
         PageRotation::Portrait0 => (WIDTH - 1 - py, HEIGHT - 1 - px),
         PageRotation::Portrait180 => (py, px),
-        PageRotation::Landscape0 => (px, py),
-        PageRotation::Landscape180 => (WIDTH - 1 - px, HEIGHT - 1 - py),
+        // Identity landscape printed Latin right-to-left on glass
+        // (2026-08-30). Mirror X; 180 stays the other landscape hold.
+        PageRotation::Landscape0 => (WIDTH - 1 - px, py),
+        PageRotation::Landscape180 => (px, HEIGHT - 1 - py),
     })
 }
 
@@ -286,22 +288,22 @@ mod tests {
     }
 
     #[test]
-    fn usb_right_landscape_corners_are_the_identity_on_the_canvas() {
+    fn usb_right_landscape_corners_mirror_x_on_the_canvas() {
         assert_eq!(
             page_to_framebuffer(0, 0, PageRotation::Landscape0),
-            Some((0, 0))
-        );
-        assert_eq!(
-            page_to_framebuffer(799, 0, PageRotation::Landscape0),
             Some((799, 0))
         );
         assert_eq!(
+            page_to_framebuffer(799, 0, PageRotation::Landscape0),
+            Some((0, 0))
+        );
+        assert_eq!(
             page_to_framebuffer(0, 479, PageRotation::Landscape0),
-            Some((0, 479))
+            Some((799, 479))
         );
         assert_eq!(
             page_to_framebuffer(799, 479, PageRotation::Landscape0),
-            Some((799, 479))
+            Some((0, 479))
         );
         assert_eq!(page_to_framebuffer(800, 0, PageRotation::Landscape0), None);
         assert_eq!(page_to_framebuffer(0, 480, PageRotation::Landscape0), None);
@@ -311,19 +313,19 @@ mod tests {
     fn usb_left_landscape_corners_are_the_180_of_usb_right() {
         assert_eq!(
             page_to_framebuffer(0, 0, PageRotation::Landscape180),
-            Some((799, 479))
-        );
-        assert_eq!(
-            page_to_framebuffer(799, 0, PageRotation::Landscape180),
             Some((0, 479))
         );
         assert_eq!(
+            page_to_framebuffer(799, 0, PageRotation::Landscape180),
+            Some((799, 479))
+        );
+        assert_eq!(
             page_to_framebuffer(0, 479, PageRotation::Landscape180),
-            Some((799, 0))
+            Some((0, 0))
         );
         assert_eq!(
             page_to_framebuffer(799, 479, PageRotation::Landscape180),
-            Some((0, 0))
+            Some((799, 0))
         );
         assert_eq!(
             page_to_framebuffer(800, 0, PageRotation::Landscape180),

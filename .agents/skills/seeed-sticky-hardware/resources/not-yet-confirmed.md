@@ -34,7 +34,6 @@ a second status column.
 | [nyc-mic-pdm](#nyc-mic-pdm) | PDM high-fidelity rate / slot / hole | [sensors.md](../references/sensors.md) |
 | [nyc-panel-glass](#nyc-panel-glass) | Glass part, analog rails, temp LUT | [display.md](../references/display.md) |
 | [nyc-esphome-orient](#nyc-esphome-orient) | ESPHome `mirror_x` vs on-glass 180° | [display.md](../references/display.md) |
-| [nyc-page-rotation](#nyc-page-rotation) | In-repo page / IMU tokens vs USB-C on glass | [display.md](../references/display.md) |
 | [nyc-charge-stat](#nyc-charge-stat) | STAT while `/CE` is enabled | [power-and-sleep.md](../references/power-and-sleep.md) |
 | [nyc-deep-sleep-wake](#nyc-deep-sleep-wake) | In-repo deep sleep and GPIO4 wake | [power-and-sleep.md](../references/power-and-sleep.md) |
 | [nyc-gpio7-edge](#nyc-gpio7-edge) | GPIO7 edges with IMU or gauge armed | [sensors.md](../references/sensors.md) |
@@ -205,16 +204,6 @@ ESPHome preset: `mirror_x`, 10 MHz, no packed 180° rotate. Bunny glass:
 
 - Flash the ESPHome e-paper example, draw a known corner. Confirmed whether
   the preset already matches glass or needs the extra rotate.
-
-### nyc-page-rotation
-
-Host tests map USB-down to Portrait0. The root README still hedges that
-untested orientation enums may be backwards. embassy-debug splash follows
-the four in-plane IMU holds.
-
-- Hold each in-plane pose (USB-C bottom / top / right / left). Note the
-  UART `imu=` token and which way the splash sits vs the enclosure.
-  Confirmed when each token matches a physical USB-C edge on glass.
 
 ### nyc-charge-stat
 

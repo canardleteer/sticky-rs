@@ -72,8 +72,18 @@ step, change the [touch transform](touch.md) with it. ESPHome `mirror_x` only:
 
 IMU-driven UI rotation is a logical-canvas concern: keep the physical
 framebuffer mapping fixed, then rotate drawing/touch into page axes.
-In-repo token vs USB-C on glass:
-[nyc-page-rotation](../resources/not-yet-confirmed.md#nyc-page-rotation).
+2026-08-30, embassy-debug splash, glass facing the operator:
+
+| USB-C | UART | Splash |
+| --- | --- | --- |
+| Toward the floor | `imu=Portrait0` | Readable |
+| Toward the ceiling | `imu=Portrait180` | Readable |
+| Toward the operator’s right | `imu=Landscape0` | Readable |
+| Toward the operator’s left | `imu=Landscape180` | Readable |
+
+Tokens match the enclosure map. Identity landscape printed Latin
+right-to-left; `page_to_framebuffer` now mirrors X. Confirmed LTR
+on glass after that map.
 
 ## Waveforms
 

@@ -34,7 +34,8 @@ A ~0.70 g threshold on the dominant axis classified placement. UART learning
 firmware classified **FaceUp** while sitting still, then an in-plane pose
 after the operator lifted or rotated and held (~0.70 g map). An earlier
 token named USB-down **Landscape0**; the table above is the enclosure
-map (USB-down = Portrait 0). Gyro and FIFO wiring
+map (USB-down = Portrait 0). 2026-08-30 embassy-debug splash confirmed
+those four USB-C tokens on glass ([display.md](display.md#orientation-on-glass)). Gyro and FIFO wiring
 are undocumented. Stock firmware drives explicit low-power enter/exit
 transitions on this part around sleep, so expect a mode change rather than a
 single fixed ODR. **INT1 is GPIO7**, shared with BQ27220 GPOUT

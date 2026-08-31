@@ -26,8 +26,9 @@
 
 > [!IMPORTANT]
 >
-> Anything we haven't written a test for to confirm behavior, is likely still
-> misaligned (screen orientation enums, etc, are still backwards)
+> Anything we haven't written a test for to confirm behavior is likely
+> still misaligned. IMU page tokens vs USB-C, and landscape splash
+> left-to-right, are on glass.
 
 ## Firmware Examples
 

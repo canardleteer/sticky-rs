@@ -47,6 +47,10 @@
 //! Deep sleep is a type state, not a flag. In [`Asleep`] there are no command
 //! methods to call, and the only way back is [`Ssd1677::wake`], which performs
 //! the hardware reset the datasheet requires.
+//!
+//! Stock panel **standby** is not a type state. [`Ssd1677::standby`] and
+//! [`Ssd1677::resume`] stay on [`Active`]: they run Table 7-1 `0x22`
+//! sequences (disable analog+clock / enable clock+analog) and keep RAM.
 
 #![no_std]
 #![forbid(unsafe_code)]
@@ -468,6 +472,25 @@ where
         Ok(())
     }
 
+    /// Stock standby: disable analog, then clock (`0x22` = `0x03`, then
+    /// `0x20`).
+    ///
+    /// Table 7-1 [`UpdateSequence::DISABLE_ANALOG_AND_CLOCK`]. Controller
+    /// RAM stays and the type stays [`Active`]. This is not
+    /// [`Ssd1677::sleep`]. BUSY goes high; wait before the next command.
+    pub fn standby(&mut self) -> DriverResult<(), SPI, DC> {
+        self.start_update(UpdateSequence::DISABLE_ANALOG_AND_CLOCK)
+    }
+
+    /// Stock resume after [`Ssd1677::standby`]: enable clock, then analog
+    /// (`0x22` = `0xC0`, then `0x20`).
+    ///
+    /// Table 7-1 [`UpdateSequence::ENABLE_CLOCK_AND_ANALOG`]. The type
+    /// stays [`Active`]. BUSY goes high; wait before the next command.
+    pub fn resume(&mut self) -> DriverResult<(), SPI, DC> {
+        self.start_update(UpdateSequence::ENABLE_CLOCK_AND_ANALOG)
+    }
+
     /// Enters deep sleep (0x10 with `A[1:0] = 0b11`).
     ///
     /// The returned value has no command methods: reviving the controller
@@ -652,6 +675,49 @@ mod tests {
 
         let asleep = driver.sleep().map_err(|error| error.source).unwrap();
         let (mut spi, mut dc, mut rst, mut busy, _) = asleep.release();
+        spi.done();
+        dc.done();
+        rst.done();
+        busy.done();
+    }
+
+    #[test]
+    fn standby_and_resume_send_the_stock_sequences() {
+        let mut expected = Vec::new();
+        expected.extend(command_txns(
+            Command::DisplayUpdateControl2.opcode(),
+            &[UpdateSequence::DISABLE_ANALOG_AND_CLOCK.byte()],
+        ));
+        expected.extend(command_txns(Command::MasterActivation.opcode(), &[]));
+        expected.extend(command_txns(
+            Command::DisplayUpdateControl2.opcode(),
+            &[UpdateSequence::ENABLE_CLOCK_AND_ANALOG.byte()],
+        ));
+        expected.extend(command_txns(Command::MasterActivation.opcode(), &[]));
+
+        let spi = SpiMock::new(&expected);
+        let dc = PinMock::new(&[
+            PinTransaction::set(PinState::Low),
+            PinTransaction::set(PinState::High),
+            PinTransaction::set(PinState::Low),
+            PinTransaction::set(PinState::Low),
+            PinTransaction::set(PinState::High),
+            PinTransaction::set(PinState::Low),
+        ]);
+
+        let mut driver = Ssd1677::<_, _, PinMock, PinMock, _, Active> {
+            spi,
+            dc,
+            rst: PinMock::new(&[]),
+            busy: PinMock::new(&[]),
+            delay: NoopDelay::new(),
+            _state: PhantomData,
+        };
+
+        driver.standby().unwrap();
+        driver.resume().unwrap();
+
+        let (mut spi, mut dc, mut rst, mut busy, _) = driver.release();
         spi.done();
         dc.done();
         rst.done();

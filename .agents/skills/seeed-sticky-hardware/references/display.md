@@ -110,7 +110,8 @@ Refresh is expensive; glass holds pixels without power.
   opcode. Stock `ssd1677_standby` / `ssd1677_resume` send those
   bytes. The 2048 `seeed_epaper` copy has no vtable slots.
   UC8179 slots are NULL (`driver standby not supported`). Crate
-  typestate stays `Active` / `Asleep`.
+  `Ssd1677::standby` / `resume` stay on `Active`. Deep sleep is
+  still `sleep` → `Asleep`.
 
 Seeed’s open `seeed_epaper` SSD1677 driver and stock `reterminal_template`
 agree on that OTP path. They do **not** write a 105-byte LUT. A FreeInk MCU

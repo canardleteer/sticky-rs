@@ -95,9 +95,10 @@ pub const GATE_LINES_MINUS_ONE: u16 = HEIGHT - 1;
 
 /// SPI clock used on glass.
 ///
-/// The controller's own maximum is 20 MHz, and whether that is safe with the
-/// card on the same bus is unmeasured. A widely copied board profile defaults
-/// to 40 MHz, which is out of spec — do not inherit it.
+/// The controller's own maximum is 20 MHz. Panel refresh and a read-only
+/// card `send_status` both ACK at that rate after 400 kHz init. This
+/// default stays 10 MHz. A widely copied board profile defaults to 40 MHz,
+/// which is out of spec — do not inherit it.
 pub const SPI_MAX_HZ: u32 = 10_000_000;
 
 /// SPI mode used on glass (CPOL=0, CPHA=0).

@@ -113,7 +113,7 @@ populate it rather than guessing.
 | RAM | Internal SRAM + **8 MB in-package octal PSRAM** at 3.3 V (confirmed `esptool flash-id`, `AP_3v3`) |
 | Flash | **32 MB** external quad SPI, Winbond W25Q256-class (`ef 4019`; eFuse quad, 3.3 V) |
 | Display | 3.97" 800×480, 235 ppi **mono** E-Ink film; 4-gray is synthesized (dual plane + panel OTP), **SSD1677**-compatible SPI |
-| Touch | **GT911** on its own I2C; sensor reports **480×800** (portrait); **5** simultaneous contacts on this FPC (Rev.09 §1). INT low at RST → `0x5D` (Rev.09 §6.1; [touch.md](references/touch.md#on-glass-embassy-debug)) |
+| Touch | **GT911** on its own I2C; sensor reports **480×800** (portrait); map that sample onto 800×480 (`to_screen`); **5** simultaneous contacts on this FPC (Rev.09 §1). INT low at RST → `0x5D` (Rev.09 §6.1; [touch.md](references/touch.md#on-glass-embassy-debug)) |
 | USB debug | WCH **CH343P** on UART0 (`1a86:55d3`), not native USB-Serial/JTAG; udev by-id uses `_` before the USB serial |
 | Battery | 750 mAh 1S Li-ion, **BQ27220** gauge, **BQ25616** charger |
 | Audio | PDM MEMS **MSM261DDB020** (GPIO19/20, EN 38 / TPS22916; hole on bottom edge); **no loudspeaker** (FUET-5018 on GPIO48). On glass: 16 kHz / left energy is live; AI Voice 1 kHz dump shows a ~16-sample period. Not high-fidelity ([sensors.md](references/sensors.md#pdm-microphone)) |
@@ -139,11 +139,13 @@ ESP-IDF Rust target (`std`). **No probe-rs** on the USB-C connector.
 3. **Display and MicroSD share one SPI controller** (SCLK 13, MOSI 14,
    MISO 12) with separate CS. Clock the panel at **10 MHz, SPI mode 0**.
    Never assign GPIO0 to that SPI bus.
-4. **Touch is portrait on a landscape panel.** Map 480×800 onto 800×480, then
-   account for the 180° framebuffer rotation. Rev.09 §6.1: INT low at RST
-   → **`0x5D`** (contacts on this FPC); INT high → **`0x14`**. After
-   address select, leave GPIO21 (INT) floating: the ESP32-S3 pad has no
-   default pull. Mux GPIO41/42 off JTAG before RST / `TOUCH_EN`.
+4. **Touch is portrait on a landscape panel.** The GT911 sample is
+   **480×800**. Map that onto 800×480, then account for the 180°
+   framebuffer rotation. Do not scale `cx` as if the range were 800.
+   Rev.09 §6.1: INT low at RST → **`0x5D`** (contacts on this FPC);
+   INT high → **`0x14`**. After address select, leave GPIO21 (INT)
+   floating: the ESP32-S3 pad has no default pull. Mux GPIO41/42 off
+   JTAG before RST / `TOUCH_EN`.
 5. **Log and flash on UART0 through the CH343P** (monitor 115200). QinHeng
    `1a86:55d3` is not an Espressif VID. Consuming host tools pick that UART.
    Do not treat USB-C as native USB-Serial/JTAG or `probe-rs`.

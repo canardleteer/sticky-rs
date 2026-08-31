@@ -142,25 +142,32 @@ is module programming, not an MCU guess.
 
 ## Coordinate transform (on-glass)
 
-Map a controller sample `(cx, cy)` to physical screen `(sx, sy)` that matches
-the **pre-rotation** 800×480 canvas, then undo the display’s 180° transmit
-rotation.
+The GT911 sample `(cx, cy)` is **portrait 480×800**, not panel 800×480.
+A host map that scaled `cx` as if the range were 800 compressed the
+keys axis: glass corners next to the keys printed `y≈195` (2026-08-30
+sit, USB-C down).
 
-`W=800`, `H=480`, portrait `Pw=480`, `Ph=800`; `scale` is rounded integer map:
+Map that sample onto the pre-rotation 800×480 canvas, then undo the
+display’s 180° transmit rotation.
 
-1. `portrait_x = scale(cx, W, Pw-1)`
-2. `portrait_y = scale(H - min(cy, H), H, Ph-1)`
-3. `fb_x = W - portrait_y - 1`
-4. `fb_y = portrait_x`
-5. `sx = W - fb_x - 1`
-6. `sy = H - fb_y - 1`
+`W=800`, `H=480`, `Pw=480`, `Ph=800`; `scale` is rounded integer map:
 
-Swap-XY + flip-both onto 0–799 × 0–479 is the same geometry **without** step
-5–6. If display rotation changes, this transform must change with it.
+1. `fb_x = scale(min(cy, Ph-1), Ph-1, W-1)`
+2. `fb_y = scale(min(cx, Pw-1), Pw-1, H-1)`
+3. `sx = W - fb_x - 1`
+4. `sy = H - fb_y - 1`
+
+USB-C down, keys on the right: `(0, 0)` → near USB, away from keys
+`(799, 479)`; `(479, 0)` → near USB, next to keys `(799, 0)`;
+`(0, 799)` → far USB, away from keys `(0, 479)`; `(479, 799)` → far
+USB, next to keys `(0, 0)`. If display rotation changes, this
+transform must change with it.
 
 After mapping, taps are physical 800×480. Rotated pages convert physical →
-logical with the same rotation as drawing. Glass-corner check:
-[nyc-gt911-corners](../resources/not-yet-confirmed.md#nyc-gt911-corners).
+logical with the same rotation as drawing. 2026-08-30, default
+embassy-debug after that map: ink-corner first `p0=` was `795,470`,
+`795,4`, `4,475`, `4,4`. Mid-axis slides before the fix had keys-side
+`y≈195`; after the fix the keys-side corners sit at `y≈4`.
 
 Polling rate, tap slop, and stuck-contact recovery are software policy, not
 hardware. Re-run the reset/address sequence if the controller stops ACKing.

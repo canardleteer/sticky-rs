@@ -90,9 +90,11 @@ One controller (typically SPI2) for panel and card:
 | CS | 15 | SSD1677 |
 | CS | 8 | MicroSD |
 
-Panel: **10 MHz**, SPI mode 0. SSD1677 spec max is 20 MHz; 40 MHz on this
-shared bus is out of spec. Whether **20 MHz** is safe with the card on the
-same controller is unconfirmed.
+Panel: default **10 MHz**, SPI mode 0. SSD1677 spec max is 20 MHz;
+embassy-debug `--features spi20` painted a clean splash at 20 MHz.
+Read-only card identify (`sd` module) ACKs `send_status` at 10 MHz
+and 20 MHz after 400 kHz init. 40 MHz on this shared bus is out of
+spec.
 
 **GPIO0 must not appear on this SPI bus.** It is sensor SCL. Pass only the
 pins above. In ESP-IDF, unused `quadwp` / `quadhd` / `data4`–`data7` must be

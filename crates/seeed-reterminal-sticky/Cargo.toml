@@ -1,7 +1,7 @@
 [package]
 name = "seeed-reterminal-sticky"
 version = "0.1.0"
-description = "Board support for the Seeed Studio reTerminal Sticky: pin map, power latch typestate, rails, and coordinate transforms"
+description = "Board support for the Seeed Studio reTerminal Sticky: pin map, power latch typestate, rails, SD identify, and coordinate transforms"
 readme = "README.md"
 publish = true
 edition.workspace = true

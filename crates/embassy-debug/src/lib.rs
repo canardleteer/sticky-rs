@@ -3,7 +3,8 @@
 //! The firmware owns buses, pins, and the Embassy tasks. This crate owns the
 //! **strings** it prints so the log contract can be tested on the host:
 //! timestamped button, touch, GT911 status, IMU, mic-energy, PCM-dump,
-//! and radio-scan lines, and no factory serial / USB serial / MAC fields.
+//! radio-scan, and read-only SD identify lines, and no factory serial /
+//! USB serial / MAC / card product-serial fields.
 
 #![no_std]
 #![forbid(unsafe_code)]
@@ -249,6 +250,77 @@ pub enum Event {
 /// Writes `embassy-debug: latched` into `buf` without a trailing newline.
 pub fn format_latched(buf: &mut [u8]) -> Result<&str, FormatError> {
     write_into(buf, format_args!("{LOG_PREFIX}: latched"))
+}
+
+/// Writes `embassy-debug: sd cd=<0|1>` (`0` = inserted).
+pub fn format_sd_cd(inserted: bool, buf: &mut [u8]) -> Result<&str, FormatError> {
+    write_into(
+        buf,
+        format_args!("{}: sd cd={}", LOG_PREFIX, u8::from(!inserted)),
+    )
+}
+
+/// Writes `embassy-debug: sd none <reason>` (`empty`, `timeout`, `nak`).
+pub fn format_sd_none<'a>(reason: &str, buf: &'a mut [u8]) -> Result<&'a str, FormatError> {
+    write_into(buf, format_args!("{LOG_PREFIX}: sd none {reason}"))
+}
+
+/// Writes `embassy-debug: sd hz=<n> type=<sdsc|sdhc> mid=0xNN name=<name>`.
+///
+/// `name` is already sanitized. Never a CID product serial.
+pub fn format_sd_id<'a>(
+    hz: u32,
+    kind: &str,
+    mid: u8,
+    name: &str,
+    buf: &'a mut [u8],
+) -> Result<&'a str, FormatError> {
+    write_into(
+        buf,
+        format_args!("{LOG_PREFIX}: sd hz={hz} type={kind} mid={mid:#04x} name={name}"),
+    )
+}
+
+/// Writes `embassy-debug: sd vol=<n>`.
+pub fn format_sd_vol(idx: u8, buf: &mut [u8]) -> Result<&str, FormatError> {
+    write_into(buf, format_args!("{LOG_PREFIX}: sd vol={idx}"))
+}
+
+/// Writes `embassy-debug: sd dir n=<n>`.
+pub fn format_sd_dir(n: u8, buf: &mut [u8]) -> Result<&str, FormatError> {
+    write_into(buf, format_args!("{LOG_PREFIX}: sd dir n={n}"))
+}
+
+/// Writes `embassy-debug: sd ent name=<name> dir` or `… bytes=<n>`.
+///
+/// `name` is already sanitized. Never file contents.
+pub fn format_sd_ent<'a>(
+    name: &str,
+    bytes: Option<u32>,
+    buf: &'a mut [u8],
+) -> Result<&'a str, FormatError> {
+    match bytes {
+        None => write_into(buf, format_args!("{LOG_PREFIX}: sd ent name={name} dir")),
+        Some(n) => write_into(
+            buf,
+            format_args!("{LOG_PREFIX}: sd ent name={name} bytes={n}"),
+        ),
+    }
+}
+
+/// Writes `embassy-debug: sd read name=<name> n=<n>` after a ReadOnly read.
+pub fn format_sd_read<'a>(
+    name: &str,
+    n: u32,
+    buf: &'a mut [u8],
+) -> Result<&'a str, FormatError> {
+    write_into(buf, format_args!("{LOG_PREFIX}: sd read name={name} n={n}"))
+}
+
+/// Writes `embassy-debug: sd hz=<n> ack` or `… nak`.
+pub fn format_sd_ack(hz: u32, ok: bool, buf: &mut [u8]) -> Result<&str, FormatError> {
+    let token = if ok { "ack" } else { "nak" };
+    write_into(buf, format_args!("{LOG_PREFIX}: sd hz={hz} {token}"))
 }
 
 /// Writes `embassy-debug: git=<hash> dirty=<0|1>` into `buf` without a trailing newline.
@@ -633,6 +705,52 @@ mod tests {
     #[test]
     fn imu_period_is_five_seconds() {
         assert_eq!(IMU_REPORT_SECS, 5);
+    }
+
+    #[test]
+    fn sd_identify_lines_omit_a_card_serial() {
+        let mut buf = [0u8; LINE_CAPACITY];
+        assert_eq!(
+            format_sd_cd(true, &mut buf).unwrap(),
+            "embassy-debug: sd cd=0"
+        );
+        assert_eq!(
+            format_sd_cd(false, &mut buf).unwrap(),
+            "embassy-debug: sd cd=1"
+        );
+        assert_eq!(
+            format_sd_none("empty", &mut buf).unwrap(),
+            "embassy-debug: sd none empty"
+        );
+        assert_eq!(
+            format_sd_id(400_000, "sdhc", 0x03, "SC16G", &mut buf).unwrap(),
+            "embassy-debug: sd hz=400000 type=sdhc mid=0x03 name=SC16G"
+        );
+        assert!(!format_sd_id(400_000, "sdhc", 0x03, "SC16G", &mut buf)
+            .unwrap()
+            .contains("serial"));
+        assert_eq!(
+            format_sd_ack(10_000_000, true, &mut buf).unwrap(),
+            "embassy-debug: sd hz=10000000 ack"
+        );
+        assert_eq!(
+            format_sd_ack(20_000_000, false, &mut buf).unwrap(),
+            "embassy-debug: sd hz=20000000 nak"
+        );
+        assert_eq!(format_sd_vol(0, &mut buf).unwrap(), "embassy-debug: sd vol=0");
+        assert_eq!(format_sd_dir(2, &mut buf).unwrap(), "embassy-debug: sd dir n=2");
+        assert_eq!(
+            format_sd_ent("FOO.TXT", Some(12), &mut buf).unwrap(),
+            "embassy-debug: sd ent name=FOO.TXT bytes=12"
+        );
+        assert_eq!(
+            format_sd_ent("BAR", None, &mut buf).unwrap(),
+            "embassy-debug: sd ent name=BAR dir"
+        );
+        assert_eq!(
+            format_sd_read("FOO.TXT", 12, &mut buf).unwrap(),
+            "embassy-debug: sd read name=FOO.TXT n=12"
+        );
     }
 
     #[test]

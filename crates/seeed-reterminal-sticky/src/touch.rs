@@ -1,9 +1,12 @@
 //! GT911 coordinate transform and reset sequence timings.
 //!
 //! The digitizer is **portrait 480x800** under a **landscape 800x480** panel,
-//! and the display is transmitted with a 180-degree rotation. Two rotations
-//! and a mirror is exactly the kind of arithmetic that is easy to get half
-//! right, so the transform is a pure function with corner tests.
+//! and the display is transmitted with a 180-degree rotation. [`to_screen`]
+//! takes that 480x800 sample, not panel 800x480 (scaling `cx` as if the
+//! range were 800 compressed the keys axis to `y≈195` on glass). Two
+//! rotations and a mirror is exactly the kind of arithmetic that is easy
+//! to get half right, so the transform is a pure function with corner
+//! tests.
 //!
 //! If the display rotation changes, this transform must change with it.
 //!
@@ -323,18 +326,19 @@ const fn scale(value: u32, from: u32, to_max: u32) -> u32 {
     (value * to_max + from / 2) / from
 }
 
-/// Maps a controller sample onto the physical 800x480 screen.
+/// Maps a GT911 sample onto the physical 800x480 screen.
 ///
-/// Steps, from the board contract:
+/// The chip reports **portrait 480x800**, not panel 800x480. USB-C down,
+/// keys on the right (2026-08-30 sit): `(0, 0)` is near USB, away from
+/// keys; `(Pw - 1, 0)` is near USB, next to keys; `(0, Ph - 1)` is far
+/// from USB, away from keys.
 ///
-/// 1. `portrait_x = scale(cx, W, Pw - 1)`
-/// 2. `portrait_y = scale(H - min(cy, H), H, Ph - 1)`
-/// 3. `fb_x = W - portrait_y - 1`
-/// 4. `fb_y = portrait_x`
-/// 5. `sx = W - fb_x - 1`
-/// 6. `sy = H - fb_y - 1`
+/// 1. `fb_x = scale(min(cy, Ph - 1), Ph - 1, W - 1)`
+/// 2. `fb_y = scale(min(cx, Pw - 1), Pw - 1, H - 1)`
+/// 3. `sx = W - fb_x - 1`
+/// 4. `sy = H - fb_y - 1`
 ///
-/// Steps 5 and 6 undo the display's 180-degree transmit rotation; use
+/// Steps 3 and 4 undo the display's 180-degree transmit rotation; use
 /// [`to_framebuffer`] if you want the pre-rotation canvas instead.
 #[must_use]
 pub fn to_screen(cx: u32, cy: u32) -> (u32, u32) {
@@ -342,20 +346,21 @@ pub fn to_screen(cx: u32, cy: u32) -> (u32, u32) {
     (PANEL_WIDTH - fb_x - 1, PANEL_HEIGHT - fb_y - 1)
 }
 
-/// Maps a controller sample onto the pre-rotation 800x480 framebuffer.
+/// Maps a GT911 sample onto the pre-rotation 800x480 framebuffer.
 ///
-/// This is steps 1 to 4 of [`to_screen`]: swap-XY plus flip-both.
+/// Swap-XY of a clamped 480x800 sample (steps 1 and 2 of [`to_screen`]).
 #[must_use]
 pub fn to_framebuffer(cx: u32, cy: u32) -> (u32, u32) {
-    let portrait_x = scale(cx.min(PANEL_WIDTH), PANEL_WIDTH, DIGITIZER_WIDTH - 1);
-    let portrait_y = scale(
-        PANEL_HEIGHT - cy.min(PANEL_HEIGHT),
-        PANEL_HEIGHT,
+    let fb_x = scale(
+        cy.min(DIGITIZER_HEIGHT - 1),
         DIGITIZER_HEIGHT - 1,
+        PANEL_WIDTH - 1,
     );
-
-    let fb_x = PANEL_WIDTH - portrait_y.min(PANEL_WIDTH - 1) - 1;
-    let fb_y = portrait_x.min(PANEL_HEIGHT - 1);
+    let fb_y = scale(
+        cx.min(DIGITIZER_WIDTH - 1),
+        DIGITIZER_WIDTH - 1,
+        PANEL_HEIGHT - 1,
+    );
     (fb_x, fb_y)
 }
 
@@ -434,12 +439,31 @@ mod tests {
     #[test]
     fn opposite_corners_map_to_opposite_corners() {
         assert_eq!(to_screen(0, 0), (PANEL_WIDTH - 1, PANEL_HEIGHT - 1));
-        assert_eq!(to_screen(PANEL_WIDTH, PANEL_HEIGHT), (0, 0));
+        assert_eq!(to_screen(DIGITIZER_WIDTH - 1, DIGITIZER_HEIGHT - 1), (0, 0));
+    }
+
+    #[test]
+    fn usb_down_digitizer_corners_land_on_screen_corners() {
+        assert_eq!(to_screen(0, 0), (PANEL_WIDTH - 1, PANEL_HEIGHT - 1));
+        assert_eq!(to_screen(DIGITIZER_WIDTH - 1, 0), (PANEL_WIDTH - 1, 0));
+        assert_eq!(to_screen(0, DIGITIZER_HEIGHT - 1), (0, PANEL_HEIGHT - 1));
+        assert_eq!(to_screen(DIGITIZER_WIDTH - 1, DIGITIZER_HEIGHT - 1), (0, 0));
+    }
+
+    #[test]
+    fn treating_a_sample_as_panel_sized_compresses_the_keys_axis() {
+        // The 2026-08-30 sit: keys-side glass corners printed y≈195 when
+        // `to_screen` scaled cx as if the range were 800, not 480.
+        let (_, sy) = to_screen(DIGITIZER_WIDTH - 1, 0);
+        assert_eq!(sy, 0);
+        let old_sy =
+            PANEL_HEIGHT - 1 - scale(DIGITIZER_WIDTH - 1, PANEL_WIDTH, DIGITIZER_WIDTH - 1);
+        assert!((old_sy as i32 - 195).abs() <= 3, "old sy was {old_sy}");
     }
 
     #[test]
     fn the_framebuffer_mapping_is_the_screen_mapping_without_the_flip() {
-        for (cx, cy) in [(0, 0), (400, 240), (800, 480), (123, 456)] {
+        for (cx, cy) in [(0, 0), (240, 400), (479, 799), (123, 456)] {
             let (fb_x, fb_y) = to_framebuffer(cx, cy);
             let (sx, sy) = to_screen(cx, cy);
             assert_eq!(sx, PANEL_WIDTH - fb_x - 1);
@@ -449,8 +473,8 @@ mod tests {
 
     #[test]
     fn every_sample_stays_on_screen() {
-        for cx in (0..=PANEL_WIDTH).step_by(17) {
-            for cy in (0..=PANEL_HEIGHT).step_by(13) {
+        for cx in (0..=DIGITIZER_WIDTH).step_by(17) {
+            for cy in (0..=DIGITIZER_HEIGHT).step_by(13) {
                 let (sx, sy) = to_screen(cx, cy);
                 assert!(sx < PANEL_WIDTH, "x {sx} from ({cx}, {cy})");
                 assert!(sy < PANEL_HEIGHT, "y {sy} from ({cx}, {cy})");
@@ -462,14 +486,14 @@ mod tests {
     fn out_of_range_samples_are_clamped_not_wrapped() {
         // A controller that reports past its configured range must not produce
         // a coordinate that indexes outside the framebuffer.
-        let (sx, sy) = to_screen(PANEL_WIDTH * 2, PANEL_HEIGHT * 2);
+        let (sx, sy) = to_screen(DIGITIZER_WIDTH * 2, DIGITIZER_HEIGHT * 2);
         assert!(sx < PANEL_WIDTH);
         assert!(sy < PANEL_HEIGHT);
     }
 
     #[test]
     fn the_centre_maps_near_the_centre() {
-        let (sx, sy) = to_screen(PANEL_WIDTH / 2, PANEL_HEIGHT / 2);
+        let (sx, sy) = to_screen(DIGITIZER_WIDTH / 2, DIGITIZER_HEIGHT / 2);
         assert!((sx as i32 - 400).abs() <= 2, "x was {sx}");
         assert!((sy as i32 - 240).abs() <= 2, "y was {sy}");
     }

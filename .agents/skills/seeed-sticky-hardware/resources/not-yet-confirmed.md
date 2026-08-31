@@ -30,15 +30,12 @@ a second status column.
 | [nyc-gpio46-pulse](#nyc-gpio46-pulse) | GPIO46 pulse vs hold-high | [power-and-sleep.md](../references/power-and-sleep.md) |
 | [nyc-latch-deadline](#nyc-latch-deadline) | Max delay from reset to latch | [power-and-sleep.md](../references/power-and-sleep.md) |
 | [nyc-sleep-current](#nyc-sleep-current) | Deep-sleep current | [power-and-sleep.md](../references/power-and-sleep.md) |
-| [nyc-spi-ceiling](#nyc-spi-ceiling) | Shared SPI clock ceiling with SD | [display.md](../references/display.md), [input-storage.md](../references/input-storage.md) |
 | [nyc-gauge-profile](#nyc-gauge-profile) | BQ27220 CEDV values and chemistry on a factory unit | [sensors.md](../references/sensors.md) |
 | [nyc-mic-pdm](#nyc-mic-pdm) | PDM high-fidelity rate / slot / hole | [sensors.md](../references/sensors.md) |
 | [nyc-panel-glass](#nyc-panel-glass) | Glass part, analog rails, temp LUT | [display.md](../references/display.md) |
 | [nyc-esphome-orient](#nyc-esphome-orient) | ESPHome `mirror_x` vs on-glass 180° | [display.md](../references/display.md) |
 | [nyc-page-rotation](#nyc-page-rotation) | In-repo page / IMU tokens vs USB-C on glass | [display.md](../references/display.md) |
-| [nyc-gt911-corners](#nyc-gt911-corners) | `to_screen` vs glass corners | [touch.md](../references/touch.md) |
 | [nyc-charge-stat](#nyc-charge-stat) | STAT while `/CE` is enabled | [power-and-sleep.md](../references/power-and-sleep.md) |
-| [nyc-sd-mount](#nyc-sd-mount) | MicroSD filesystem mount | [input-storage.md](../references/input-storage.md) |
 | [nyc-deep-sleep-wake](#nyc-deep-sleep-wake) | In-repo deep sleep and GPIO4 wake | [power-and-sleep.md](../references/power-and-sleep.md) |
 | [nyc-gpio7-edge](#nyc-gpio7-edge) | GPIO7 edges with IMU or gauge armed | [sensors.md](../references/sensors.md) |
 | [nyc-display-standby](#nyc-display-standby) | Vendor panel standby sequence | [display.md](../references/display.md) |
@@ -76,14 +73,6 @@ Deep-sleep current with latch held and peripheral rails off is unmeasured.
 - Current meter in the battery path (not USB) after the sleep rail table in
   [power-and-sleep.md](../references/power-and-sleep.md).
 - Confirmed with a number and the rail recipe used.
-
-### nyc-spi-ceiling
-
-SSD1677 serial max is 20 MHz. 10 MHz is stable on the shared bus. 40 MHz is
-out of spec. 20 MHz with SD on the same controller is unverified.
-
-- Panel-only then panel+SD at 10, 20 MHz. Confirmed with the highest clock
-  that does not corrupt the panel or fail the card.
 
 ### nyc-gauge-profile
 
@@ -227,15 +216,6 @@ the four in-plane IMU holds.
   UART `imu=` token and which way the splash sits vs the enclosure.
   Confirmed when each token matches a physical USB-C edge on glass.
 
-### nyc-gt911-corners
-
-embassy-debug printed `touch n=` in ~800×480 space. `to_screen` has host
-corner tests. Those points were **not** checked against glass corners.
-
-- USB-down portrait. Tap the four glass corners. Record `touch n=1 p0=`.
-  Confirmed when those land on the expected screen corners (or the
-  transform is corrected to match).
-
 ### nyc-charge-stat
 
 Schematic: GPIO40 is BQ25616 STAT. UART read **high** with `/CE` parked
@@ -245,17 +225,6 @@ and gauge `i=0`. That is not a charge proof. In-repo images park `/CE`.
   low and gauge current sign change, then **park `/CE` again**. Do not
   leave charging enabled. Confirmed when STAT follows enable / done /
   parked as the sheet says.
-
-### nyc-sd-mount
-
-Detect GPIO11 is schematic-confirmed (insert = 0). Operator sessions
-left the slot empty (`sd_cd=1`). No in-repo image has mounted a
-filesystem. Clock ceiling with a card is
-[nyc-spi-ceiling](#nyc-spi-ceiling).
-
-- Insert a card: `sd_cd 1 -> 0`. Mount (init ≤ 400 kHz, one CS). Read a
-  known file. Confirmed with detect edge plus a successful read. Do not
-  overlap panel SPI.
 
 ### nyc-deep-sleep-wake
 

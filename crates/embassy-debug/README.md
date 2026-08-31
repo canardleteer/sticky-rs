@@ -21,6 +21,14 @@ embassy-debug: t=1204 wifi n=2
 embassy-debug: t=1204 wifi ssid=Home rssi=-42
 embassy-debug: t=1204 ble n=1
 embassy-debug: t=1204 ble name=Phone rssi=-70
+embassy-debug: sd cd=0
+embassy-debug: sd hz=400000 type=sdhc mid=0x03 name=SC16G
+embassy-debug: sd hz=10000000 ack
+embassy-debug: sd hz=20000000 ack
+embassy-debug: sd vol=0
+embassy-debug: sd ent name=FOO.TXT bytes=12
+embassy-debug: sd dir n=1
+embassy-debug: sd read name=FOO.TXT n=12
 ```
 
 [`IdleListen`] vets an unattended `monitor` capture (boot dance, idle
@@ -29,9 +37,13 @@ embassy-debug: t=1204 ble name=Phone rssi=-70
 
 IMU reports use [`IMU_REPORT_SECS`] (5). A read-only `gt911 st=` line
 follows board `touch::STATUS_HEARTBEAT` (`EverySecs(10)` or `Off`).
-This FPC delivers five contacts (Rev.09 §1). A pose that does not classify
-is the token `imu=none`; the raw sample is still printed. The `mic`
+This FPC delivers five contacts (Rev.09 §1). `p0=` is physical
+800×480 after board `to_screen` (sample is 480×800). A pose that
+does not classify is the token `imu=none`; the raw sample is still
+printed. The `mic`
 and `pcm` lines are printed only by the `--features mic` image. AI Voice
 plays a 1 kHz buzzer tone ([`BUZZER_TONE_HZ`]) and dumps two windows.
 The `wifi` and `ble` lines are printed only by the `--features radio`
-image (SSID / local name and RSSI; never a MAC or BSSID).
+image (SSID / local name and RSSI; never a MAC or BSSID). The `sd`
+lines are printed only by `--features sd` (read-only identify and FAT
+list; never a CID product serial or file contents).

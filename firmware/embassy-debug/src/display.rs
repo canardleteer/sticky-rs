@@ -49,8 +49,12 @@ static DRAW: ConstStaticCell<[u8; display::PLANE_BYTES]> =
 static TX: ConstStaticCell<[u8; display::PLANE_BYTES]> =
     ConstStaticCell::new([0; display::PLANE_BYTES]);
 
-/// Shared SPI pins for the panel (same bus as the card; this image
-/// never asserts SD CS).
+#[cfg(feature = "spi20")]
+const SPI_HZ: u32 = 20_000_000;
+#[cfg(not(feature = "spi20"))]
+const SPI_HZ: u32 = display::SPI_MAX_HZ;
+
+/// Shared SPI pins for the panel (same bus as the card).
 pub struct PanelParts {
     /// Shared SPI controller.
     pub spi: SPI2<'static>,
@@ -58,6 +62,9 @@ pub struct PanelParts {
     pub sclk: GPIO13<'static>,
     /// MOSI.
     pub mosi: GPIO14<'static>,
+    /// MISO. Needed only when `--features sd`.
+    #[cfg(feature = "sd")]
+    pub miso: esp_hal::peripherals::GPIO12<'static>,
     /// Chip select. Idle-high except during a transfer.
     pub cs: GPIO15<'static>,
     /// Data/command.
@@ -66,6 +73,9 @@ pub struct PanelParts {
     pub rst: GPIO17<'static>,
     /// BUSY (active high). Do not talk on the bus while it is high.
     pub busy: GPIO18<'static>,
+    /// Read-only identify. The card CS is never asserted on the default image.
+    #[cfg(feature = "sd")]
+    pub sd: crate::sd::SdParts,
 }
 
 /// Bring the panel up, paint splash, then wait for a key or an IMU pose.
@@ -76,18 +86,38 @@ pub struct PanelParts {
 /// shapes.
 #[embassy_executor::task]
 pub async fn display_task(parts: PanelParts, _rail: EpdRail<Output<'static>, Enabled>) {
+    #[cfg(feature = "sd")]
+    let start_hz = seeed_reterminal_sticky::sd::INIT_HZ;
+    #[cfg(not(feature = "sd"))]
+    let start_hz = SPI_HZ;
     let spi = Spi::new(
         parts.spi,
         SpiConfig::default()
-            .with_frequency(Rate::from_hz(display::SPI_MAX_HZ))
+            .with_frequency(Rate::from_hz(start_hz))
             .with_mode(Mode::_0),
     )
     .expect("SPI configuration")
     .with_sck(parts.sclk)
     .with_mosi(parts.mosi);
+    #[cfg(feature = "sd")]
+    let mut spi = spi.with_miso(parts.miso);
+    #[cfg(feature = "sd")]
+    let mut delay = Delay;
+    #[cfg(not(feature = "sd"))]
+    let delay = Delay;
+    #[cfg(feature = "sd")]
+    {
+        crate::sd::run(&mut spi, parts.sd, &mut delay);
+        let _ = spi.apply_config(
+            &SpiConfig::default()
+                .with_frequency(Rate::from_hz(SPI_HZ))
+                .with_mode(Mode::_0),
+        );
+    }
+    println!("embassy-debug: spi={SPI_HZ}");
 
     let cs = Output::new(parts.cs, Level::High, OutputConfig::default());
-    let bus = ExclusiveDevice::new(spi, cs, Delay).expect("EPD CS");
+    let bus = ExclusiveDevice::new(spi, cs, delay).expect("EPD CS");
     let dc = Output::new(parts.dc, Level::Low, OutputConfig::default());
     let rst = Output::new(parts.rst, Level::High, OutputConfig::default());
     let busy = Input::new(parts.busy, InputConfig::default().with_pull(Pull::None));

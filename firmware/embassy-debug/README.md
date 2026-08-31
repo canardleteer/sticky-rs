@@ -23,6 +23,10 @@ On the unit:
   the drawings. `--features radio`: Wi-Fi and BLE scan together on the
   on-board antenna; keys still walk the drawings. Do not combine
   `mic` and `radio` in one image for a desk test.
+  `--features spi20` clocks the panel at 20 MHz (`spi=20000000`);
+  default stays 10 MHz. `--features sd` runs a read-only card
+  identify (`sd cd=`, `sd hz=` / `ack`); no writes. Do not combine
+  `spi20` / `sd` with `mic` or `radio`.
 - Tilt the card for `imu=…`. A short beep answers a key-down. Tap the
   glass for `touch n=` (Rev.09 INT-low address select; on glass
   through `n=5`).
@@ -37,7 +41,8 @@ Agent / toolchain:
 
 Default `embassy-debug` (no `mic`, no `radio`) already polls the GT911.
 A new contact set should print `touch n=` and beep on first down.
-**On this unit that line has never appeared.** Snapshot first:
+`p0=` is physical 800×480 after `to_screen` (GT911 sample is 480×800).
+Snapshot first:
 [docs/getting-started.md](../../docs/getting-started.md).
 
 ### Step 1: Is the port free?
@@ -86,7 +91,8 @@ embassy-debug: t=2100 touch n=1 p0=123,456
 embassy-debug: t=2180 touch n=0
 ```
 
-`n` is 0–5. A still finger is silent after the first line. About every
+`n` is 0–5. `p0=` is the 800×480 screen point. A still finger is
+silent after the first line. About every
 ten seconds a read-only status line should appear even when idle
 (`touch::STATUS_HEARTBEAT`; `Off` silences it):
 
@@ -107,7 +113,8 @@ Status-clear ACKed `0x14` and stayed at `st=0x00` with no
 `touch n=`. INT-low address select: `gt911 int=0`, `0x5d ack`,
 first `st=0x80`. Attended taps printed `touch n=1` / `n=2` /
 **`n=5`** and `gt911 st=0x85`. This FPC delivers five contacts
-(Rev.09 §1). Facts:
+(Rev.09 §1). USB-down ink corners after the 480×800 `to_screen` map:
+`795,470`, `795,4`, `4,475`, `4,4`. Facts:
 [touch.md](../../.agents/skills/seeed-sticky-hardware/references/touch.md#on-glass-embassy-debug).
 
 ## Microphone Test Instructions

@@ -55,8 +55,8 @@ To mount a card:
 
 1. Deselect EPD CS.
 2. SD_EN high, wait ≥ 10 ms.
-3. SPI init at **≤ 400 kHz**, then raise the clock (stay conservative vs the
-   panel’s 10 MHz).
+3. SPI init at **≤ 400 kHz**, then raise. On glass, `send_status` ACKed
+   at 10 MHz and 20 MHz after that init (embassy-debug `--features sd`).
 4. Serialize with display transactions on the one controller.
 
 Card rail is **3.3 V** (`TPS22916CYFPR`). Insert pulls GPIO11 low (empty
@@ -69,8 +69,10 @@ GPIO11, drives a hotplug monitor task from it, and arms the pin as a sleep
 wake source. Plan for insert/remove events rather than polling at mount time.
 
 UART learning firmware (GPIO11 pull-up, card not changed) logged `sd_cd=1`
-with no edges. That matches an empty slot. Filesystem mount:
-[nyc-sd-mount](../resources/not-yet-confirmed.md#nyc-sd-mount).
+with no edges. That matches an empty slot. embassy-debug `--features sd`
+with a card in printed `sd cd=0`, a read-only identify (`type=sdhc`),
+then FAT volume 0: root listed and one `ReadOnly` file read (64 bytes
+into a scratch buffer, contents not printed). No writes.
 
 ## USB-C
 

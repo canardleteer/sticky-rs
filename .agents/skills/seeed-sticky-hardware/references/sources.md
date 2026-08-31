@@ -72,7 +72,7 @@ weighs them.
 | Display orientation | mirror_x+180° on-glass | FreeInk `NO_FLIP`; ESPHome `mirror_x` only |
 | GPIO9 | Stock firmware runs it as a **digital any-edge interrupt**. Schematic: 5.1 kΩ / 5.1 kΩ `PWR_IN_VOLT` from `VIN_5V` (~2.5 V at 5 V VBUS), still a valid high | FreeInk analog `PWR_IN_VOLT` matches the sheet. Firmware stays digital |
 | GPIO40 | UART `gpio40=1` with `/CE` parked (not charging) | Schematic: BQ25616 STAT. Low while charging when `/CE` is enabled; high-Z/high when done or parked |
-| GT911 | UART `touch n=5`, `st=0x85` after INT-low (Rev.09 §6.1 → `0x5D`). This FPC delivers 5 (Rev.09 §1). | INT-high → `0x14` ACK; init Status-clear path stayed `st=0x00` |
+| GT911 | UART `touch n=5`, `st=0x85` after INT-low (Rev.09 §6.1 → `0x5D`). This FPC delivers 5 (Rev.09 §1). Sample is **480×800**; `to_screen` maps that onto 800×480 (USB-down ink corners on glass). | INT-high → `0x14` ACK; init Status-clear path stayed `st=0x00`. A map that treated the sample as 800×480 compressed the keys axis to `y≈195`. |
 | **GPIO7** | Unused in on-glass IMU poll (input, low, no edges) | Schematic: shared LSM6DS3TR-C INT1 (`6D_INTn`) and BQ27220 GPOUT (`BFG_INT`). Seeed and `sticky-2048` named the same pin. Do not drive. |
 | ANT1 / radio | UART `wifi n=` and `ble n=` in one embassy-debug `--features radio` listen; `imu=` still running | Schematic on-board ANT1, shared 2.4 GHz |
 | SHT40 | UART `sht t=` / `rh=` (~28.9 °C / ~27.9 % RH, one room) | Schematic SHT40-AD1B-R2 at `0x44`; `0xFD` measure |

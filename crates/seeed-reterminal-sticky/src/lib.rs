@@ -31,7 +31,9 @@
 //!    [`pins::TOUCH_INT`] as a floating input (v2.2 `Table 2-1. Pin Overview`:
 //!    GPIO21 has no reset pull).
 //! 5. SPI at [`display::SPI_MAX_HZ`], shared between panel and card with
-//!    exactly one chip select asserted at a time.
+//!    exactly one chip select asserted at a time. Card init is
+//!    [`sd::INIT_HZ`]; [`sd::identify`] is read-only and does not store
+//!    the CID product serial.
 //! 6. Panel rail, then the controller; touch rail, then the GT911 reset
 //!    sequence in [`touch`].
 //!
@@ -57,6 +59,7 @@ pub mod imu;
 pub mod pins;
 pub mod power;
 pub mod rails;
+pub mod sd;
 pub mod touch;
 
 pub use crate::power::{Latch, Latched};

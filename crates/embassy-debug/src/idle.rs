@@ -158,9 +158,24 @@ embassy-debug: t=10000 gt911 st=0x80
 
     #[test]
     fn idle_listen_skips_a_leading_garbage_byte() {
-        let mut dirty = String::from("\u{80}");
-        dirty.push_str(IDLE);
-        assert!(IdleListen::evaluate(&dirty).ok());
+        const DIRTY: &str = concat!(
+            "\u{80}",
+            "\
+rst:0x1 (POWERON)
+embassy-debug: latched
+embassy-debug: git=deadbeef dirty=0
+embassy-debug: gt911 addr dance
+embassy-debug: gt911 int=0
+embassy-debug: 0x5d ack
+embassy-debug: 0x14 nak
+embassy-debug: gt911 no init status clear
+embassy-debug: gt911 no command write
+embassy-debug: imu accel init ok
+embassy-debug: t=5000 imu=FaceUp x=12 y=-30 z=16300
+embassy-debug: t=10000 gt911 st=0x80
+"
+        );
+        assert!(IdleListen::evaluate(DIRTY).ok());
     }
 
     #[test]

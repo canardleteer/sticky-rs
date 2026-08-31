@@ -16,9 +16,13 @@
 | BUSY | GPIO18, busy = **1** (timeouts of several seconds are normal). Edge-capable: stock firmware waits on a BUSY **interrupt**, not a spin loop |
 | Frontlight | None |
 
-SSD1677 serial clock max is 20 MHz. **10 MHz** is the rate that has been
-stable on this shared bus. Do not start at 40 MHz.
-[nyc-spi-ceiling](../resources/not-yet-confirmed.md#nyc-spi-ceiling).
+SSD1677 serial clock max is 20 MHz. Panel refresh at **10 MHz and
+20 MHz** is clean on glass (card inserted). Read-only card identify
+inits at 400 kHz, then `send_status` ACKs at 10 MHz and 20 MHz
+(embassy-debug `--features sd`, 2026-08-30). Board `SPI_MAX_HZ` stays
+10 MHz. Do not start at 40 MHz. FAT list and a ReadOnly file read
+are on glass (embassy-debug `--features sd`); see
+[input-storage.md](input-storage.md).
 
 ## Bring-up
 

@@ -61,7 +61,9 @@ use seeed_reterminal_sticky::display::PageRotation;
 use seeed_reterminal_sticky::power::Latched;
 #[cfg(not(feature = "mic"))]
 use seeed_reterminal_sticky::rails::MicRail;
-use seeed_reterminal_sticky::rails::{Disabled, Enabled, Rail, SdRail, TouchRail};
+#[cfg(not(feature = "sd"))]
+use seeed_reterminal_sticky::rails::SdRail;
+use seeed_reterminal_sticky::rails::{Disabled, Enabled, Rail, TouchRail};
 use seeed_reterminal_sticky::touch::{
     Register, SlaveAddress, StatusBits, StatusWrite, ADDR_SELECT_INT_FLOAT_MS,
     ADDR_SELECT_INT_HIGH_AT_RST, ADDR_SELECT_INT_HOLD_AFTER_RST_MS, ADDR_SELECT_RESET_HOLD_MS,
@@ -124,7 +126,9 @@ fn ask_tone() {
 struct ParkedHazards {
     _charger: Charger<Output<'static>, bq25616::Disabled>,
     _gpio7: Input<'static>,
+    #[cfg(not(feature = "sd"))]
     _sd_cs: Output<'static>,
+    #[cfg(not(feature = "sd"))]
     _sd_rail: SdRail<Output<'static>, Disabled>,
     #[cfg(not(feature = "mic"))]
     _mic_rail: MicRail<Output<'static>, Disabled>,
@@ -153,16 +157,18 @@ fn acquire_latch(
 fn park_charger_and_unused(
     ce: esp_hal::peripherals::GPIO39<'static>,
     gpio7: esp_hal::peripherals::GPIO7<'static>,
-    sd_cs: esp_hal::peripherals::GPIO8<'static>,
-    sd_en: esp_hal::peripherals::GPIO10<'static>,
+    #[cfg(not(feature = "sd"))] sd_cs: esp_hal::peripherals::GPIO8<'static>,
+    #[cfg(not(feature = "sd"))] sd_en: esp_hal::peripherals::GPIO10<'static>,
     #[cfg(not(feature = "mic"))] mic_en: esp_hal::peripherals::GPIO38<'static>,
     latch: &Latched,
 ) -> ParkedHazards {
     let charger = Charger::new(Output::new(ce, Level::High, OutputConfig::default()))
         .expect("driving /CE cannot fail");
     let gpio7 = Input::new(gpio7, InputConfig::default().with_pull(Pull::Up));
-    // CS idle-high. Do not mount the card.
+    // CS idle-high. `--features sd` takes these pins for identify.
+    #[cfg(not(feature = "sd"))]
     let sd_cs = Output::new(sd_cs, Level::High, OutputConfig::default());
+    #[cfg(not(feature = "sd"))]
     let sd_rail: SdRail<_, _> = Rail::new(
         Output::new(sd_en, Level::Low, OutputConfig::default()),
         latch,
@@ -177,7 +183,9 @@ fn park_charger_and_unused(
     ParkedHazards {
         _charger: charger,
         _gpio7: gpio7,
+        #[cfg(not(feature = "sd"))]
         _sd_cs: sd_cs,
+        #[cfg(not(feature = "sd"))]
         _sd_rail: sd_rail,
         #[cfg(not(feature = "mic"))]
         _mic_rail: mic_rail,
@@ -376,7 +384,9 @@ async fn main(spawner: Spawner) {
     let _parked = park_charger_and_unused(
         peripherals.GPIO39,
         peripherals.GPIO7,
+        #[cfg(not(feature = "sd"))]
         peripherals.GPIO8,
+        #[cfg(not(feature = "sd"))]
         peripherals.GPIO10,
         #[cfg(not(feature = "mic"))]
         peripherals.GPIO38,
@@ -449,10 +459,18 @@ async fn main(spawner: Spawner) {
                 spi: peripherals.SPI2,
                 sclk: peripherals.GPIO13,
                 mosi: peripherals.GPIO14,
+                #[cfg(feature = "sd")]
+                miso: peripherals.GPIO12,
                 cs: peripherals.GPIO15,
                 dc: peripherals.GPIO16,
                 rst: peripherals.GPIO17,
                 busy: peripherals.GPIO18,
+                #[cfg(feature = "sd")]
+                sd: crate::sd::SdParts {
+                    cs: peripherals.GPIO8,
+                    cd: peripherals.GPIO11,
+                    rail: crate::sd::park_rail(peripherals.GPIO10, latch.witness()),
+                },
             },
             epd_rail,
         },
@@ -628,6 +646,8 @@ async fn touch_task(
                                 u16::from_le_bytes([rec[POINT_X_OFFSET], rec[POINT_X_OFFSET + 1]]);
                             let cy =
                                 u16::from_le_bytes([rec[POINT_Y_OFFSET], rec[POINT_Y_OFFSET + 1]]);
+                            // GT911 reports portrait 480×800; to_screen maps
+                            // that onto physical 800×480.
                             let (x, y) = seeed_reterminal_sticky::touch::to_screen(
                                 u32::from(cx),
                                 u32::from(cy),
@@ -777,3 +797,5 @@ mod display;
 mod mic;
 #[cfg(feature = "radio")]
 mod radio;
+#[cfg(feature = "sd")]
+mod sd;

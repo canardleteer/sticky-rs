@@ -27,8 +27,8 @@
 > [!IMPORTANT]
 >
 > Anything we haven't written a test for to confirm behavior is likely
-> still misaligned. IMU page tokens vs USB-C, and landscape splash
-> left-to-right, are on glass.
+> still misaligned. We keep a list of ["Not yet confirmed"](https://github.com/canardleteer/sticky-rs/blob/main/.agents/skills/seeed-sticky-hardware/resources/not-yet-confirmed.md#not-yet-confirmed)
+> measurements, so we can continue building tests.
 
 ## Firmware Examples
 

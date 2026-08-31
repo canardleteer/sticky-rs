@@ -39,7 +39,8 @@ are undocumented. Stock firmware drives explicit low-power enter/exit
 transitions on this part around sleep, so expect a mode change rather than a
 single fixed ODR. **INT1 is GPIO7**, shared with BQ27220 GPOUT
 (schematic `6D_INTn` / `BFG_INT`). Leave GPIO7 an input. Do not enable
-both chips as push-pull.
+both chips as push-pull. Armed edges:
+[nyc-gpio7-edge](../resources/not-yet-confirmed.md#nyc-gpio7-edge).
 
 Face-up / face-down are not aliases for portrait/landscape.
 

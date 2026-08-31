@@ -68,6 +68,8 @@ step, change the [touch transform](touch.md) with it. ESPHome `mirror_x` only:
 
 IMU-driven UI rotation is a logical-canvas concern: keep the physical
 framebuffer mapping fixed, then rotate drawing/touch into page axes.
+In-repo token vs USB-C on glass:
+[nyc-page-rotation](../resources/not-yet-confirmed.md#nyc-page-rotation).
 
 ## Waveforms
 
@@ -85,6 +87,8 @@ Refresh is expensive; glass holds pixels without power.
   `UpdateSequence::SEEED_GRAY4` (`0xD7`), dual planes with Seeed’s inverted
   polarity (`PlaneMapping::SEEED_OTP`). Not an MCU 0x32 table.
 - Deep sleep: `0x10` = `DEEP_SLEEP_ENTER` (`0x03`), wait ~100 ms, then `EPD_EN=0`.
+  Vendor standby (not this path):
+  [nyc-display-standby](../resources/not-yet-confirmed.md#nyc-display-standby).
 
 Seeed’s open `seeed_epaper` SSD1677 driver and stock `reterminal_template`
 agree on that OTP path. They do **not** write a 105-byte LUT. A FreeInk MCU

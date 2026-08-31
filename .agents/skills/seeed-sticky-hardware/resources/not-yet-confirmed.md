@@ -35,10 +35,19 @@ a second status column.
 | [nyc-mic-pdm](#nyc-mic-pdm) | PDM high-fidelity rate / slot / hole | [sensors.md](../references/sensors.md) |
 | [nyc-panel-glass](#nyc-panel-glass) | Glass part, analog rails, temp LUT | [display.md](../references/display.md) |
 | [nyc-esphome-orient](#nyc-esphome-orient) | ESPHome `mirror_x` vs on-glass 180° | [display.md](../references/display.md) |
+| [nyc-page-rotation](#nyc-page-rotation) | In-repo page / IMU tokens vs USB-C on glass | [display.md](../references/display.md) |
+| [nyc-gt911-corners](#nyc-gt911-corners) | `to_screen` vs glass corners | [touch.md](../references/touch.md) |
+| [nyc-charge-stat](#nyc-charge-stat) | STAT while `/CE` is enabled | [power-and-sleep.md](../references/power-and-sleep.md) |
+| [nyc-sd-mount](#nyc-sd-mount) | MicroSD filesystem mount | [input-storage.md](../references/input-storage.md) |
+| [nyc-deep-sleep-wake](#nyc-deep-sleep-wake) | In-repo deep sleep and GPIO4 wake | [power-and-sleep.md](../references/power-and-sleep.md) |
+| [nyc-gpio7-edge](#nyc-gpio7-edge) | GPIO7 edges with IMU or gauge armed | [sensors.md](../references/sensors.md) |
+| [nyc-display-standby](#nyc-display-standby) | Vendor panel standby sequence | [display.md](../references/display.md) |
+| [nyc-buzzer-spl](#nyc-buzzer-spl) | Buzzer resonance / SPL | [input-storage.md](../references/input-storage.md) |
 
 Software knobs (CPU 160 vs 240 MHz, flash DIO vs QIO, partition tables, SKU
-`p-6861` vs `p-6398`) are not listed. Those are firmware choices, not open
-nets.
+`p-6861` vs `p-6398`, simple-debug still on the INT-high GT911 dance)
+are not listed. Those are firmware choices, not open nets. Do not add a
+row that asks anyone to invent the deleted GT911 register map.
 
 ## Recipes
 
@@ -109,11 +118,14 @@ deep-sleep wake remuxes those pins back to USB-Serial-JTAG until the
 USB pad is disabled.
 
 Still open: a clean known-tone through the hole (not board coupling to
-the buzzer), slot A/B, and hole vs waveform polarity.
+the buzzer), slot A/B, hole vs waveform polarity, rail settle time
+after GPIO38 rises, and USB-Serial-JTAG pad reclaim after deep-sleep
+wake (third-party notes say disable the pad before PDM RX).
 
 - Record a known tone with ESP32-S3 PDM RX; note rate, slot, and which
-  way the hole faces vs the waveform. Confirmed with those three at
-  high fidelity.
+  way the hole faces vs the waveform. Time GPIO38 high to first valid
+  window. After a deep-sleep wake, confirm whether PDM works only once
+  the USB pad is disabled. Confirmed with those at high fidelity.
 
 ### nyc-panel-glass
 
@@ -125,14 +137,71 @@ PN**. Temperature-compensated waveform *sets* (beyond the one gray4
 0x1A override) are still unpublished. Do not invent a four-gray MCU table
 from a generic SSD1677 sheet.
 
-OpenDisplay Toolbox / TRMNL bb_epaper label the Sticky panel
-**GDEM0397T81P** (EP397). That is a partner **claim**, not a BOM or
-electrical confirmation. Their gray4 path also uses a one-byte `0x1A = 0x5A`
-and data entry `0x11 = 0x01`, which Seeed does not.
+**Hint (not a PN):** third-party sources converge on the Good Display
+3.97" 800×480 SSD1677 T81 / T81P family. Use those strings to search a
+marking or sheet. Do not treat any of them as this board's BOM line.
 
-The SSD1677 does not read factory OTP back over SPI. Host UART/flash tools
-do not talk to the panel. Closing this item is **not** “uncomment FreeInk
-after a bench run.”
+- OpenDisplay Toolbox / TRMNL bb_epaper label the Sticky panel
+  **GDEM0397T81P** (EP397). Partner firmware claim. Their gray4 path
+  uses a one-byte `0x1A = 0x5A` and data entry `0x11 = 0x01`, which
+  Seeed does not.
+- Waveshare's 3.97" e-Paper HAT+ raw panel publishes the same
+  mechanical numbers as that family (86.40 × 51.84 mm active, 96.62 ×
+  56.24 × 0.92 mm outline, 0.108 mm pitch, 24-pin 0.5 mm FPC). The
+  wiki does not print a Good Display SKU. Published refresh times
+  (2.8 / 0.6 / 3.5 s, 0–40 °C) do not match Good Display's
+  GDEY0397T81P sheet (1.5 / 0.3 / 3 s, 0–50 °C).
+- Arduino [GxEPD2](https://github.com/ZinggJM/GxEPD2) class
+  `GxEPD2_397_GDEM0397T81` is written for "SPI e-paper panels from
+  Dalian Good Display and boards from Waveshare." The header names
+  panel **GDEM0397T81** (no `P`) and links Good Display product
+  [613](https://www.good-display.com/product/613.html), which today
+  lists **GDEY0397T81P**. The driver is based on a Good Display demo,
+  not a Seeed BOM. Picker comment: `FPC-7750`.
+
+`GDEM` vs `GDEY` and the `P` suffix are different Good Display SKUs
+(film / OTP / thickness). Do not collapse them.
+
+**Datasheet (candidate, keep on file):** Good Display
+**GDEY0397T81P** Rev 1.0 (2026-08-13). Not a confirmed Sticky part.
+Do not add it to [datasheets.md](datasheets.md) until a marking or BOM
+names this SKU.
+
+- Product page: good-display.com/product/613.html
+- CDN PDF (bare curl may 403; a browser `User-Agent` worked):
+  `https://v4.cecdn.yun300.cn/100001_1909185148/GDEY0397T81P.pdf`
+- Local cache (gitignored):
+  `resources/datasheets/pdf/gdey0397t81p.pdf` and `md/gdey0397t81p.md`.
+  If missing, copy the skill user's `~/Downloads/GDEY0397T81P.pdf`.
+- SHA-256
+  `e28ea298457108bb3431b8c4de065834f62390b6caf2dc58e216d134fe559dbc`
+
+Desk check against schematic Rev 01
+`J3` (24P top-contact): pins 2–4 / 8–24 match the sheet (GDR, RESE,
+BS1, BUSY, RESET#, DC#, CS#, SCL, SDA, VCI, VSS, VDD, VPP, VSH1,
+VGH, VSL, VGL, VCOM). Seeed names pin 5 **VSH2**; the sheet names it
+**VDHR** (red-source leftover). That is the SSD1677 second source
+rail, not a different connector. Sheet pin 19 is **VPP FOR TEST**;
+Seeed brings it out to `TP17`. Pins 6–7 are NC on the sheet; Seeed
+has `R66` 10 kΩ there.
+
+Safe next checks (no new waveform, no analog trim, no OTP program):
+
+- FPC silkscreen / label (`GDEY0397T81P`, `GDEM0397T81P`, `FPC-7750`)
+  if the tail is visible **without** prying the glass. The sheet
+  warns that disassembly damages the module.
+- Wall-clock BUSY on the **existing** Seeed OTP path only. The sheet
+  quotes 3 / 1.5 / 0.3 s full / fast / partial at 25 °C (typical
+  power 28.2 mW). A match is weak; a large miss is a negative hint.
+- Do **not** send this sheet's MCU LUT, `0x32`, or `0x03` / `0x04` /
+  `0x2C` analog bytes. Command-table pages in the PDF are images;
+  do not invent opcodes from them. SSD1677 `0x2E` can read a 10-byte
+  User ID; that is not the waveform table, we have no expected bytes
+  from this sheet, and it is not a close.
+
+The SSD1677 does not read the factory **waveform** table back over
+SPI. Host UART/flash tools do not talk to the panel. Closing this
+item is **not** “uncomment FreeInk after a bench run.”
 
 - Schematic, BOM, or marking for the glass part number. Temperature-band
   which-set stays unpublished until a vendor document or that marking
@@ -147,3 +216,79 @@ ESPHome preset: `mirror_x`, 10 MHz, no packed 180° rotate. Bunny glass:
 
 - Flash the ESPHome e-paper example, draw a known corner. Confirmed whether
   the preset already matches glass or needs the extra rotate.
+
+### nyc-page-rotation
+
+Host tests map USB-down to Portrait0. The root README still hedges that
+untested orientation enums may be backwards. embassy-debug splash follows
+the four in-plane IMU holds.
+
+- Hold each in-plane pose (USB-C bottom / top / right / left). Note the
+  UART `imu=` token and which way the splash sits vs the enclosure.
+  Confirmed when each token matches a physical USB-C edge on glass.
+
+### nyc-gt911-corners
+
+embassy-debug printed `touch n=` in ~800×480 space. `to_screen` has host
+corner tests. Those points were **not** checked against glass corners.
+
+- USB-down portrait. Tap the four glass corners. Record `touch n=1 p0=`.
+  Confirmed when those land on the expected screen corners (or the
+  transform is corrected to match).
+
+### nyc-charge-stat
+
+Schematic: GPIO40 is BQ25616 STAT. UART read **high** with `/CE` parked
+and gauge `i=0`. That is not a charge proof. In-repo images park `/CE`.
+
+- Only with the operator present. Enable `/CE` on USB, watch GPIO40 go
+  low and gauge current sign change, then **park `/CE` again**. Do not
+  leave charging enabled. Confirmed when STAT follows enable / done /
+  parked as the sheet says.
+
+### nyc-sd-mount
+
+Detect GPIO11 is schematic-confirmed (insert = 0). Operator sessions
+left the slot empty (`sd_cd=1`). No in-repo image has mounted a
+filesystem. Clock ceiling with a card is
+[nyc-spi-ceiling](#nyc-spi-ceiling).
+
+- Insert a card: `sd_cd 1 -> 0`. Mount (init ≤ 400 kHz, one CS). Read a
+  known file. Confirmed with detect edge plus a successful read. Do not
+  overlap panel SPI.
+
+### nyc-deep-sleep-wake
+
+Rail table and GPIO4 `ext1` ANY_LOW are written. In-repo debug images
+do **not** enter deep sleep. Sleep current is
+[nyc-sleep-current](#nyc-sleep-current).
+
+- From an image that uses the rail table: enter deep sleep on battery,
+  wake on GPIO4, latch first, UART returns. Confirmed with that wake
+  (and that the last panel image stayed).
+
+### nyc-gpio7-edge
+
+Schematic: GPIO7 is IMU INT1 and gauge GPOUT. Polled IMU on glass
+changed pose with **no** GPIO7 edges; interrupts were not armed. Leave
+the pin an input. Do not enable both chips as push-pull.
+
+- Arm **one** chip as open-drain. Tilt (IMU) or finish a charge (gauge
+  GPOUT — only with [nyc-charge-stat](#nyc-charge-stat) parked after).
+  Confirmed when GPIO7 edges match that source.
+
+### nyc-display-standby
+
+Stock firmware exports `ssd1677_standby` / `ssd1677_resume`. The
+confirmed in-repo path is active OTP plus deep sleep (`0x10 = 0x03`).
+Do not invent a standby opcode.
+
+- Read the stock / Seeed sequence (or a sheet that names it). Confirmed
+  with those bytes — still not a 0x32 LUT.
+
+### nyc-buzzer-spl
+
+GPIO48 PWM beeps on glass. Resonance and SPL are unmeasured.
+
+- Drive a known PWM, meter or note peak SPL / resonance. Confirmed with
+  a number and the drive used. Not a destroy-the-board row.

@@ -26,8 +26,6 @@
 
 > [!IMPORTANT]
 >
-> We haven't gotten the touchpanel working yet (Help here is appreciated).
->
 > Anything we haven't written a test for to confirm behavior, is likely still
 > misaligned (screen orientation enums, etc, are still backwards)
 

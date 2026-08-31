@@ -31,7 +31,8 @@ reset, not these GPIOs. See [enclosure.md](enclosure.md).
 ## Buzzer
 
 Passive **FUET-5018** on **GPIO48**, driven through a CJ2324. PWM (LEDC)
-works; hold low in deep sleep. Resonance / SPL is unmeasured. A ~1 kHz
+works; hold low in deep sleep. Resonance / SPL:
+[nyc-buzzer-spl](../resources/not-yet-confirmed.md#nyc-buzzer-spl). A ~1 kHz
 carrier has been used as a volume-via-duty drive.
 
 ## MicroSD (SPI, shared with EPD)
@@ -68,7 +69,8 @@ GPIO11, drives a hotplug monitor task from it, and arms the pin as a sleep
 wake source. Plan for insert/remove events rather than polling at mount time.
 
 UART learning firmware (GPIO11 pull-up, card not changed) logged `sd_cd=1`
-with no edges. That matches an empty slot.
+with no edges. That matches an empty slot. Filesystem mount:
+[nyc-sd-mount](../resources/not-yet-confirmed.md#nyc-sd-mount).
 
 ## USB-C
 

@@ -159,7 +159,8 @@ Swap-XY + flip-both onto 0–799 × 0–479 is the same geometry **without** ste
 5–6. If display rotation changes, this transform must change with it.
 
 After mapping, taps are physical 800×480. Rotated pages convert physical →
-logical with the same rotation as drawing.
+logical with the same rotation as drawing. Glass-corner check:
+[nyc-gt911-corners](../resources/not-yet-confirmed.md#nyc-gt911-corners).
 
 Polling rate, tap slop, and stuck-contact recovery are software policy, not
 hardware. Re-run the reset/address sequence if the controller stops ACKing.

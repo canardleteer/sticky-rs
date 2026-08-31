@@ -47,7 +47,7 @@ Not an I2C device.
 | --- | --- | --- |
 | Charge enable (`EN_BAT_CHGn`) | 39 | **Active low**: 0 = charging enabled |
 | External power | 9 | Digital, **edge-capable**: high = USB/external present. Schematic net `PWR_IN_VOLT`: 5.1 kΩ / 5.1 kΩ from `VIN_5V` (~½ VBUS). 2.5 V at 5 V still reads high |
-| `CHARGE_STATE` | 40 | BQ25616 STAT. **Low** while charging when `/CE` is enabled; high-Z/**high** when charge is done or `/CE` is parked. UART learning firmware read **high** with USB present, `/CE` disabled, and gauge `i=0`. Do not treat that as “charging.” |
+| `CHARGE_STATE` | 40 | BQ25616 STAT. **Low** while charging when `/CE` is enabled; high-Z/**high** when charge is done or `/CE` is parked. UART learning firmware read **high** with USB present, `/CE` disabled, and gauge `i=0`. Do not treat that as “charging.” STAT with `/CE` enabled: [nyc-charge-stat](../resources/not-yet-confirmed.md#nyc-charge-stat). |
 
 Treat GPIO9 as a digital **edge source**, not a level you poll: stock firmware
 installs an any-edge GPIO interrupt on it and raises a power-state-changed
@@ -100,6 +100,7 @@ Send the SSD1677 deep-sleep command **while EPD_EN is still high**, then drop
 EPD_EN. The last image stays on glass with the analog rail off.
 
 Sleep current: [nyc-sleep-current](../resources/not-yet-confirmed.md#nyc-sleep-current).
+In-repo enter/wake: [nyc-deep-sleep-wake](../resources/not-yet-confirmed.md#nyc-deep-sleep-wake).
 Which keys request sleep is application policy (top-button hold vs both side
 keys); electrically, GPIO4 is the proven wake input and GPIO5/6 are ordinary
 active-low keys.

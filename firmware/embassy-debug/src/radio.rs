@@ -149,8 +149,7 @@ impl NamePrinter {
     fn consider(&self, name: &str, rssi: i8) {
         self.names.lock(|cell| {
             let mut names = cell.borrow_mut();
-            if let Some((_, seen_rssi)) = names.iter_mut().find(|(seen, _)| seen.as_str() == name)
-            {
+            if let Some((_, seen_rssi)) = names.iter_mut().find(|(seen, _)| seen.as_str() == name) {
                 if rssi > *seen_rssi {
                     *seen_rssi = rssi;
                 }

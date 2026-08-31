@@ -54,7 +54,8 @@ Do not enable both chips as push-pull.
 UART learning firmware (input + pull-up, IMU polled over I2C) read GPIO7
 **low** with no edges while sitting still, during a tilt that changed the
 IMU pose token, and across a USB-C unplug/replug. Interrupts were not
-armed on either chip. Do not drive the pin.
+armed on either chip. Do not drive the pin. Armed-edge recipe:
+[nyc-gpio7-edge](../resources/not-yet-confirmed.md#nyc-gpio7-edge).
 
 Recessed **Reset** on the bottom edge is a hardware reset net, not a GPIO.
 Same edge: microphone hole, lanyard hole, charge LED, USB-C. The three keys

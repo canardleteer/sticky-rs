@@ -159,7 +159,7 @@ plausible-looking constant:
 | --- | --- |
 | BQ27220 CEDV data-memory *block* addresses beyond SLUUBD4 `3 Data Memory Interface` headings | Standard Commands live in `crates/bq27220` `Command` (SLUUBD4 `Table 2-1`). Use a raw read/write for garbled extract rows; do not infer block maps. |
 | BQ27220 CEDV data-memory block addresses and subcommand codes | Stock firmware reads the CEDV core and thresholds; the block layout must come from SLUUBD4, not from inference. |
-| Vendor "standby" display state | Stock driver exposes a distinct standby; its command sequence is unconfirmed. Confirmed path is active and deep sleep. |
+| Vendor "standby" display state | Stock driver exposes a distinct standby; its command sequence is unconfirmed. Confirmed path is active and deep sleep. [nyc-display-standby](not-yet-confirmed.md#nyc-display-standby). |
 | Four-gray LUT contents for this glass | No default LUT. The Sticky confirmed path is OTP (no 0x32). An MCU table stays optional and attributed; record its source and license here before adding one. |
 | GT911 coordinate / command / status bit encodings | Rev.09 deleted the register map (Rev.07). Remaining encodings are on-glass `GT911_REG_*` names, not a Rev.09 table. Do not invent a 186-byte config. |
 | ESP32-S3 GPIO hold, pad-JTAG eFuse, `ext1` register details | Datasheet v2.2 names the pads. The TRM is catalogued (`esp32-s3-trm`); search the local markdown cache when citing it. |

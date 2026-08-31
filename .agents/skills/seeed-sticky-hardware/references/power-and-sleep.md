@@ -47,7 +47,17 @@ Not an I2C device.
 | --- | --- | --- |
 | Charge enable (`EN_BAT_CHGn`) | 39 | **Active low**: 0 = charging enabled |
 | External power | 9 | Digital, **edge-capable**: high = USB/external present. Schematic net `PWR_IN_VOLT`: 5.1 kΩ / 5.1 kΩ from `VIN_5V` (~½ VBUS). 2.5 V at 5 V still reads high |
-| `CHARGE_STATE` | 40 | BQ25616 STAT. **Low** while charging when `/CE` is enabled; high-Z/**high** when charge is done or `/CE` is parked. UART learning firmware read **high** with USB present, `/CE` disabled, and gauge `i=0`. Do not treat that as “charging.” STAT with `/CE` enabled: [nyc-charge-stat](../resources/not-yet-confirmed.md#nyc-charge-stat). |
+| `CHARGE_STATE` | 40 | BQ25616 STAT. **Low** while charging when `/CE` is enabled; high-Z/**high** when charge is done or `/CE` is parked. On glass (embassy-debug `--features charge`, USB): `gpio40=1` parked → `0` while enabled → `1` after disable **and a settle**. A read immediately after disable still showed low (LED stayed green/yellow). Do not treat parked `gpio40=1` / `i=0` as a charge proof. Charge-to-done: [nyc-charge-stat](../resources/not-yet-confirmed.md#nyc-charge-stat). |
+
+In-repo **default** images park `/CE`. embassy-debug `--features charge`
+is an attended ≤ 2 s enable when GPIO9 is high, then park (settle,
+then `hold_disabled` if STAT is still low). Default `embassy-debug`
+is back on `app0` after that sit (no `ce` lines). When FreeInk and
+Bunny disagree on charger GPIO, prefer FreeInk:
+`FREEINK_DEVICE_STICKY` reads GPIO40 (STAT **low** = charging,
+`INPUT_PULLUP`) and leaves GPIO39 undriven. Bunny
+`board_charger_init` drives GPIO39 **low** at boot. Do not copy
+Bunny’s boot enable into a default debug image.
 
 Treat GPIO9 as a digital **edge source**, not a level you poll: stock firmware
 installs an any-edge GPIO interrupt on it and raises a power-state-changed
@@ -55,8 +65,11 @@ event from the handler. FreeInk’s analog `PWR_IN_VOLT` name matches the
 divider. Firmware still uses the pin digitally.
 
 USB-C feeds the charger (5 V sink; CC1/CC2 are 5.1 kΩ Rd). Red/green LED
-left of the port is charger-driven. Schematic charge set: **Vset 4.2 V**,
-charge **~555 mA**, input limit **~937 mA**.
+left of the port is charger-driven. While STAT was low the operator
+saw **green/yellow**; the off / done color is unconfirmed. Schematic
+charge set: **Vset 4.2 V**, charge **~555 mA**, input limit **~937 mA**.
+Gauge `Current()` stayed `0` at 200 ms and printed `5702` after 2 s
+while enabled — not a 555 mA charge-set reading.
 
 ## Battery
 

@@ -5,7 +5,9 @@
 //! answers a key or the first finger on the glass.
 //!
 //! In the MCU: latch power, park the charger and unused rails, bring up
-//! the two I2C buses and the panel OTP path. No invented LUT.
+//! the two I2C buses and the panel OTP path. `--features charge` may
+//! pulse `/CE` for two seconds when VBUS is present, then parks again.
+//! No invented LUT.
 //!
 //! # Before flashing anything
 //!
@@ -124,7 +126,9 @@ fn ask_tone() {
 /// On the unit: charging stays off, the card is not mounted, the mic is
 /// dark. GPIO7 is not a key — IMU INT1 and gauge GPOUT share it.
 struct ParkedHazards {
-    _charger: Charger<Output<'static>, bq25616::Disabled>,
+    /// Held so `/CE` stays parked. `--features charge` reassigns after the pulse.
+    #[allow(dead_code)]
+    charger: Charger<Output<'static>, bq25616::Disabled>,
     _gpio7: Input<'static>,
     #[cfg(not(feature = "sd"))]
     _sd_cs: Output<'static>,
@@ -181,7 +185,7 @@ fn park_charger_and_unused(
     )
     .expect("driving the mic rail cannot fail");
     ParkedHazards {
-        _charger: charger,
+        charger,
         _gpio7: gpio7,
         #[cfg(not(feature = "sd"))]
         _sd_cs: sd_cs,
@@ -381,7 +385,8 @@ async fn main(spawner: Spawner) {
         }
     }
 
-    let _parked = park_charger_and_unused(
+    #[cfg_attr(not(feature = "charge"), allow(unused_mut))]
+    let mut parked = park_charger_and_unused(
         peripherals.GPIO39,
         peripherals.GPIO7,
         #[cfg(not(feature = "sd"))]
@@ -396,13 +401,27 @@ async fn main(spawner: Spawner) {
     #[cfg(feature = "mic")]
     let mic_rail = crate::mic::enable_rail(peripherals.GPIO38, latch.witness(), &mut delay);
 
-    let sensor_i2c = I2c::new(
+    #[cfg_attr(not(feature = "charge"), allow(unused_mut))]
+    let mut sensor_i2c = I2c::new(
         peripherals.I2C0,
         I2cConfig::default().with_frequency(Rate::from_hz(I2C_FREQUENCY_HZ)),
     )
     .expect("I2C0 configuration")
     .with_sda(peripherals.GPIO1)
     .with_scl(peripherals.GPIO0);
+
+    #[cfg(feature = "charge")]
+    {
+        parked.charger = crate::charge::run(
+            parked.charger,
+            peripherals.GPIO9,
+            peripherals.GPIO40,
+            &mut sensor_i2c,
+            &mut delay,
+        );
+    }
+
+    let _parked = parked;
 
     let touch_i2c = I2c::new(
         peripherals.I2C1,
@@ -792,6 +811,8 @@ async fn buzzer_task(
     }
 }
 
+#[cfg(feature = "charge")]
+mod charge;
 mod display;
 #[cfg(feature = "mic")]
 mod mic;

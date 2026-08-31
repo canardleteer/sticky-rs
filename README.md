@@ -62,7 +62,7 @@ exactly one QinHeng CH343 (`1a86:55d3`).
 | `learn-uart-only` | yes | Same session, only named groups |
 | `diff-learn-uart` | no | Host-only compare of two reports or factory serials |
 | `vet-idle-log` | no | Host-only. Check a `monitor` capture for unattended embassy-debug or simple-debug tokens |
-| `build-fw` | no | Host-only. `cargo +esp` + `save-image` for `simple-debug` or `embassy-debug`. `--features operator` / `mic` / `radio` / `spi20` / `sd` |
+| `build-fw` | no | Host-only. `cargo +esp` + `save-image` for `simple-debug` or `embassy-debug`. `--features operator` / `mic` / `radio` / `spi20` / `sd` / `charge` |
 | `ci` | no | Host-only CI gate (fmt, host clippy/test, firmware clippy, rumdl, machete, audit) |
 | `monitor` | yes | UART0 at 115200 |
 

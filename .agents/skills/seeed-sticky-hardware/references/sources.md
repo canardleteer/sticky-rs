@@ -44,11 +44,11 @@ sequences: [cpp-platformio.md](cpp-platformio.md).
 | [Product page](https://www.seeedstudio.com/reTerminal-Sticky-p-6861.html) | Official | Commercial identity (`p-6398` also appears in one board JSON) |
 | ESP32-S3 datasheet v2.2 ([datasheets.md](../resources/datasheets.md)) | Official (confirmed MCU) | Straps GPIO0/3/45/46, GPIO21 no default pull, JTAG F0 on GPIO39–42, I2C 100/400 kbit/s, USB 19/20 |
 | ESP32-S3 TRM ([datasheets.md](../resources/datasheets.md)) | Official (confirmed MCU) | GPIO hold, pad-JTAG eFuse, `ext1` wake details. Populate the local cache when citing it |
-| Community firmware that ran on glass (Bunny / PlatformIO) | Third-party | Pin levels, 10 MHz SPI, display/touch, IMU, sleep rails |
+| Community firmware that ran on glass (Bunny / PlatformIO) | Third-party | Pin levels, 10 MHz SPI, display/touch, IMU, sleep rails. When Bunny and FreeInk disagree on charger GPIO, prefer FreeInk |
 | [varo6/reTerminal-sticky-skill](https://github.com/varo6/reTerminal-sticky-skill) | Third-party | ESP-IDF + Playground skill; GPIO7 flag; `seeed_epaper` API. File list: [external.md](../resources/external.md) |
 | [Playground registry](https://github.com/Seeed-Projects/reterminal-sticky-playground-registry) | Third-party (catalog) | `integration.json`, `sticky-2048` in-tree source |
 | [Lukilyy/reterminal-sticky-2048-eink-game](https://github.com/Lukilyy/reterminal-sticky-2048-eink-game) | Third-party | ESP-IDF app; GPIO7 as `PIN_BFG_INT` |
-| FreeInk `STICKY` board profile | Third-party | Mic / SHT40 / GPIO40 *wiring intent*; 40 MHz / `NO_FLIP` still pending |
+| FreeInk `STICKY` board profile | Third-party | Mic / SHT40 / GPIO40 *wiring intent*; GPIO39 left undriven (prefer this over Bunny boot-enable). 40 MHz / `NO_FLIP` still pending |
 | ESPHome `seeed-reterminal-sticky` | Third-party | 10 MHz, `mirror_x`, sensor I2C example |
 | [sira-fiinikkusu/reterminal-sticky-voice-companion](https://github.com/sira-fiinikkusu/reterminal-sticky-voice-companion) | Third-party (on-glass) | ESPHome: PDM 16 kHz left on GPIO19/20, GPIO38 rail, USB-Serial-JTAG pad reclaim after deep sleep |
 
@@ -71,7 +71,8 @@ weighs them.
 | SPI clock | 10 MHz on-glass | FreeInk 40 MHz default (out of SSD1677 spec) |
 | Display orientation | mirror_x+180° on-glass | FreeInk `NO_FLIP`; ESPHome `mirror_x` only |
 | GPIO9 | Stock firmware runs it as a **digital any-edge interrupt**. Schematic: 5.1 kΩ / 5.1 kΩ `PWR_IN_VOLT` from `VIN_5V` (~2.5 V at 5 V VBUS), still a valid high | FreeInk analog `PWR_IN_VOLT` matches the sheet. Firmware stays digital |
-| GPIO40 | UART `gpio40=1` with `/CE` parked (not charging) | Schematic: BQ25616 STAT. Low while charging when `/CE` is enabled; high-Z/high when done or parked |
+| GPIO40 | UART `gpio40=1` parked; `0` while `/CE` enabled; `1` after disable + settle (embassy-debug `--features charge`) | Schematic: BQ25616 STAT. Immediate post-disable read stayed low. Charge-to-done still open |
+| GPIO39 `/CE` | Default images park high. Attended 2 s pulse then park on USB (same feature). Default `embassy-debug` restored after | FreeInk STICKY does not drive GPIO39. Bunny `board_charger_init` drives low at boot. Prefer FreeInk for default debug images |
 | GT911 | UART `touch n=5`, `st=0x85` after INT-low (Rev.09 §6.1 → `0x5D`). This FPC delivers 5 (Rev.09 §1). Sample is **480×800**; `to_screen` maps that onto 800×480 (USB-down ink corners on glass). | INT-high → `0x14` ACK; init Status-clear path stayed `st=0x00`. A map that treated the sample as 800×480 compressed the keys axis to `y≈195`. |
 | **GPIO7** | Unused in on-glass IMU poll (input, low, no edges) | Schematic: shared LSM6DS3TR-C INT1 (`6D_INTn`) and BQ27220 GPOUT (`BFG_INT`). Seeed and `sticky-2048` named the same pin. Do not drive. |
 | ANT1 / radio | UART `wifi n=` and `ble n=` in one embassy-debug `--features radio` listen; `imu=` still running | Schematic on-board ANT1, shared 2.4 GHz |

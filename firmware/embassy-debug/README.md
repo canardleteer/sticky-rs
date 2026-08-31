@@ -25,8 +25,10 @@ On the unit:
   `mic` and `radio` in one image for a desk test.
   `--features spi20` clocks the panel at 20 MHz (`spi=20000000`);
   default stays 10 MHz. `--features sd` runs a read-only card
-  identify (`sd cd=`, `sd hz=` / `ack`); no writes. Do not combine
-  `spi20` / `sd` with `mic` or `radio`.
+  identify (`sd cd=`, `sd hz=` / `ack`); no writes. `--features
+  charge` pulses `/CE` for ≤ 2 s when USB is present, then parks.
+  Do not combine `spi20` / `sd` / `charge` with `mic` or `radio`.
+  Do not combine `charge` with `sd`.
 - Tilt the card for `imu=…`. A short beep answers a key-down. Tap the
   glass for `touch n=` (Rev.09 INT-low address select; on glass
   through `n=5`).
@@ -318,3 +320,91 @@ fail if Step 3 already printed both radios.
 
 This is a stack / RF-cal-after-`flash-app` check, not an NYC pin. Do
 not treat a successful scan as a license to write NVS or print a MAC.
+
+## Charge Test Instructions
+
+Default `embassy-debug` parks `/CE` and never enables charging. This
+feature is an attended sit for
+[`nyc-charge-stat`](../../.agents/skills/seeed-sticky-hardware/resources/not-yet-confirmed.md#nyc-charge-stat):
+print parked STAT / VBUS / gauge current, enable `/CE` for two
+seconds only when GPIO9 is high, print STAT and `i=`, then park
+again. Every boot of this image repeats that pulse. Do not leave it
+as a daily driver. Do not combine with `mic`, `radio`, or `sd`.
+
+FreeInk is the SDK wiring: GPIO40 STAT low = charging, GPIO39
+undriven at idle. Bunny enables charge at boot; this image does
+not copy that.
+
+USB-C stays plugged (flash uses that port, so VBUS should read
+high). Snapshot first:
+[docs/getting-started.md](../../docs/getting-started.md).
+
+Do **not** flash this feature unless the operator is at the desk.
+
+### Step 1: Is the port free?
+
+Same as the microphone test. Only one `monitor` at a time. Ctrl-C an
+old listen. Do not `kill -9`.
+
+Then:
+
+```shell
+cargo xtask detect-connected
+```
+
+You should see a Sticky path. If you do not, and you already killed a
+listen the hard way, unplug the USB-C cable and plug it back in once.
+Run `detect-connected` again.
+
+### Step 2: Build, flash, and listen
+
+```shell
+. $HOME/export-esp.sh
+cargo xtask build-fw embassy-debug --features charge
+cargo xtask flash-app --image target/xtensa-esp32s3-none-elf/release-fw/embassy-debug.bin --yes
+cargo xtask monitor
+```
+
+The image is on the chip only after `flash-app` finishes. A successful
+build alone does not flash. If `flash-app` says no QinHeng CH343, go
+back to Step 1.
+
+Ctrl-C when you are done so the next `flash-app` can see the device.
+Do not `kill -9` that listen. If you already did, unplug and replug
+once (same as Step 1).
+
+### Step 3: What you should see
+
+Early after `latched` / `git=`:
+
+```text
+embassy-debug: ce parked gpio40=1 vbus=1 i=0
+embassy-debug: ce on gpio40=0 i=0
+embassy-debug: ce on gpio40=0 i=5702
+embassy-debug: ce off gpio40=1 i=5702
+```
+
+`gpio40=1` parked and `gpio40=0` while enabled is the STAT proof.
+A second `ce on` is the end of the 2 s window. `ce off` is after a
+settle (and `hold_disabled` if STAT was still low). On glass STAT
+was `1→0→1` only with that settle. `i=` is BQ27220 `Current()`
+(sheet: mA, positive is charge). `0` at 200 ms and `5702` at 2 s
+is not the schematic ~555 mA set. `ce skip no-vbus` means GPIO9
+was low; `/CE` stayed parked.
+
+Keys, glass, and `imu=` still run after the pulse. `/CE` stays
+parked for the rest of the listen.
+
+### Step 4: Observe and report
+
+- **STAT (on glass)**: low while enabled, high after park and a
+  settle. Immediate post-disable STAT stayed low and the LED stayed
+  green/yellow.
+- **Still open**: charge-to-done, a credible `i=` vs the 555 mA
+  set, LED off / done color.
+- **Fail**: `ce on` with `gpio40=1`, a hang, or `/CE` left enabled
+  after the pulse.
+
+Do not arm GPIO7 on this sit. Do not treat a STAT pass as a license
+to enable charging in default images. After the sit, flash default
+`embassy-debug` (no `charge`) so every boot does not pulse `/CE`.

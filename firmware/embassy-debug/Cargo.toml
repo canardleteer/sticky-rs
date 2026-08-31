@@ -63,6 +63,7 @@ embassy-futures = "0.1.2"
 seeed-reterminal-sticky = { path = "../../crates/seeed-reterminal-sticky" }
 embassy-debug = { path = "../../crates/embassy-debug" }
 bq25616 = { path = "../../crates/bq25616" }
+bq27220 = { path = "../../crates/bq27220", optional = true }
 
 lsm6ds3tr = "0.2.2"
 
@@ -90,6 +91,10 @@ spi20 = []
 # Init ≤ 400 kHz, then status at 10 MHz and 20 MHz. Root list and one
 # ReadOnly file read. No writes. Do not combine with `mic` or `radio`.
 sd = ["dep:embedded-sdmmc"]
+# Attended BQ25616 `/CE` pulse (≤ 2 s) when GPIO9 is high. Parks
+# after. Do not combine with `mic`, `radio`, or `sd`. Default image
+# stays parked.
+charge = ["dep:bq27220"]
 # Concurrent Wi-Fi + BLE scan on the on-board antenna. Scan only: no
 # STA join, no SoftAP, no BLE connect. Does not print MAC / BSSID.
 # Independent of `mic`; do not CI both at once.

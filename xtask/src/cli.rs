@@ -98,7 +98,7 @@ Host-only. Builds one firmware workspace member with cargo +esp \
 --locked) and packs a flash payload with espflash save-image (no port). ELF \
 and .bin land under workspace target/xtensa-esp32s3-none-elf/release-fw/. \
 IMAGE is simple-debug or embassy-debug. Features: operator (simple-debug), \
-mic, radio, spi20, or sd (embassy-debug). \
+mic, radio, spi20, sd, or charge (embassy-debug). \
 Needs the esp toolchain (source the script `espup` printed, often \
 `$HOME/export-esp.sh`) and espflash on PATH. Does not \
 open a UART and does not flash.";
@@ -108,7 +108,7 @@ Host-only CI gate. Runs cargo fmt --check --all; host clippy and test on \
 default-members (default features, then --all-features), then \
 -p ssd1677-gray4 --no-default-features; cargo +esp clippy for \
 simple-debug-fw (default and operator) and embassy-debug-fw (default, \
-mic, radio, spi20, and sd); then rumdl \
+mic, radio, spi20, sd, and charge); then rumdl \
 check, cargo machete, and cargo audit. Needs the esp \
 toolchain (source the script `espup` printed, often `$HOME/export-esp.sh`) \
 for the firmware clippy steps. If rumdl, cargo-machete, or cargo-audit is \
@@ -345,7 +345,7 @@ impl From<FirmwareImageArg> for FirmwareImage {
 pub struct BuildFwCliArgs {
     /// `simple-debug` or `embassy-debug`.
     pub image: FirmwareImageArg,
-    /// Cargo features on that package (`operator` / `mic` / `radio` / `spi20` / `sd`).
+    /// Cargo features on that package (`operator` / `mic` / `radio` / `spi20` / `sd` / `charge`).
     #[arg(long)]
     pub features: Vec<String>,
     /// Build the debug profile instead of `--profile release-fw`.
@@ -840,6 +840,16 @@ mod tests {
         match cli.command {
             super::Command::BuildFw(args) => {
                 assert_eq!(args.features, ["sd"]);
+            }
+            other => panic!("expected BuildFw, got {other:?}"),
+        }
+
+        let cli =
+            Cli::try_parse_from(["xtask", "build-fw", "embassy-debug", "--features", "charge"])
+                .expect("build-fw embassy-debug --features charge");
+        match cli.command {
+            super::Command::BuildFw(args) => {
+                assert_eq!(args.features, ["charge"]);
             }
             other => panic!("expected BuildFw, got {other:?}"),
         }

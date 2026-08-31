@@ -87,7 +87,8 @@ winner against the user.
    not confirmed on this model.
 4. **Third-party** firmware, Playground apps, community skills, ESPHome,
    FreeInk profiles. Often first to carry new valid detail; also the usual
-   source of stale or wrong maps.
+   source of stale or wrong maps. When FreeInk and Bunny disagree on
+   charger GPIO, prefer FreeInk unless glass says otherwise.
 
 An observed address or pin (2) outranks a datasheet default (3): both
 GT911 7-bit addresses ACK here depending on INT at RST (Rev.09 §6.1:
@@ -115,7 +116,7 @@ populate it rather than guessing.
 | Display | 3.97" 800×480, 235 ppi **mono** E-Ink film; 4-gray is synthesized (dual plane + panel OTP), **SSD1677**-compatible SPI |
 | Touch | **GT911** on its own I2C; sensor reports **480×800** (portrait); map that sample onto 800×480 (`to_screen`); **5** simultaneous contacts on this FPC (Rev.09 §1). INT low at RST → `0x5D` (Rev.09 §6.1; [touch.md](references/touch.md#on-glass-embassy-debug)) |
 | USB debug | WCH **CH343P** on UART0 (`1a86:55d3`), not native USB-Serial/JTAG; udev by-id uses `_` before the USB serial |
-| Battery | 750 mAh 1S Li-ion, **BQ27220** gauge, **BQ25616** charger |
+| Battery | 750 mAh 1S Li-ion, **BQ27220** gauge, **BQ25616** charger. STAT (GPIO40) low while `/CE` enabled, high after park + settle ([power-and-sleep.md](references/power-and-sleep.md)). Default images park `/CE` |
 | Audio | PDM MEMS **MSM261DDB020** (GPIO19/20, EN 38 / TPS22916; hole on bottom edge); **no loudspeaker** (FUET-5018 on GPIO48). On glass: 16 kHz / left energy is live; AI Voice 1 kHz dump shows a ~16-sample period. Not high-fidelity ([sensors.md](references/sensors.md#pdm-microphone)) |
 | Radio | On-board **ANT1**, shared 2.4 GHz Wi-Fi / BLE. On glass: embassy-debug `--features radio` printed `wifi n=` and `ble n=` in one listen ([pin-map.md](references/pin-map.md#on-glass-embassy-debug-radio-feature)) |
 | Enclosure | 106 × 65.5 × 7.3 mm, 70 g, IP40, glass front, N52 corner magnets. Keys on the **right** edge (AI Voice / Page Up / Page Down); SD on the **left**; Reset, mic, lanyard, charge LED, USB-C on the **bottom**. [enclosure.md](references/enclosure.md) |

@@ -220,7 +220,7 @@ charge enable, latch timing, and sleep current remain human-approved work.
 
 | Path | What |
 | --- | --- |
-| [`crates/bq25616`](../crates/bq25616) | GPIO-only charger control (typed active-low enable) |
+| [`crates/bq25616`](../crates/bq25616) | GPIO-only charger control (typed active-low enable; `Drop` parks) |
 | [`crates/bq27220`](../crates/bq27220) | BQ27220 fuel gauge, read-only by default |
 | [`crates/ssd1677-gray4`](../crates/ssd1677-gray4) | SSD1677 controller, dual-plane four-gray, OTP on Sticky |
 | [`crates/seeed-reterminal-sticky`](../crates/seeed-reterminal-sticky) | Board support: pins, power latch, rails, transforms |

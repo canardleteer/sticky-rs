@@ -14,9 +14,11 @@ in the firmware HAL. Do not turn this crate into an `esp-hal` wrapper.
 - Do not ship a waveform LUT from this crate.
 
 Schematic Rev 01 settled GPIO7 (shared), GPIO9 divider, `CHARGE_STATUS`
-(STAT), SD detect (insert = 0), and UART0 43/44. Panel+SD SPI at 10 MHz
-and 20 MHz ACKed on glass; crate `SPI_MAX_HZ` stays 10 MHz. Still open:
-`MicRail` / `SdRail` settle times, GPIO46 pulse.
+(STAT), SD detect (insert = 0), and UART0 43/44. STAT on glass:
+low while `/CE` enabled, high after park and a settle. Panel+SD SPI
+at 10 MHz and 20 MHz ACKed on glass; crate `SPI_MAX_HZ` stays 10 MHz.
+Still open: `MicRail` / `SdRail` settle times, GPIO46 pulse,
+charge-to-done.
 
 Live-ask and never-erase: root [AGENTS.md](../../AGENTS.md). Pin map:
 [seeed-sticky-hardware](../../.agents/skills/seeed-sticky-hardware/SKILL.md).

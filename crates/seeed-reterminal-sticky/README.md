@@ -37,8 +37,8 @@ that the crate encoding is correct.
 | --- | --- | --- | --- |
 | Stay-alive latch (`PWR_HOLD` GPIO45, `PWR_LOCK` GPIO46) | `Latch::acquire` / `Latch::release`; every rail constructor needs a `Latched` witness | Firmware supplies the two output pins. Releasing the latch is a software power-off on battery. | yes |
 | USB / external present | `pins::EXTERNAL_POWER_SENSE` (GPIO9, high = VBUS) | Digital input. Schematic: 5.1 kΩ / 5.1 kΩ `PWR_IN_VOLT` from `VIN_5V` (~½ VBUS); USB-C is 5 V sink only (Rd on CC1/CC2). Firmware still treats GPIO9 as a GPIO high. | yes |
-| BQ25616 charger `/CE` (active low) and status | Pin numbers only: `pins::CHARGE_EN`, `pins::CHARGE_STATUS` | [`bq25616`](https://github.com/canardleteer/sticky-rs/tree/main/crates/bq25616) owns `/CE` typestate. `CHARGE_STATUS` is STAT: low while charging when `/CE` is enabled. The crate still reports a raw level, not `is_charging()`. | no |
-| Dual-color charge LED (next to USB-C) | **Not in this crate** | Driven by the charger, not an MCU GPIO. | no |
+| BQ25616 charger `/CE` (active low) and status | Pin numbers only: `pins::CHARGE_EN`, `pins::CHARGE_STATUS` | [`bq25616`](https://github.com/canardleteer/sticky-rs/tree/main/crates/bq25616) owns `/CE` typestate (`Drop` parks `Enabled`; VBUS interlock; `hold_disabled`). `CHARGE_STATUS` is STAT: low while `/CE` is enabled, high after park **and a settle**. embassy-debug `--features charge` is the attended pulse; default images stay parked. | STAT polarity yes; charge-to-done no |
+| Dual-color charge LED (next to USB-C) | **Not in this crate** | Driven by the charger, not an MCU GPIO. Green/yellow while STAT was low. Off / done color unconfirmed. | charging color only |
 | 750 mAh 1S pack / BQ27220 fuel gauge | I2C address `addresses::BQ27220` (`0x55`) on the sensor bus | [`bq27220`](https://github.com/canardleteer/sticky-rs/tree/main/crates/bq27220) on `pins::SENSOR_I2C_*`. Reads are safe; unseal / `CFGUPDATE` / FCC writes are opt-in. | yes |
 
 ### Display and touch

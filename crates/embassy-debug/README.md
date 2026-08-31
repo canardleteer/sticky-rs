@@ -29,6 +29,10 @@ embassy-debug: sd vol=0
 embassy-debug: sd ent name=FOO.TXT bytes=12
 embassy-debug: sd dir n=1
 embassy-debug: sd read name=FOO.TXT n=12
+embassy-debug: ce parked gpio40=1 vbus=1 i=0
+embassy-debug: ce on gpio40=0 i=-12
+embassy-debug: ce off gpio40=1 i=4
+embassy-debug: ce skip no-vbus
 ```
 
 [`IdleListen`] vets an unattended `monitor` capture (boot dance, idle
@@ -46,4 +50,6 @@ plays a 1 kHz buzzer tone ([`BUZZER_TONE_HZ`]) and dumps two windows.
 The `wifi` and `ble` lines are printed only by the `--features radio`
 image (SSID / local name and RSSI; never a MAC or BSSID). The `sd`
 lines are printed only by `--features sd` (read-only identify and FAT
-list; never a CID product serial or file contents).
+list; never a CID product serial or file contents). The `ce` lines are
+printed only by `--features charge` (a ≤ 2 s `/CE` pulse when VBUS is
+present, then park).

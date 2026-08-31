@@ -10,13 +10,19 @@ Live-ask, never-erase, and flash I/O: root
 ## Envelope
 
 - Latch GPIO45 then GPIO46 before logs or buses.
-- Park BQ25616 `/CE` disabled. Do not enable charging.
+- Park BQ25616 `/CE` disabled. Default image does not enable
+  charging. `--features charge` is an attended ≤ 2 s `/CE` pulse
+  when GPIO9 is high, then park. Do not combine with `mic`,
+  `radio`, or `sd`. Do not flash that feature unless the operator
+  is present.
 - GPIO7 is input-only (IMU INT1 and gauge GPOUT share it). Do not
   drive it.
 - MicroSD: CS idle-high on the default image. `--features sd` is
   read-only identify plus a FAT root list and one `ReadOnly` file
   read. No writes, no CID product serial, no file contents on UART.
-- Gauge: not used. No unseal, no data-memory writes.
+- Gauge: default image does not use it. `--features charge` reads
+  `Current()` for the `ce` lines only. No unseal, no data-memory
+  writes.
 - Touch: rail on, then Rev.09 §6.1 INT-during-reset address select
   (400 kHz cap, INT=low then INT=high, INT driven after RST rises).
   No config-RAM write. No init `StatusWrite::Clear`. No

@@ -31,7 +31,7 @@ hardware unless marked otherwise.
 | 21 | I/O | GT911 INT | Address-select during reset, then input. **No default pull** at/after reset (v2.2 Table 2-1). RTC-capable. |
 | 38 | Output | Mic power enable | Active-high load switch. Hold low when unused and in sleep (floating across sleep can leave the capsule half-powered). Cycle low after wake before recording. Enabling the rail is not a [safety.md](safety.md) destroy-the-board row. |
 | 39 | Output | BQ25616 charge enable | **Active low**. Default IO MUX F0 is JTAG `MTCK` (v2.2 Table 2-4); mux to GPIO before driving. |
-| 40 | Input | BQ25616 `CHARGE_STATE` | STAT pin. Low while charging (`/CE` enabled); high-Z/high when done or `/CE` parked. Default F0 is JTAG `MTDO`. |
+| 40 | Input | BQ25616 `CHARGE_STATE` | STAT pin. Low while charging (`/CE` enabled); high-Z/high when done or `/CE` parked. On glass: `1→0→1` across a 2 s `/CE` pulse after a settle on disable. Default F0 is JTAG `MTDO`. |
 | 41 | Output | GT911 RST | Address-select sequence. Default F0 is JTAG `MTDI` (input); mux to GPIO. After reset: IE, no pull. |
 | 42 | Output | GT911 power enable | Active high. ~250 ms settle. Default F0 is JTAG `MTMS` (input); mux to GPIO. |
 | 43 | UART0 TX | CH343P `USB_RXD` | MCU TX to the bridge (ESP32-S3 U0TXD). Schematic Rev 01 |

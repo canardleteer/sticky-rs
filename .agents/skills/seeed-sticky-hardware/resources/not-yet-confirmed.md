@@ -34,7 +34,7 @@ a second status column.
 | [nyc-mic-pdm](#nyc-mic-pdm) | PDM high-fidelity rate / slot / hole | [sensors.md](../references/sensors.md) |
 | [nyc-panel-glass](#nyc-panel-glass) | Glass part, analog rails, temp LUT | [display.md](../references/display.md) |
 | [nyc-esphome-orient](#nyc-esphome-orient) | ESPHome `mirror_x` vs on-glass 180° | [display.md](../references/display.md) |
-| [nyc-charge-stat](#nyc-charge-stat) | STAT while `/CE` is enabled | [power-and-sleep.md](../references/power-and-sleep.md) |
+| [nyc-charge-stat](#nyc-charge-stat) | Charge-to-done and gauge current scale | [power-and-sleep.md](../references/power-and-sleep.md) |
 | [nyc-deep-sleep-wake](#nyc-deep-sleep-wake) | In-repo deep sleep and GPIO4 wake | [power-and-sleep.md](../references/power-and-sleep.md) |
 | [nyc-gpio7-edge](#nyc-gpio7-edge) | GPIO7 edges with IMU or gauge armed | [sensors.md](../references/sensors.md) |
 | [nyc-display-standby](#nyc-display-standby) | Vendor panel standby sequence | [display.md](../references/display.md) |
@@ -208,12 +208,15 @@ ESPHome preset: `mirror_x`, 10 MHz, no packed 180° rotate. Bunny glass:
 ### nyc-charge-stat
 
 Schematic: GPIO40 is BQ25616 STAT. UART read **high** with `/CE` parked
-and gauge `i=0`. That is not a charge proof. In-repo images park `/CE`.
+and gauge `i=0`. That is not a charge proof. Default in-repo images
+park `/CE`. embassy-debug `--features charge` on USB (2026-08-30,
+settle after disable): STAT followed enable and park
+(`gpio40=1` → `0` → `1`). Gauge `i=` went `0` → `5702` while
+enabled (not a 555 mA charge-set number). First sit left STAT low
+and the charger LED green/yellow.
 
-- Only with the operator present. Enable `/CE` on USB, watch GPIO40 go
-  low and gauge current sign change, then **park `/CE` again**. Do not
-  leave charging enabled. Confirmed when STAT follows enable / done /
-  parked as the sheet says.
+- Charge-to-done and a credible current scale are still open. Do
+  not leave `/CE` enabled in default images.
 
 ### nyc-deep-sleep-wake
 

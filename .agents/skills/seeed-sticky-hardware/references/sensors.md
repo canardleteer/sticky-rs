@@ -73,7 +73,10 @@ After Control=DeviceType, wait ~15 ms before MAC Data.
 
 UART learning firmware verified DeviceType `0x0220` and logged standard-command
 voltage, current, and SOC while sitting on USB with `/CE` disabled (example
-readback `soc=100 v=4195 i=0`). That is not a CEDV data-memory dump and does
+readback `soc=100 v=4195 i=0`). A 2 s `/CE` pulse printed `i=0` at
+200 ms and `i=5702` at 2 s while STAT was low — not the schematic
+~555 mA charge set. Sheet units are mA; that count is not a current
+proof. That is not a CEDV data-memory dump and does
 not close [nyc-gauge-profile](../resources/not-yet-confirmed.md#nyc-gauge-profile).
 
 ### CEDV, not Impedance Track

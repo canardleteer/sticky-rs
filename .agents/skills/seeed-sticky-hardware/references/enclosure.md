@@ -52,7 +52,7 @@ Left to right in the diagram (numbered 1–5):
 | 1 | **Reset** | Recessed pinhole. Hardware reset (`CHIP_PU`), **not** a GPIO. Do not treat it as a key in an operator button session. |
 | 2 | **Microphone** | PDM capsule hole. Clock GPIO19, data GPIO20, enable GPIO38. |
 | 3 | **Lanyard Hole** | Mechanical only. |
-| 4 | **Charging LED** | Dual-color, charger-driven, not an MCU GPIO in these sources. |
+| 4 | **Charging LED** | Dual-color, charger-driven, not an MCU GPIO. While STAT was low the operator saw green/yellow. Off / done color unconfirmed. |
 | 5 | **USB Type-C** | Power, CH343P UART (QinHeng `1a86:55d3`), ROM download. Not native USB-Serial/JTAG. |
 
 ## Rear

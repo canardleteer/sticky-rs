@@ -14,7 +14,9 @@ use embassy_debug::{
 use embassy_time::Delay;
 use embedded_hal::delay::DelayNs;
 use embedded_hal::spi::{Operation, SpiDevice};
-use embedded_sdmmc::{Mode, SdCard, ShortFileName, TimeSource, Timestamp, VolumeIdx, VolumeManager};
+use embedded_sdmmc::{
+    Mode, SdCard, ShortFileName, TimeSource, Timestamp, VolumeIdx, VolumeManager,
+};
 use esp_hal::gpio::{Input, InputConfig, Level, Output, OutputConfig, Pull};
 use esp_hal::peripherals::{GPIO10, GPIO11, GPIO8};
 use esp_hal::spi::master::{Config as SpiConfig, Spi};

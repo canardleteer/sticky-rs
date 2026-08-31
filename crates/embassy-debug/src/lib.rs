@@ -3,8 +3,8 @@
 //! The firmware owns buses, pins, and the Embassy tasks. This crate owns the
 //! **strings** it prints so the log contract can be tested on the host:
 //! timestamped button, touch, GT911 status, IMU, mic-energy, PCM-dump,
-//! radio-scan, and read-only SD identify lines, and no factory serial /
-//! USB serial / MAC / card product-serial fields.
+//! radio-scan, read-only SD identify, and charge-sit lines, and no factory
+//! serial / USB serial / MAC / card product-serial fields.
 
 #![no_std]
 #![forbid(unsafe_code)]
@@ -39,6 +39,15 @@ pub const TONE_DUMP_WINDOWS: u32 = 2;
 
 /// Wi-Fi / BLE scan period, in seconds (`--features radio` image).
 pub const RADIO_REPORT_SECS: u32 = 10;
+
+/// How long `/CE` stays enabled on `--features charge`, in milliseconds.
+///
+/// Includes [`CHARGE_SETTLE_MS`]. Default images never enable.
+pub const CHARGE_PULSE_MS: u32 = 2000;
+
+/// Wait after enable or disable before reading STAT / gauge current, in
+/// milliseconds. On glass, STAT after disable was still low without this.
+pub const CHARGE_SETTLE_MS: u32 = 200;
 
 /// Max SSID or BLE local-name characters after sanitize.
 pub const RADIO_LABEL_MAX: usize = 24;
@@ -309,11 +318,7 @@ pub fn format_sd_ent<'a>(
 }
 
 /// Writes `embassy-debug: sd read name=<name> n=<n>` after a ReadOnly read.
-pub fn format_sd_read<'a>(
-    name: &str,
-    n: u32,
-    buf: &'a mut [u8],
-) -> Result<&'a str, FormatError> {
+pub fn format_sd_read<'a>(name: &str, n: u32, buf: &'a mut [u8]) -> Result<&'a str, FormatError> {
     write_into(buf, format_args!("{LOG_PREFIX}: sd read name={name} n={n}"))
 }
 
@@ -321,6 +326,72 @@ pub fn format_sd_read<'a>(
 pub fn format_sd_ack(hz: u32, ok: bool, buf: &mut [u8]) -> Result<&str, FormatError> {
     let token = if ok { "ack" } else { "nak" };
     write_into(buf, format_args!("{LOG_PREFIX}: sd hz={hz} {token}"))
+}
+
+/// Writes `embassy-debug: ce parked gpio40=<0|1> vbus=<0|1>` and optional `i=`.
+pub fn format_ce_parked(
+    gpio40_high: bool,
+    vbus: bool,
+    i_ma: Option<i16>,
+    buf: &mut [u8],
+) -> Result<&str, FormatError> {
+    write_ce(
+        "parked",
+        u8::from(gpio40_high),
+        Some(u8::from(vbus)),
+        i_ma,
+        buf,
+    )
+}
+
+/// Writes `embassy-debug: ce on gpio40=<0|1>` and optional `i=`.
+pub fn format_ce_on(
+    gpio40_high: bool,
+    i_ma: Option<i16>,
+    buf: &mut [u8],
+) -> Result<&str, FormatError> {
+    write_ce("on", u8::from(gpio40_high), None, i_ma, buf)
+}
+
+/// Writes `embassy-debug: ce off gpio40=<0|1>` and optional `i=`.
+pub fn format_ce_off(
+    gpio40_high: bool,
+    i_ma: Option<i16>,
+    buf: &mut [u8],
+) -> Result<&str, FormatError> {
+    write_ce("off", u8::from(gpio40_high), None, i_ma, buf)
+}
+
+/// Writes `embassy-debug: ce skip no-vbus`.
+pub fn format_ce_skip(buf: &mut [u8]) -> Result<&str, FormatError> {
+    write_into(buf, format_args!("{LOG_PREFIX}: ce skip no-vbus"))
+}
+
+fn write_ce<'a>(
+    phase: &str,
+    gpio40: u8,
+    vbus: Option<u8>,
+    i_ma: Option<i16>,
+    buf: &'a mut [u8],
+) -> Result<&'a str, FormatError> {
+    match (vbus, i_ma) {
+        (Some(vbus), Some(i_ma)) => write_into(
+            buf,
+            format_args!("{LOG_PREFIX}: ce {phase} gpio40={gpio40} vbus={vbus} i={i_ma}"),
+        ),
+        (Some(vbus), None) => write_into(
+            buf,
+            format_args!("{LOG_PREFIX}: ce {phase} gpio40={gpio40} vbus={vbus}"),
+        ),
+        (None, Some(i_ma)) => write_into(
+            buf,
+            format_args!("{LOG_PREFIX}: ce {phase} gpio40={gpio40} i={i_ma}"),
+        ),
+        (None, None) => write_into(
+            buf,
+            format_args!("{LOG_PREFIX}: ce {phase} gpio40={gpio40}"),
+        ),
+    }
 }
 
 /// Writes `embassy-debug: git=<hash> dirty=<0|1>` into `buf` without a trailing newline.
@@ -737,8 +808,14 @@ mod tests {
             format_sd_ack(20_000_000, false, &mut buf).unwrap(),
             "embassy-debug: sd hz=20000000 nak"
         );
-        assert_eq!(format_sd_vol(0, &mut buf).unwrap(), "embassy-debug: sd vol=0");
-        assert_eq!(format_sd_dir(2, &mut buf).unwrap(), "embassy-debug: sd dir n=2");
+        assert_eq!(
+            format_sd_vol(0, &mut buf).unwrap(),
+            "embassy-debug: sd vol=0"
+        );
+        assert_eq!(
+            format_sd_dir(2, &mut buf).unwrap(),
+            "embassy-debug: sd dir n=2"
+        );
         assert_eq!(
             format_sd_ent("FOO.TXT", Some(12), &mut buf).unwrap(),
             "embassy-debug: sd ent name=FOO.TXT bytes=12"
@@ -751,6 +828,34 @@ mod tests {
             format_sd_read("FOO.TXT", 12, &mut buf).unwrap(),
             "embassy-debug: sd read name=FOO.TXT n=12"
         );
+    }
+
+    #[test]
+    fn charge_lines_match_the_agreed_shape() {
+        let mut buf = [0u8; LINE_CAPACITY];
+        assert_eq!(
+            format_ce_parked(true, true, Some(0), &mut buf).unwrap(),
+            "embassy-debug: ce parked gpio40=1 vbus=1 i=0"
+        );
+        assert_eq!(
+            format_ce_parked(true, false, None, &mut buf).unwrap(),
+            "embassy-debug: ce parked gpio40=1 vbus=0"
+        );
+        assert_eq!(
+            format_ce_on(false, Some(-12), &mut buf).unwrap(),
+            "embassy-debug: ce on gpio40=0 i=-12"
+        );
+        assert_eq!(
+            format_ce_off(true, Some(4), &mut buf).unwrap(),
+            "embassy-debug: ce off gpio40=1 i=4"
+        );
+        assert_eq!(
+            format_ce_skip(&mut buf).unwrap(),
+            "embassy-debug: ce skip no-vbus"
+        );
+        assert!(CHARGE_PULSE_MS > CHARGE_SETTLE_MS);
+        assert_eq!(CHARGE_PULSE_MS, 2000);
+        assert_eq!(CHARGE_SETTLE_MS, 200);
     }
 
     #[test]

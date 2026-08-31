@@ -730,6 +730,7 @@ name = "embassy-debug-fw"
 version = "0.1.0"
 dependencies = [
  "bq25616",
+ "bq27220",
  "bt-hci",
  "embassy-debug",
  "embassy-executor",

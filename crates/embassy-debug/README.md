@@ -23,6 +23,9 @@ embassy-debug: t=1204 ble n=1
 embassy-debug: t=1204 ble name=Phone rssi=-70
 ```
 
+[`IdleListen`] vets an unattended `monitor` capture (boot dance, idle
+`imu=`, `gt911 st=`). Host: `cargo xtask vet-idle-log --embassy FILE`.
+
 IMU reports use [`IMU_REPORT_SECS`] (5). A read-only `gt911 st=` line
 follows board `touch::STATUS_HEARTBEAT` (`EverySecs(10)` or `Off`).
 This FPC delivers five contacts (Rev.09 §1). A pose that does not classify

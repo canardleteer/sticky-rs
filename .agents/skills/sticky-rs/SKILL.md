@@ -47,8 +47,8 @@ that live command:
   `confirm-factory-firmware`, `restore-factory-firmware`, `flash-app`,
   `learn-uart`, `learn-uart-only`, `monitor`
 - Host-only (no UART): `detect-connected` without `--probe`,
-  `backup-factory-firmware --import`, `diff-learn-uart`, `build-fw`,
-  `ci`
+  `backup-factory-firmware --import`, `diff-learn-uart`, `vet-idle-log`,
+  `build-fw`, `ci`
 
 When a live ask is present, the **only** in-repo device I/O is `cargo xtask`
 as catalogued in [xtask.md](references/xtask.md). `flash-app` does not

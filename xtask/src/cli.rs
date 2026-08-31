@@ -48,6 +48,8 @@ we don't see a response ask whether you tried (with a retry). \
 learn-uart-only STEP… runs the same session but only the named groups \
 (touch, buttons, vbus, imu, sd) and skips the rest of the briefing. \
 diff-learn-uart compares two reports on the host (serials redacted unless --show-serials). \
+vet-idle-log is host-only: check a monitor capture for unattended embassy-debug \
+or simple-debug tokens (no UART). \
 ci is host-only: fmt, host clippy/test (default-members, --all-features, \
 ssd1677-gray4 --no-default-features), cargo +esp clippy for both firmware \
 images, then rumdl / cargo machete / cargo audit. It does not open a UART. \
@@ -136,6 +138,8 @@ pub enum Command {
     /// Compare two learn-uart reports (host-only; serials redacted unless `--show-serials`).
     #[command(long_about = DIFF_LEARN_UART_ABOUT)]
     DiffLearnUart(DiffLearnUartCliArgs),
+    /// Host-only: vet an unattended `monitor` capture (no UART).
+    VetIdleLog(VetIdleLogArgs),
     /// Xtensa `cargo +esp` build plus host-only `save-image` (no UART).
     #[command(long_about = BUILD_FW_ABOUT)]
     BuildFw(BuildFwCliArgs),
@@ -189,6 +193,18 @@ pub struct ConfirmArgs {
     /// Compare against this capture slug instead of `original/`.
     #[arg(long, value_name = "SLUG")]
     pub capture: Option<String>,
+}
+
+/// Host-only idle UART log check.
+#[derive(Debug, Args)]
+#[group(required = true, multiple = false)]
+pub struct VetIdleLogArgs {
+    /// `monitor --output` file from embassy-debug (default image).
+    #[arg(long, value_name = "FILE")]
+    pub embassy: Option<PathBuf>,
+    /// `monitor --output` file from simple-debug (default image).
+    #[arg(long, value_name = "FILE")]
+    pub simple: Option<PathBuf>,
 }
 
 /// UART0 listen (USB CDC by default).
@@ -446,6 +462,7 @@ impl Cli {
                 println!("bin {}", out.bin.display());
                 Ok(())
             }
+            Command::VetIdleLog(args) => run_vet_idle_log(args),
             Command::Monitor(args) => monitor(
                 args.port,
                 &MonitorOptions {
@@ -458,6 +475,66 @@ impl Cli {
             ),
         }
     }
+}
+
+fn read_idle_log(path: &std::path::Path) -> Result<String, Error> {
+    let bytes = std::fs::read(path)
+        .map_err(|error| Error::Device(format!("vet-idle-log {}: {error}", path.display())))?;
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+fn run_vet_idle_log(args: VetIdleLogArgs) -> Result<(), Error> {
+    if let Some(path) = args.embassy {
+        let log = read_idle_log(&path)?;
+        let seen = embassy_debug::IdleListen::evaluate(&log);
+        println!(
+            "embassy idle: latched={} git={} dance={} int_low={} ack_5d={} \
+             no_clear={} no_cmd={} imu_init={} imu={:?} st={:?}",
+            seen.latched,
+            seen.git,
+            seen.addr_dance,
+            seen.int_low,
+            seen.ack_5d,
+            seen.no_init_clear,
+            seen.no_command_write,
+            seen.imu_init_ok,
+            seen.imu.map(embassy_debug::ImuPose::as_str),
+            seen.gt911_status,
+        );
+        if seen.ok() {
+            return Ok(());
+        }
+        return Err(Error::Device(
+            "idle embassy-debug listen is incomplete (need 10s for gt911 st=)".into(),
+        ));
+    }
+    if let Some(path) = args.simple {
+        let log = read_idle_log(&path)?;
+        let seen = simple_debug::IdleListen::evaluate(&log);
+        println!(
+            "simple idle: latched={} git={} gauge={} vbus={:?} gpio7={:?} \
+             gpio40={:?} sd_cd={:?} imu={:?} sht={} rtc={}",
+            seen.latched,
+            seen.git,
+            seen.gauge_type,
+            seen.vbus,
+            seen.gpio7,
+            seen.gpio40,
+            seen.sd_cd,
+            seen.imu.map(simple_debug::ImuPose::as_str),
+            seen.sht,
+            seen.rtc,
+        );
+        if seen.ok() {
+            return Ok(());
+        }
+        return Err(Error::Device(
+            "idle simple-debug listen is incomplete".into(),
+        ));
+    }
+    Err(Error::Device(
+        "vet-idle-log needs --embassy FILE or --simple FILE".into(),
+    ))
 }
 
 fn run_backup(layout: &Layout, args: BackupArgs) -> Result<(), Error> {
@@ -672,6 +749,21 @@ mod tests {
                 assert!(args.session.yes);
             }
             other => panic!("expected LearnUartOnly, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn vet_idle_log_parses_embassy() {
+        use clap::Parser;
+
+        let cli = Cli::try_parse_from(["xtask", "vet-idle-log", "--embassy", "idle.log"])
+            .expect("vet-idle-log --embassy");
+        match cli.command {
+            super::Command::VetIdleLog(args) => {
+                assert!(args.embassy.is_some());
+                assert!(args.simple.is_none());
+            }
+            other => panic!("expected VetIdleLog, got {other:?}"),
         }
     }
 

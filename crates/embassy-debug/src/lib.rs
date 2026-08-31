@@ -54,6 +54,10 @@ pub const GIT_CAPACITY: usize = 80;
 /// Bytes reserved for the boot latch line.
 pub const LATCHED_CAPACITY: usize = 32;
 
+mod idle;
+
+pub use idle::IdleListen;
+
 /// Why a format into a caller buffer failed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FormatError {

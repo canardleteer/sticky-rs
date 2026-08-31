@@ -3382,7 +3382,9 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "embassy-debug",
  "env_logger",
+ "simple-debug",
  "sticky-host",
 ]
 

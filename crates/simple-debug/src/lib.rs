@@ -46,6 +46,10 @@ pub const SHT_CAPACITY: usize = 48;
 /// Bytes reserved for a PCF8563 line (`rtc y=…` or `rtc none`).
 pub const RTC_CAPACITY: usize = 64;
 
+mod idle;
+
+pub use idle::IdleListen;
+
 /// Why a format into a caller buffer failed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FormatError {

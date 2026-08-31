@@ -13,6 +13,8 @@ authors.workspace = true
 [dependencies]
 clap = { version = "4.5.41", features = ["derive", "env"] }
 env_logger = "0.11.8"
+embassy-debug = { path = "../crates/embassy-debug" }
+simple-debug = { path = "../crates/simple-debug" }
 sticky-host = { path = "../host/sticky-host" }
 
 [lints]

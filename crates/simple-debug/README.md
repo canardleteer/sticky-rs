@@ -14,6 +14,9 @@ simple-debug: sht t=23400 rh=45100
 simple-debug: rtc y=26 mo=8 d=30 h=15 mi=14 s=0 vl=0
 ```
 
+[`IdleListen`] vets an unattended `monitor` capture (latch, gauge type,
+heartbeat, SHT, RTC). Host: `cargo xtask vet-idle-log --simple FILE`.
+
 `sht t=` is milli °C; `rh=` is milli % RH. `rtc` year is 0–99. `vl`
 is the NXP seconds-register VL bit. Failed reads print `sht none` or
 `rtc none`. Host-tested formatters: `format_sht`, `format_sht_none`,

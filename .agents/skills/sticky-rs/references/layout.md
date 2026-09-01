@@ -44,10 +44,13 @@ transforms — belong in `seeed-reterminal-sticky`. Keep that split.
 - Host CLIs (`xtask` and any future CLI) use [`clap`](https://docs.rs/clap)
   **derive** (`Parser`, `Subcommand`, `Args`). Do not put clap types in
   `sticky-host`. Do not use clap builder, `pico-args`, or hand-rolled
-  `std::env::args` dispatch. Device I/O lives in `sticky-host` via the
-  [`espflash`](https://crates.io/crates/espflash) **library**
-  (`default-features = false`, `serialport`); [`cargo-espflash`](https://crates.io/crates/cargo-espflash)
-  is a binary-only Cargo plugin wrapping that crate. Do not enable
+  `std::env::args` dispatch. Keep `--help` tidy: one-line `about`,
+  paragraph `long_about` (blank lines; clap wraps each), no Cargo.toml
+  essay, `hide_env_values` on `ESPFLASH_PORT`. Device I/O lives in
+  `sticky-host` via the [`espflash`](https://crates.io/crates/espflash)
+  **library** (`default-features = false`, `serialport`);
+  [`cargo-espflash`](https://crates.io/crates/cargo-espflash) is a
+  binary-only Cargo plugin wrapping that crate. Do not enable
   espflash's `cli` feature. `sticky-host` and xtask require rustc 1.88
   (espflash 4.5); the `no_std` crates stay at workspace MSRV 1.85. Live
   `sticky-host` methods take [`uart_lock::try_acquire`](xtask.md#uart-session-lock-shared)

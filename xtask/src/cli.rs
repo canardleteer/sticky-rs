@@ -11,12 +11,9 @@ use sticky_host::{
     SnapshotKind, FLASH_SIZE,
 };
 
-/// Sticky factory-firmware originals (gitignored `developer-data/backups/original/{serial}/`).
-///
-/// Live commands need `ESPFLASH_PORT` or exactly one Sticky CH343. Agents
-/// must not invoke it against hardware unless a human explicitly asked.
+/// Sticky host CLI: UART, snapshots, flash-app, and host-only builds.
 #[derive(Debug, Parser)]
-#[command(name = "xtask", version, about, long_about = LONG_ABOUT)]
+#[command(name = "xtask", version, long_about = LONG_ABOUT)]
 pub struct Cli {
     /// Subcommand.
     #[command(subcommand)]
@@ -24,129 +21,103 @@ pub struct Cli {
 }
 
 const LONG_ABOUT: &str = "\
-detect-connected lists Sticky CH343 UART nodes (no DTR). --all-devices includes \
-other USB-serial adapters. --probe opens UART (DTR reset) for stock \
-serial_number and board-info. backup, confirm, restore, flash-app, learn-uart, \
-and monitor share that same QinHeng port pick. Capture each Sticky under \
-developer-data/backups/original/<factory-serial>/ (known factory, write-once) or \
-developer-data/backups/captures/<unit-id>/<slug>/ (named snapshot of what is on the chip). \
-Both are gitignored. confirm measures drift against the original, or \
---capture SLUG. restore write-bins that unit's original or --capture (never \
-erase). Live UART commands take an exclusive flock so a second xtask cannot \
-reset the chip during a dump, restore, etc. Subprocesses that might pulse DTR \
-must run under that same session (UartSession::status). build-fw is host-only: \
-cargo +esp build plus espflash save-image into workspace target/ (no UART). \
-flash-app write-bins a custom image into factory app0 only (requires a matching \
-original or capture, --yes; never the espflash 'flash' subcommand). \
-learn-uart vets UART heartbeats and optional human steps, then writes YAML \
-under developer-data/uart-inspection-records/<factory-serial>/ (gitignored; records \
-factory serial, not MAC). A completed session also copies learn-uart-latest.yaml \
-(trust that file only when complete: true — a crash never publishes it). \
-Interactive sessions name steps by the action you \
-perform, state expected duration, ask if you can stay the whole time, and if \
-we don't see a response ask whether you tried (with a retry). \
-learn-uart-only STEP… runs the same session but only the named groups \
-(touch, buttons, vbus, imu, sd) and skips the rest of the briefing. \
-diff-learn-uart compares two reports on the host (serials redacted unless --show-serials). \
-vet-idle-log is host-only: check a monitor capture for unattended embassy-debug \
-or simple-debug tokens (no UART). \
-ci is host-only: fmt, host clippy/test (default-members, --all-features, \
-ssd1677-gray4 --no-default-features), cargo +esp clippy for both firmware \
-images, then rumdl / cargo machete / cargo audit. It does not open a UART. \
-monitor reads UART0 at 115200 via USB CDC (no ACM TTY, so no EN pulse). \
-Optional --acm-tty opens the TTY anyway (POWERON). Optional --for SECS \
-and --lines N stop with success; --output FILE tees the stream (--quiet \
-writes the file only).";
+Live commands need `--port` or `ESPFLASH_PORT`, or exactly one QinHeng CH343 \
+(`1a86:55d3`). They take an exclusive UART session lock. Do not open a port \
+unless a human asked.
+
+Snapshots live under gitignored `developer-data/backups/`. Known factory \
+goes to write-once `original/<serial>/`. Anything else is a named capture. \
+`flash-app` writes factory `app0` only. Never erase.
+
+Host-only (no UART): `detect-connected` without `--probe`, `backup --import`, \
+`build-fw`, `ci`, `diff-learn-uart`, and `vet-idle-log`.
+
+Use `<COMMAND> --help` for flags.";
 
 const LEARN_UART_ABOUT: &str = "\
-UART heartbeat vet plus skippable human steps. YAML is written under \
-developer-data/uart-inspection-records/<factory-serial>/ (gitignored). The report records \
-that unit's factory serial_number so later units can be compared. It does not \
-record MAC or CH343 USB serial. Requires a matching original (backup first). \
-QinHeng CH343, UART session lock, no DTR/RTS while listening. Optional --image \
-flashes app0 first in the same session. Optional --report FILE copies the YAML \
-elsewhere as well. A session that finishes without aborting copies \
-learn-uart-latest.yaml; trust that alias only when complete: true.
+UART heartbeat vet plus skippable human steps. Writes YAML under \
+`developer-data/uart-inspection-records/<factory-serial>/` (gitignored; \
+factory serial, not MAC). Needs a matching original or capture. QinHeng \
+CH343, UART session lock, no DTR/RTS while listening.
 
-Human steps are named by the action you perform (press a button, unplug USB-C, \
-tilt the board, touch the glass). The session states expected duration, \
-asks whether you can be present for the full time, lists steps that need you \
-to stay with the board, and if we don't see a response asks if you tried \
-(with a retry). It asks up front about two hands, USB cable slack (tilt), whether \
-you can see the terminal while holding the board, noisy behavior (USB-C unplug \
-disconnects this computer until you plug the same cable back in), and a working \
-MicroSD — but only the questions that apply to the remaining steps. After each button it asks what you would call that key; blank is stored \
-as unknown, with an optional short note if you are still unsure. \
-Pass --only STEP (or learn-uart-only) to retest one group without the rest.";
+`--image FILE` flashes `app0` first (needs `--yes`). `--restore-app0` puts \
+factory `app0` back after. A finished session copies `learn-uart-latest.yaml`; \
+trust that alias only when `complete: true`.
+
+Human steps are named by the action (key, USB-C, tilt, panel). The session \
+states duration, asks if you can stay, and retries a miss. `--only STEP` or \
+`learn-uart-only` retests one group.";
 
 const LEARN_UART_ONLY_ABOUT: &str = "\
-Same UART session as learn-uart, but only the named step groups. Others are \
-recorded as skipped (not_in_only) and their briefing questions are omitted. \
-STEP is one or more of: touch, buttons, vbus, imu, sd (positional and/or --only). \
-`--only touch` on this subcommand is the same as a positional `touch`. Example: \
-cargo xtask learn-uart-only touch --image target/xtensa-esp32s3-none-elf/release-fw/simple-debug.bin --yes --restore-app0";
+Same UART session as `learn-uart`, but only the named groups. Others are \
+recorded as skipped (`not_in_only`) and their briefing questions are omitted.
+
+STEP is `touch`, `buttons`, `vbus`, `imu`, and/or `sd` (positional and/or \
+`--only`). `--only touch` matches a positional `touch`.
+
+Example: `learn-uart-only touch --image FILE --yes --restore-app0`.";
 
 const DIFF_LEARN_UART_ABOUT: &str = "\
 Host-only comparison of two learn-uart YAML reports. Arguments are factory \
-serials (latest YAML under that original) or file paths. Default output uses \
-UNIT_A / UNIT_B so a paste does not leak serials; pass --show-serials locally. \
-Does not open a UART.";
+serials (latest YAML under that original) or file paths.
+
+Default paste uses `UNIT_A` / `UNIT_B` so serials stay local. Pass \
+`--show-serials` at the desk. Does not open a UART.";
 
 const BUILD_FW_ABOUT: &str = "\
-Host-only. Builds one firmware workspace member with cargo +esp \
-(--profile release-fw --target xtensa-esp32s3-none-elf -Zbuild-std=core,alloc \
---locked) and packs a flash payload with espflash save-image (no port). ELF \
-and .bin land under workspace target/xtensa-esp32s3-none-elf/release-fw/. \
-IMAGE is simple-debug or embassy-debug. Features: operator (simple-debug), \
-mic, radio, spi20, sd, or charge (embassy-debug). \
-Needs the esp toolchain (source the script `espup` printed, often \
-`$HOME/export-esp.sh`) and espflash on PATH. Does not \
-open a UART and does not flash.";
+Host-only. `cargo +esp` build (`--profile release-fw`, \
+`xtensa-esp32s3-none-elf`, `-Zbuild-std=core,alloc`, `--locked`) plus \
+`espflash save-image` (no port). ELF and `.bin` land under workspace \
+`target/xtensa-esp32s3-none-elf/release-fw/`.
+
+IMAGE is `simple-debug` or `embassy-debug`. Features: `operator` \
+(simple-debug); `mic`, `radio`, `spi20`, `sd`, or `charge` (embassy-debug). \
+Needs the `esp` toolchain and `espflash` on PATH. Does not open a UART \
+and does not flash.";
 
 const CI_ABOUT: &str = "\
-Host-only CI gate. Runs cargo fmt --check --all; host clippy and test on \
-default-members (default features, then --all-features), then \
--p ssd1677-gray4 --no-default-features; cargo +esp clippy for \
-simple-debug-fw (default and operator) and embassy-debug-fw (default, \
-mic, radio, spi20, sd, and charge); then rumdl \
-check, cargo machete, and cargo audit. Needs the esp \
-toolchain (source the script `espup` printed, often `$HOME/export-esp.sh`) \
-for the firmware clippy steps. If rumdl, cargo-machete, or cargo-audit is \
-missing, prints `cargo install …` and fails that step. Does not open a \
-UART. Does not use --workspace (that pulls Xtensa on host rustc).";
+Host-only CI gate: `cargo fmt --check --all`; host clippy and test on \
+default-members (default features, then `--all-features`), then \
+`-p ssd1677-gray4 --no-default-features`; `cargo +esp` clippy for \
+`simple-debug-fw` and `embassy-debug-fw` feature variants; then `rumdl \
+check`, `cargo machete`, and `cargo audit`.
+
+Needs the `esp` toolchain for firmware clippy. Missing extra tools print \
+`cargo install …` and fail. Does not open a UART. Do not pass `--workspace` \
+(that pulls Xtensa on host rustc).";
 
 /// Factory-firmware operations.
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// List Sticky CH343 UART nodes (QinHeng `1a86:55d3`). No DTR unless `--probe`.
+    /// List Sticky CH343 UART nodes (no DTR unless `--probe`)
     DetectConnected(DetectArgs),
-    /// Capture this unit: known factory → `original/`, otherwise a named capture.
+    /// Dump this unit: factory → `original/`, else a named capture
     #[command(visible_alias = "backup-firmware")]
     BackupFactoryFirmware(BackupArgs),
-    /// Compare live flash to the matching original (or `--capture`).
+    /// Compare live flash to the matching original or `--capture`
     ConfirmFactoryFirmware(ConfirmArgs),
-    /// write-bin this unit's original or `--capture` (full image or --part). Requires --yes.
+    /// Write-bin this unit's original or `--capture` (needs `--yes`)
     RestoreFactoryFirmware(RestoreArgs),
-    /// write-bin a custom image into factory `app0` only. Requires `--yes` and a snapshot.
+    /// Write-bin a custom image into factory `app0` (needs `--yes`)
     FlashApp(FlashAppArgs),
-    /// UART heartbeat vet plus skippable human steps; YAML under `developer-data/uart-inspection-records/<serial>/`.
+    /// UART heartbeat vet plus skippable human steps
     #[command(long_about = LEARN_UART_ABOUT)]
     LearnUart(LearnUartCliArgs),
-    /// Same as `learn-uart --only …` (one or more step groups).
+    /// Same session as `learn-uart`, only named step groups
     #[command(name = "learn-uart-only", long_about = LEARN_UART_ONLY_ABOUT)]
     LearnUartOnly(LearnUartOnlyCliArgs),
-    /// Compare two learn-uart reports (host-only; serials redacted unless `--show-serials`).
+    /// Compare two learn-uart YAML reports (host-only)
     #[command(long_about = DIFF_LEARN_UART_ABOUT)]
     DiffLearnUart(DiffLearnUartCliArgs),
-    /// Host-only: vet an unattended `monitor` capture (no UART).
+    /// Vet an unattended `monitor` capture (host-only)
     VetIdleLog(VetIdleLogArgs),
-    /// Xtensa `cargo +esp` build plus host-only `save-image` (no UART).
+    /// Xtensa build plus host-only `save-image`
     #[command(long_about = BUILD_FW_ABOUT)]
     BuildFw(BuildFwCliArgs),
-    /// Host-only CI gate (fmt, host clippy/test, firmware clippy, extra tools).
+    /// Host-only CI gate (fmt, clippy, test, extra tools)
     #[command(long_about = CI_ABOUT)]
     Ci,
-    /// Read UART0 at 115200 via USB CDC (no ACM TTY / EN pulse).
+    /// Read UART0 at 115200 via USB CDC
     Monitor(MonitorArgs),
 }
 
@@ -160,7 +131,7 @@ pub struct DetectArgs {
     #[arg(long)]
     pub probe: bool,
     /// Serial device. Also `ESPFLASH_PORT`. Used only with `--probe`.
-    #[arg(long, env = "ESPFLASH_PORT")]
+    #[arg(long, env = "ESPFLASH_PORT", hide_env_values = true)]
     pub port: Option<String>,
     /// Also list USB-serial nodes that are not QinHeng CH343.
     #[arg(long)]
@@ -171,7 +142,7 @@ pub struct DetectArgs {
 #[derive(Debug, Args)]
 pub struct BackupArgs {
     /// Serial device. Also `ESPFLASH_PORT`. Optional if exactly one Sticky CH343 is present.
-    #[arg(long, env = "ESPFLASH_PORT")]
+    #[arg(long, env = "ESPFLASH_PORT", hide_env_values = true)]
     pub port: Option<String>,
     /// Host-only: copy an existing 32 MiB dump tree (YAML or JSON manifest).
     #[arg(long, value_name = "DIR")]
@@ -188,7 +159,7 @@ pub struct BackupArgs {
 #[derive(Debug, Args)]
 pub struct ConfirmArgs {
     /// Serial device. Also `ESPFLASH_PORT`. Optional if exactly one Sticky CH343 is present.
-    #[arg(long, env = "ESPFLASH_PORT")]
+    #[arg(long, env = "ESPFLASH_PORT", hide_env_values = true)]
     pub port: Option<String>,
     /// Compare against this capture slug instead of `original/`.
     #[arg(long, value_name = "SLUG")]
@@ -211,7 +182,7 @@ pub struct VetIdleLogArgs {
 #[derive(Debug, Args)]
 pub struct MonitorArgs {
     /// Serial device. Also `ESPFLASH_PORT`. Optional if exactly one Sticky CH343 is present.
-    #[arg(long, env = "ESPFLASH_PORT")]
+    #[arg(long, env = "ESPFLASH_PORT", hide_env_values = true)]
     pub port: Option<String>,
     /// Stop after this many seconds (from port open). Omit to listen until Ctrl-C or `--lines`.
     #[arg(long = "for", value_name = "SECS", value_parser = clap::value_parser!(u64).range(1..))]
@@ -234,7 +205,7 @@ pub struct MonitorArgs {
 #[derive(Debug, Args)]
 pub struct RestoreArgs {
     /// Serial device. Also `ESPFLASH_PORT`. Optional if exactly one Sticky CH343 is present.
-    #[arg(long, env = "ESPFLASH_PORT")]
+    #[arg(long, env = "ESPFLASH_PORT", hide_env_values = true)]
     pub port: Option<String>,
     /// Required. Restore writes flash.
     #[arg(long)]
@@ -251,7 +222,7 @@ pub struct RestoreArgs {
 #[derive(Debug, Args)]
 pub struct FlashAppArgs {
     /// Serial device. Also `ESPFLASH_PORT`. Optional if exactly one Sticky CH343 is present.
-    #[arg(long, env = "ESPFLASH_PORT")]
+    #[arg(long, env = "ESPFLASH_PORT", hide_env_values = true)]
     pub port: Option<String>,
     /// Application flash payload from `cargo espflash save-image` (not an ELF).
     #[arg(long, value_name = "FILE")]
@@ -271,7 +242,7 @@ pub struct FlashAppArgs {
 #[derive(Debug, Args)]
 pub struct LearnUartSessionArgs {
     /// Serial device. Also `ESPFLASH_PORT`. Optional if exactly one Sticky CH343 is present.
-    #[arg(long, env = "ESPFLASH_PORT")]
+    #[arg(long, env = "ESPFLASH_PORT", hide_env_values = true)]
     pub port: Option<String>,
     /// Extra YAML copy. Canonical file is always `developer-data/uart-inspection-records/<serial>/<stamp>.yaml`.
     #[arg(long, value_name = "FILE")]
@@ -630,6 +601,32 @@ mod tests {
     #[test]
     fn clap_debug_assert() {
         Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn short_about_fits_one_line() {
+        let about = Cli::command().get_about().expect("Cli about").to_string();
+        assert!(
+            about.len() <= 72,
+            "about is {} chars (keep it one terminal line):\n{about}",
+            about.len()
+        );
+    }
+
+    #[test]
+    fn long_help_is_paragraphs_not_one_run_on() {
+        let mut cmd = Cli::command();
+        let mut buf = Vec::new();
+        cmd.write_long_help(&mut buf).unwrap();
+        let help = String::from_utf8(buf).unwrap();
+        let intro = help
+            .split_once("\n\nUsage:")
+            .expect("blank line before Usage")
+            .0;
+        assert!(
+            intro.split("\n\n").count() >= 3,
+            "expected several about paragraphs, got:\n{intro}"
+        );
     }
 
     #[test]

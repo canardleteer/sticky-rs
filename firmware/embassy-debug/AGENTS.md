@@ -31,7 +31,7 @@ Live-ask, never-erase, and flash I/O: root
   board [`STATUS_HEARTBEAT`](../../crates/seeed-reterminal-sticky)
   (`EverySecs(10)` or `Off`). On this
   unit: INT=0 → `0x5d` ACK, `touch n=5`, `st=0x85`
-  ([touch.md](../../.agents/skills/seeed-sticky-hardware/references/touch.md#on-glass-embassy-debug)).
+  ([touch.md](../../.agents/skills/seeed-sticky-hardware/references/touch.md#on-a-physical-unit-embassy-debug)).
   `to_screen` takes the 480×800 sample; USB-down ink corners land on
   800×480. INT-high + init Status-clear stayed at `st=0x00`.
 - Panel: splash follows the four in-plane IMU holds (portrait 480×800
@@ -41,13 +41,13 @@ Live-ask, never-erase, and flash I/O: root
   Default clock is board `SPI_MAX_HZ` (10 MHz). `--features spi20`
   clocks the panel at 20 MHz; UART prints `spi=20000000`.
 - Microphone: default image leaves `MicRail` disabled. `--features mic`
-  enables the rail and I2S PDM RX (16 kHz mono left; on-glass energy
-  is live, not a high-fidelity close of nyc-mic-pdm). AI Voice plays
+  enables the rail and I2S PDM RX (16 kHz mono left; energy is live
+  on a physical unit and does not close nyc-mic-pdm). AI Voice plays
   a 1 kHz buzzer tone and dumps two PCM windows; it does not change
   the page. How-to:
   [README.md](README.md#microphone-test-instructions).
 - Radio: default image leaves Wi-Fi and BLE off. `--features radio`
-  scans both at once on the on-board antenna (on glass: `wifi n=`
+  scans both at once on the on-board antenna (on a physical unit: `wifi n=`
   and `ble n=` in one listen). Scan only; no NVS writes; no MAC /
   BSSID. How-to:
   [README.md](README.md#radio-test-instructions).

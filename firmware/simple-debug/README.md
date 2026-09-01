@@ -27,7 +27,7 @@ On the unit:
   printed `contacts=` on an attended try (`st` stayed `0x00`,
   `int=1`). Contacts closed on embassy-debug INT-low address
   select
-  ([touch.md](../../.agents/skills/seeed-sticky-hardware/references/touch.md#on-glass-embassy-debug)),
+  ([touch.md](../../.agents/skills/seeed-sticky-hardware/references/touch.md#on-a-physical-unit-embassy-debug)),
   not on this image.
 
 ## Sensor and card-detect test
@@ -88,12 +88,12 @@ lines, and any `sd_cd` edge if you used the slot. Fail: hang,
 panic, or `sht none` / `rtc none` every second while the other
 sensor-bus ACKs at boot still printed.
 
-On glass: `sht t` ~28900 / `rh` ~27900 (one room), `rtc` seconds
+On a physical unit: `sht t` ~28900 / `rh` ~27900 (one room), `rtc` seconds
 tick with `vl=0`. `gt911 st=0x00` / `int=1` with no `contacts=` is
 the **only** simple-debug touch result so far, including every
 attended `learn-uart` `gt911_contacts` step. Use embassy-debug
 INT-low address select for a finger line
-([touch.md](../../.agents/skills/seeed-sticky-hardware/references/touch.md#on-glass-embassy-debug)).
+([touch.md](../../.agents/skills/seeed-sticky-hardware/references/touch.md#on-a-physical-unit-embassy-debug)).
 
 Agent / toolchain:
 

@@ -3,7 +3,7 @@
 //! The digitizer is **portrait 480x800** under a **landscape 800x480** panel,
 //! and the display is transmitted with a 180-degree rotation. [`to_screen`]
 //! takes that 480x800 sample, not panel 800x480 (scaling `cx` as if the
-//! range were 800 compressed the keys axis to `y≈195` on glass). Two
+//! range were 800 compressed the keys axis to `y≈195` on a physical unit). Two
 //! rotations and a mirror is exactly the kind of arithmetic that is easy
 //! to get half right, so the transform is a pure function with corner
 //! tests.
@@ -13,7 +13,7 @@
 //! Goodix GT911 datasheet **Rev.09 (11 Mar 2015)** is cited for 8-bit I2C
 //! addresses (§6.1), the 400 kbps cap, “up to 5” contacts (§1), and the
 //! init window (under 200 ms). Wiring is schematic Rev 01. Rev.07 deleted
-//! the register map, so [`Register`] values are on-glass `GT911_REG_*`
+//! the register map, so [`Register`] values are on-unit `GT911_REG_*`
 //! names, not a Rev.09 table. simple-debug after reset writes
 //! [`StatusWrite::Clear`] at [`Register::Status`]. embassy-debug does not
 //! write Status or Command at init. Neither writes config RAM. Bus:
@@ -42,10 +42,10 @@ pub const MAX_TOUCH_POINTS: u8 = 5;
 /// Init including idle-capacitance self-cal (Rev.09 features / §8.6).
 pub const INIT_WINDOW_MS: u32 = 200;
 
-/// Product ID at [`Register::Id`]: four ASCII bytes (`911\0` on glass).
+/// Product ID at [`Register::Id`]: four ASCII bytes (`911\0` on a physical unit).
 pub const PRODUCT_ID_LEN: usize = 4;
 
-/// Bytes per contact at [`Register::Points`] (on-glass record length).
+/// Bytes per contact at [`Register::Points`] (on-unit record length).
 pub const POINT_RECORD_LEN: usize = 8;
 
 /// X is little-endian at this offset in each [`POINT_RECORD_LEN`] record.
@@ -156,7 +156,7 @@ impl SlaveAddress {
 /// to [`Register::Command`]. Write [`StatusWrite`] to
 /// [`Register::Status`]; a read of that port is [`StatusBits`].
 ///
-/// Variant names match on-glass `GT911_REG_COMMAND`, `GT911_REG_ID`, and
+/// Variant names match on-unit `GT911_REG_COMMAND`, `GT911_REG_ID`, and
 /// `GT911_REG_STATUS`. Rev.09 deleted the map (Rev.07); these numbers are
 /// not a datasheet table. Gesture mode still names `0x8040` as a command
 /// port (Rev.09 §8.1).
@@ -169,7 +169,7 @@ pub enum Register {
     Id = 0x8140,
     /// `GT911_REG_STATUS`. Buffer handshake. See [`StatusWrite`] / [`StatusBits`].
     Status = 0x814E,
-    /// `GT911_REG_POINTS`. First contact record (on-glass `0x8150`).
+    /// `GT911_REG_POINTS`. First contact record (on-unit `0x8150`).
     Points = 0x8150,
 }
 
@@ -221,15 +221,15 @@ impl StatusWrite {
 /// One read of [`Register::Status`].
 ///
 /// This is a **bitfield**, not a closed mode enum. Bit 7 = new buffer and
-/// bits 3–0 = contact count are crate / on-glass (`gt911` `get_num_touch_points`).
+/// bits 3–0 = contact count are crate / on-unit (`gt911` `get_num_touch_points`).
 /// **Not** named in Rev.09.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StatusBits(pub u8);
 
 impl StatusBits {
-    /// Bit 7: crate / on-glass “buffer ready” (`NotReady` when clear).
+    /// Bit 7: crate / on-unit “buffer ready” (`NotReady` when clear).
     pub const BUFFER_READY: u8 = 0x80;
-    /// Bits 3–0: crate / on-glass contact count.
+    /// Bits 3–0: crate / on-unit contact count.
     pub const COUNT_MASK: u8 = 0x0F;
 
     /// Wrap a status byte from the chip.
@@ -290,7 +290,7 @@ impl Register {
     }
 }
 
-/// Reset sequence timing that has worked on glass, in milliseconds.
+/// Reset sequence timing that has worked on a physical unit, in milliseconds.
 ///
 /// 1. RST low with INT at the address-select level, hold [`RESET_HOLD_MS`].
 /// 2. RST high, wait [`RESET_RELEASE_MS`].

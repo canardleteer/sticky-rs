@@ -21,7 +21,7 @@ Not affiliated with Seeed. Snapshot: their docs and the registry move.
 - Driver fetch script: https://github.com/varo6/reTerminal-sticky-skill/blob/main/skills/sticky-device/scripts/fetch_sticky_sources.sh
 
 Where they disagree with this skill (GPIO46 pulse vs hold-high, “2048 is the
-only public on-glass source”, GPIO40 polarity as settled): this skill wins
+only public physical-unit source”, GPIO40 polarity as settled): this skill wins
 until [not-yet-confirmed.md](not-yet-confirmed.md) closes the item. They are
 stronger on Playground `integration.json` and the `seeed_epaper` C API.
 
@@ -50,7 +50,7 @@ Use them directly; do not treat the skill as a substitute for the git history.
 
 Full URL list in this skill: [catalog.md](../references/catalog.md).
 
-## On-glass ESPHome audio
+## ESPHome audio on a physical unit
 
 [sira-fiinikkusu/reterminal-sticky-voice-companion](https://github.com/sira-fiinikkusu/reterminal-sticky-voice-companion)
 is household ESPHome on production Stickys, not a documentation skill. Use it

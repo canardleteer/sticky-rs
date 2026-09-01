@@ -9,7 +9,7 @@
 //! It is deliberately thin. It is not a second abstraction layer over
 //! `esp-hal`. The crate README maps schematic Rev 01 plus Seeed /
 //! community claims onto crate types versus chip drivers and the MCU
-//! HAL, and marks which rows this project has confirmed on glass.
+//! HAL, and marks which rows this project has confirmed on a physical unit.
 //! There is no microphone sample API here: [`rails::MicRail`] and
 //! [`pins::MIC_CLK`] / [`pins::MIC_DATA`] only.
 //!
@@ -92,8 +92,8 @@ pub mod addresses {
     /// silently flip this constant.
     pub const GT911_PRIMARY: u8 = crate::touch::SlaveAddress::Pair28_29.seven_bit();
     /// GT911 after INT-low reset ([`crate::touch::SlaveAddress::PairBaBb`]).
-    /// Rev.09 `6.1 I2C Timing` pair `0xBA`/`0xBB` (7-bit `0x5D`). On glass
-    /// this pair delivered contacts.
+    /// Rev.09 `6.1 I2C Timing` pair `0xBA`/`0xBB` (7-bit `0x5D`). On a
+    /// physical unit this pair delivered contacts.
     pub const GT911_ALTERNATE: u8 = crate::touch::SlaveAddress::PairBaBb.seven_bit();
 }
 

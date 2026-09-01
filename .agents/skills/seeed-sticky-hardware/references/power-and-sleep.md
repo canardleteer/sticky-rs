@@ -47,7 +47,7 @@ Not an I2C device.
 | --- | --- | --- |
 | Charge enable (`EN_BAT_CHGn`) | 39 | **Active low**: 0 = charging enabled |
 | External power | 9 | Digital, **edge-capable**: high = USB/external present. Schematic net `PWR_IN_VOLT`: 5.1 kΩ / 5.1 kΩ from `VIN_5V` (~½ VBUS). 2.5 V at 5 V still reads high |
-| `CHARGE_STATE` | 40 | BQ25616 STAT. **Low** while charging when `/CE` is enabled; high-Z/**high** when charge is done or `/CE` is parked. On glass (embassy-debug `--features charge`, USB): `gpio40=1` parked → `0` while enabled → `1` after disable **and a settle**. A read immediately after disable still showed low (LED stayed green/yellow). Do not treat parked `gpio40=1` / `i=0` as a charge proof. Charge-to-done: [nyc-charge-stat](../resources/not-yet-confirmed.md#nyc-charge-stat). |
+| `CHARGE_STATE` | 40 | BQ25616 STAT. **Low** while charging when `/CE` is enabled; high-Z/**high** when charge is done or `/CE` is parked. On a physical unit (embassy-debug `--features charge`, USB): `gpio40=1` parked → `0` while enabled → `1` after disable **and a settle**. A read immediately after disable still showed low (LED stayed green/yellow). Do not treat parked `gpio40=1` / `i=0` as a charge proof. Charge-to-done: [nyc-charge-stat](../resources/not-yet-confirmed.md#nyc-charge-stat). |
 
 In-repo **default** images park `/CE`. embassy-debug `--features charge`
 is an attended ≤ 2 s enable when GPIO9 is high, then park (settle,
@@ -110,7 +110,7 @@ application policy — useful as a sanity check on your own numbers, not a
 requirement.
 
 Send the SSD1677 deep-sleep command **while EPD_EN is still high**, then drop
-EPD_EN. The last image stays on glass with the analog rail off.
+EPD_EN. The last image stays on the panel with the analog rail off.
 
 Sleep current: [nyc-sleep-current](../resources/not-yet-confirmed.md#nyc-sleep-current).
 

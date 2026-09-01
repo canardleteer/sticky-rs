@@ -17,11 +17,11 @@
 | Frontlight | None |
 
 SSD1677 serial clock max is 20 MHz. Panel refresh at **10 MHz and
-20 MHz** is clean on glass (card inserted). Read-only card identify
+20 MHz** is clean on a physical unit (card inserted). Read-only card identify
 inits at 400 kHz, then `send_status` ACKs at 10 MHz and 20 MHz
 (embassy-debug `--features sd`, 2026-08-30). Board `SPI_MAX_HZ` stays
 10 MHz. Do not start at 40 MHz. FAT list and a ReadOnly file read
-are on glass (embassy-debug `--features sd`); see
+are on a physical unit (embassy-debug `--features sd`); see
 [input-storage.md](input-storage.md).
 
 ## Bring-up
@@ -31,7 +31,7 @@ are on glass (embassy-debug `--features sd`); see
 2. `EPD_EN` = 1, wait ~100 ms.
 3. SPI with only SCLK/MOSI/MISO/CS as listed. Do not attach GPIO0.
 4. Reset, then wait BUSY. Panel needs **horizontal mirror** plus a **180°**
-   framebuffer rotation to match glass (see below).
+   framebuffer rotation to match a physical unit (see below).
 5. On a cold boot, full **white** clear. E-paper retains the last frame across
    reset and ROM download.
 
@@ -56,7 +56,7 @@ Logical canvas is 800×480, origin top-left, independent of FPC mount.
 Gray4 → mono: values ≥ 2 white, 0–1 black. Two 96 KiB gray4 buffers (draw +
 rotated TX) fit in octal PSRAM. Keep SPI DMA bounce buffers in internal RAM.
 
-## Orientation (on-glass)
+## Orientation (on a physical unit)
 
 Working mapping:
 
@@ -66,8 +66,9 @@ Working mapping:
 3. Controller **mirror_x**.
 
 A compiled profile shipped `NO_FLIP` and called mount unknown. Trust the
-mirror + 180° combination that actually matched glass. If you change either
-step, change the [touch transform](touch.md) with it. ESPHome `mirror_x` only:
+mirror + 180° combination that actually matched a physical unit. If you
+change either step, change the [touch transform](touch.md) with it.
+ESPHome `mirror_x` only:
 [nyc-esphome-orient](../resources/not-yet-confirmed.md#nyc-esphome-orient).
 
 IMU-driven UI rotation is a logical-canvas concern: keep the physical
@@ -83,11 +84,11 @@ framebuffer mapping fixed, then rotate drawing/touch into page axes.
 
 Tokens match the enclosure map. Identity landscape printed Latin
 right-to-left; `page_to_framebuffer` now mirrors X. Confirmed LTR
-on glass after that map.
+on a physical unit after that map.
 
 ## Waveforms
 
-Refresh is expensive; glass holds pixels without power.
+Refresh is expensive; the panel holds pixels without power.
 
 - **Full** black/white: OTP `UpdateSequence::DISPLAY_MODE_1_WITH_TEMP`
   (`0xF7`). Cold boot: white clear.

@@ -58,7 +58,7 @@ To mount a card:
 
 1. Deselect EPD CS.
 2. SD_EN high, wait ≥ 10 ms.
-3. SPI init at **≤ 400 kHz**, then raise. On glass, `send_status` ACKed
+3. SPI init at **≤ 400 kHz**, then raise. On a physical unit, `send_status` ACKed
    at 10 MHz and 20 MHz after that init (embassy-debug `--features sd`).
 4. Serialize with display transactions on the one controller.
 

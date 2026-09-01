@@ -37,7 +37,7 @@ transforms — belong in `seeed-reterminal-sticky`. Keep that split.
   vendor datasheet’s name for that number when the sheet has one (for example
   `SlaveAddress::Pair28_29` rather than `0x14` at the call site). If the
   sheet never names the encoding, do not invent a datasheet-looking alias;
-  use the documented on-glass / crate name or a raw primitive.
+  use the documented on-unit / crate name or a raw primitive.
 - Adopt a crates.io driver only with a recorded verdict in
   [docs/CRATES.md](../../../../docs/CRATES.md). Never `bq27xxx` (wrong
   gauge family); never a generic SSD1677 four-gray LUT.

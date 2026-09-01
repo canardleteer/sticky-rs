@@ -13,7 +13,7 @@ firmware catalog: [catalog.md](catalog.md).
 | Tree | Role |
 | --- | --- |
 | Factory `reterminal_template` 1.1.0 | **Measured** on hardware — [measure.md](measure.md) |
-| `reTerminal_Sticky_Bunny` (PlatformIO, ESP-IDF 5.4.1) | On-glass sequences: latch, 10 MHz SPI, display/touch, IMU, sleep |
+| `reTerminal_Sticky_Bunny` (PlatformIO, ESP-IDF 5.4.1) | Sequences confirmed on a physical unit: latch, 10 MHz SPI, display/touch, IMU, sleep |
 | FreeInk SDK `FREEINK_DEVICE_STICKY` / CrossPoint | Compiled `BoardProfile STICKY`; some items still pending |
 | ESPHome `seeed-reterminal-sticky` | 10 MHz, `mirror_x`, sensor I2C examples |
 | Playground `sticky-2048` | Buildable `seeed_epaper` / `gt911` / `bq27220`; GPIO7 as `PIN_BFG_INT` |

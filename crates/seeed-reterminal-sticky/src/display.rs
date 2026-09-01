@@ -80,7 +80,7 @@ pub const fn page_to_framebuffer(px: u16, py: u16, rotation: PageRotation) -> Op
     Some(match rotation {
         PageRotation::Portrait0 => (WIDTH - 1 - py, HEIGHT - 1 - px),
         PageRotation::Portrait180 => (py, px),
-        // Identity landscape printed Latin right-to-left on glass
+        // Identity landscape printed Latin right-to-left on a physical unit
         // (2026-08-30). Mirror X; 180 stays the other landscape hold.
         PageRotation::Landscape0 => (WIDTH - 1 - px, py),
         PageRotation::Landscape180 => (px, HEIGHT - 1 - py),
@@ -95,7 +95,7 @@ pub const RAM_Y_END: u16 = HEIGHT - 1;
 /// Value for the controller's `Driver Output control`: gate lines minus one.
 pub const GATE_LINES_MINUS_ONE: u16 = HEIGHT - 1;
 
-/// SPI clock used on glass.
+/// SPI clock used on a physical unit.
 ///
 /// The controller's own maximum is 20 MHz. Panel refresh and a read-only
 /// card `send_status` both ACK at that rate after 400 kHz init. This
@@ -103,7 +103,7 @@ pub const GATE_LINES_MINUS_ONE: u16 = HEIGHT - 1;
 /// which is out of spec — do not inherit it.
 pub const SPI_MAX_HZ: u32 = 10_000_000;
 
-/// SPI mode used on glass (CPOL=0, CPHA=0).
+/// SPI mode used on a physical unit (CPOL=0, CPHA=0).
 pub const SPI_MODE: u8 = 0;
 
 /// Bytes in a full-screen 2 bits-per-pixel four-gray framebuffer.
@@ -112,7 +112,7 @@ pub const GRAY4_FRAME_BYTES: usize = (WIDTH as usize / 4) * HEIGHT as usize;
 /// Bytes in one 1 bit-per-pixel controller plane.
 pub const PLANE_BYTES: usize = (WIDTH as usize / 8) * HEIGHT as usize;
 
-/// Reset pulse width used on glass, in milliseconds (low, then high).
+/// Reset pulse width used on a physical unit, in milliseconds (low, then high).
 pub const RESET_PULSE_MS: u32 = 10;
 
 /// Seeed waits this long after [`ssd1677_gray4::command::DEEP_SLEEP_ENTER`]

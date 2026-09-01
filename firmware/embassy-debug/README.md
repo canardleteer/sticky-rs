@@ -30,8 +30,8 @@ On the unit:
   Do not combine `spi20` / `sd` / `charge` with `mic` or `radio`.
   Do not combine `charge` with `sd`.
 - Tilt the card for `imu=…`. A short beep answers a key-down. Tap the
-  glass for `touch n=` (Rev.09 INT-low address select; on glass
-  through `n=5`).
+  glass for `touch n=` (Rev.09 INT-low address select; on a physical
+  unit through `n=5`).
 - Page Up under 2 s walks to the previous drawing. Hold 2 s to
   send panel `standby()` on the **current** card (`EPD_EN` stays
   high). UART prints `standby` at once (BUSY may stay high). After
@@ -135,12 +135,12 @@ first `st=0x80`. Attended taps printed `touch n=1` / `n=2` /
 (Rev.09 §1). USB-down finger-pad taps near the ink corners (in one
 sample) after the 480×800 `to_screen` map: `795,470`, `795,4`,
 `4,475`, `4,4`. Facts:
-[touch.md](../../.agents/skills/seeed-sticky-hardware/references/touch.md#on-glass-embassy-debug).
+[touch.md](../../.agents/skills/seeed-sticky-hardware/references/touch.md#on-a-physical-unit-embassy-debug).
 
 ## Microphone Test Instructions
 
 Default `embassy-debug` leaves `MicRail` disabled. This feature enables
-the rail and I2S PDM RX (16 kHz, 16-bit, left). On glass that path
+the rail and I2S PDM RX (16 kHz, 16-bit, left). On a physical unit that path
 prints live `mic rms=` / `peak=` energy; high-fidelity hole vs
 waveform is still `nyc-mic-pdm`. Snapshot first:
 [docs/getting-started.md](../../docs/getting-started.md).
@@ -250,7 +250,7 @@ Desk notes from one session in one room. “Quiet” here is relative —
 
 `nyc-mic-pdm` is still open: we have energy and a ~16-sample period on
 the buzzer dump, not a high-fidelity tone through the hole. Facts:
-[sensors.md](../../.agents/skills/seeed-sticky-hardware/references/sensors.md#on-glass-embassy-debug-mic-feature).
+[sensors.md](../../.agents/skills/seeed-sticky-hardware/references/sensors.md#on-a-physical-unit-embassy-debug-mic-feature).
 
 ## Radio Test Instructions
 
@@ -329,10 +329,10 @@ fail if Step 3 already printed both radios.
 ### Step 5: Observe and report
 
 - **Both radios**: `wifi n=` and `ble n=` both appear in one
-  `monitor` session. That is concurrent use. On glass: one listen
+  `monitor` session. That is concurrent use. On a physical unit: one listen
   printed `wifi n=8` (line cap) and `ble n=` well over 100, with
   `imu=` still running. Facts:
-  [pin-map.md](../../.agents/skills/seeed-sticky-hardware/references/pin-map.md#on-glass-embassy-debug-radio-feature).
+  [pin-map.md](../../.agents/skills/seeed-sticky-hardware/references/pin-map.md#on-a-physical-unit-embassy-debug-radio-feature).
 - **Fail**: hang, panic, or only one of `wifi` / `ble` ever prints.
 
 This is a stack / RF-cal-after-`flash-app` check, not an NYC pin. Do
@@ -403,7 +403,7 @@ embassy-debug: ce off gpio40=1 i=5702
 
 `gpio40=1` parked and `gpio40=0` while enabled is the STAT proof.
 A second `ce on` is the end of the 2 s window. `ce off` is after a
-settle (and `hold_disabled` if STAT was still low). On glass STAT
+settle (and `hold_disabled` if STAT was still low). On a physical unit STAT
 was `1→0→1` only with that settle. `i=` is BQ27220 `Current()`
 (sheet: mA, positive is charge). `0` at 200 ms and `5702` at 2 s
 is not the schematic ~555 mA set. `ce skip no-vbus` means GPIO9
@@ -414,7 +414,7 @@ parked for the rest of the listen.
 
 ### Step 4: Observe and report
 
-- **STAT (on glass)**: low while enabled, high after park and a
+- **STAT (on a physical unit)**: low while enabled, high after park and a
   settle. Immediate post-disable STAT stayed low and the LED stayed
   green/yellow.
 - **Still open**: charge-to-done, a credible `i=` vs the 555 mA

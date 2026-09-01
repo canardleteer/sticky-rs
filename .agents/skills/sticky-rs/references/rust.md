@@ -225,7 +225,7 @@ the exact literature revision a driver was typed against.
 | `lsm6ds3tr-c` | `lsm6ds3tr` + `seeed-reterminal-sticky` | Orientation classification in the board crate |
 | `gt911` | `gt911` + `seeed-reterminal-sticky` | Addresses and transform in the board crate |
 | `sht4x` | `sht4x` 0.2.0 | `Precision::{High,Medium,Low}` → `0xFD` / `0xF6` / `0xE0`; do not print `0x89` serial |
-| `pcf8563` | raw `0x02` read in simple-debug; `pcf8563-dd` not in the lockfile (`bisync` 0.3 yanked) | On glass: `rtc` ticks, `vl=0` ([CRATES.md](../../../../docs/CRATES.md)) |
+| `pcf8563` | raw `0x02` read in simple-debug; `pcf8563-dd` not in the lockfile (`bisync` 0.3 yanked) | On a physical unit: `rtc` ticks, `vl=0` ([CRATES.md](../../../../docs/CRATES.md)) |
 | `esp32-s3-datasheet` / `esp32-s3-trm` | board crate / firmware | Strapping, GPIO21, JTAG pads, `ext1` |
 
 ## Crates vs parts
@@ -237,9 +237,9 @@ In this repository, prefer the workspace crates and the verdicts in
 | --- | --- | --- |
 | Board pins / latch / rails | `seeed-reterminal-sticky` | This repo. Keep chip drivers MCU-agnostic |
 | SSD1677 | `ssd1677-gray4` (this repo) | Dual-plane four-gray; Sticky uses **OTP** (no default MCU LUT). 10 MHz SPI. Wait on BUSY with `embedded-hal-async` `Wait`, not a spin loop. Not crates.io `ssd1677` |
-| GT911 | board `touch` + embassy-debug `Register` poll | Own EN/RST/INT + Sticky transform. Mux GPIO41/42 off JTAG F0. `Register` / `Command` / `StatusWrite` / `StatusBits` / `StatusHeartbeat`. Crate `init()` writes `Command::ReadCoordinates` — embassy does not call it. On glass: INT=0 → `PairBaBb`, `I2C_MAX_HZ`, `Register::Points` byte 0, **`touch n=5`**. `to_screen` takes the **480×800** sample (not panel 800×480); USB-down ink corners land on 800×480. `STATUS_HEARTBEAT` is `EverySecs(10)` or `Off`. INT-high + init Status-clear stayed `st=0x00`. INT after reset: floating (`Pull::None`) |
-| SHT40 | `sht4x` | Sensor I2C `0x44`. On glass: `sht t=` / `rh=` (~28.9 °C / ~27.9 % RH) |
-| PCF8563 | raw `0x02` in simple-debug | Sensor I2C `0x51`. On glass: `rtc` ticks, `vl=0` |
+| GT911 | board `touch` + embassy-debug `Register` poll | Own EN/RST/INT + Sticky transform. Mux GPIO41/42 off JTAG F0. `Register` / `Command` / `StatusWrite` / `StatusBits` / `StatusHeartbeat`. Crate `init()` writes `Command::ReadCoordinates` — embassy does not call it. On a physical unit: INT=0 → `PairBaBb`, `I2C_MAX_HZ`, `Register::Points` byte 0, **`touch n=5`**. `to_screen` takes the **480×800** sample (not panel 800×480); USB-down ink corners land on 800×480. `STATUS_HEARTBEAT` is `EverySecs(10)` or `Off`. INT-high + init Status-clear stayed `st=0x00`. INT after reset: floating (`Pull::None`) |
+| SHT40 | `sht4x` | Sensor I2C `0x44`. On a physical unit: `sht t=` / `rh=` (~28.9 °C / ~27.9 % RH) |
+| PCF8563 | raw `0x02` in simple-debug | Sensor I2C `0x51`. On a physical unit: `rtc` ticks, `vl=0` |
 | LSM6DS3TR-C | `lsm6ds3tr` | Mutex the shared sensor I2C. Do not drive GPIO7 |
 | BQ27220 | `bq27220` (this repo) | Not `bq27xxx` (wrong family: CEDV vs Impedance Track). Reads by default; gate data-memory writes |
 | BQ25616 | `bq25616` (this repo) | GPIO39 low; GPIO9 digital. No I2C |
@@ -247,4 +247,4 @@ In this repository, prefer the workspace crates and the verdicts in
 | MicroSD | `embedded-sdmmc` | Init ≤ 400 kHz. CS arbitration is the application’s job |
 | PDM mic | I2S PDM RX | GPIO38 enable. GPIO19/20 are USB-Serial-JTAG pads: disable the USB pad after deep-sleep wake before attaching PDM. Working ESPHome recipe (16 kHz, left) in [sensors.md](../../seeed-sticky-hardware/references/sensors.md#pdm-microphone); not a crate |
 | Wi-Fi / BLE | `esp-radio` or `esp-idf-svc` | |
-| Graphics | `embedded-graphics` | Host simulator without glass |
+| Graphics | `embedded-graphics` | Host simulator without a physical panel |

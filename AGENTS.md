@@ -115,7 +115,7 @@ and the README list.
   vendor files unless they asked.
 - Prefer a named `enum` or `const` over a magic number. Prefer the vendor
   datasheet’s name when the sheet has one. If it never names the encoding,
-  use the on-glass / crate name or a raw primitive. Cite extract **heading
+  use the on-unit / crate name or a raw primitive. Cite extract **heading
   titles** (see [docs/API-RULES.md](docs/API-RULES.md)), not page numbers.
   Capture safe datasheet rows even if unused; leave hazardous encodings
   commented (`UNCONFIRMED_*` / danger blocks).

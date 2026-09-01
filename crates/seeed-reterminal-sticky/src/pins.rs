@@ -92,7 +92,7 @@ pub const MIC_POWER_EN: u8 = 38;
 /// MUX Functions`).
 pub const CHARGE_EN: u8 = 39;
 /// BQ25616 STAT (`CHARGE_STATE`). Low while charging when `/CE` is
-/// enabled; high when done or `/CE` is parked. On glass a 2 s `/CE`
+/// enabled; high when done or `/CE` is parked. On a physical unit a 2 s `/CE`
 /// pulse was `1→0→1` only after a settle on disable. Default IO MUX
 /// is JTAG `MTDO` (`Table 2-4. IO MUX Functions`).
 pub const CHARGE_STATUS: u8 = 40;

@@ -46,7 +46,7 @@ pub const RADIO_REPORT_SECS: u32 = 10;
 pub const CHARGE_PULSE_MS: u32 = 2000;
 
 /// Wait after enable or disable before reading STAT / gauge current, in
-/// milliseconds. On glass, STAT after disable was still low without this.
+/// milliseconds. On a physical unit, STAT after disable was still low without this.
 pub const CHARGE_SETTLE_MS: u32 = 200;
 
 /// Max SSID or BLE local-name characters after sanitize.
@@ -374,7 +374,7 @@ pub enum Event {
         /// How many events were discarded.
         dropped: u32,
     },
-    /// Sleep card is on glass; MCU will enter deep sleep after release.
+    /// Sleep card is on the panel; MCU will enter deep sleep after release.
     Sleeping {
         /// Milliseconds since boot.
         t_ms: u32,

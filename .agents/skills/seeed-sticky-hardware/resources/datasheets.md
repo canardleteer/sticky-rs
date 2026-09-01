@@ -12,7 +12,7 @@ This file is the committed catalog. Links below are relative to this skill
 `resources/` directory.
 
 **Vendor the local cache** when the work is registers, opcodes, timings,
-strapping, or a datasheet-versus-glass conflict. Search extracted markdown
+strapping, or a datasheet-versus-unit conflict. Search extracted markdown
 rather than loading a whole TRM. The cache does not replace the pin map or
 enclosure. For official Seeed / Playground HTML as an offline markdown
 corpus, use the user-global `skill-corpus-vendoring` skill.
@@ -45,7 +45,7 @@ TRM. The extraction is text for agents; figures stay in the PDF.
 | `bq27220-sluubd4` | BQ27220 fuel gauge | [TI SLUUBD4](https://www.ti.com/lit/ug/sluubd4/sluubd4.pdf) | SLUUBD4 | `pdf/bq27220-sluubd4.pdf`, `md/bq27220-sluubd4.md` | `Table 2-1. Standard Commands`; `2.2 Control()`; CEDV data-memory layout |
 | `bq25616` | BQ25616 charger | [TI SLUSDF7](https://www.ti.com/lit/ds/symlink/bq25616.pdf) | SLUSDF7 | `pdf/bq25616.pdf`, `md/bq25616.md` | `Table 7-1. Pin Functions` CE active-low; `9.3.8.2` / `Table 9-6` STAT |
 | `lsm6ds3tr-c` | LSM6DS3TR-C IMU | [ST product page](https://www.st.com/en/mems-and-sensors/lsm6ds3tr-c.html) ([ST PDF](https://www.st.com/resource/en/datasheet/lsm6ds3tr-c.pdf); fetch used a [public copy](https://www.makerguides.com/wp-content/uploads/2025/09/lsm6ds3tr-c-datasheet.pdf) after ST timed out) | — | `pdf/lsm6ds3tr-c.pdf`, `md/lsm6ds3tr-c.md` | Orientation / axis registers |
-| `gt911` | GT911 touch | [Waveshare GT911](https://files.waveshare.com/wiki/common/GT911_EN_Datasheet.pdf) ([Pine64 copy](https://files.pine64.org/doc/datasheet/pine64/GT911%20Capacitive%20Touch%20Controller%20Datasheet.pdf)) | **Rev.09, 11 Mar 2015** | `pdf/gt911.pdf`, `md/gt911.md` | 8-bit→7-bit addresses; 400 kbps cap; 5-point max; register map deleted in Rev.07 (on-glass names for remaining encodings) |
+| `gt911` | GT911 touch | [Waveshare GT911](https://files.waveshare.com/wiki/common/GT911_EN_Datasheet.pdf) ([Pine64 copy](https://files.pine64.org/doc/datasheet/pine64/GT911%20Capacitive%20Touch%20Controller%20Datasheet.pdf)) | **Rev.09, 11 Mar 2015** | `pdf/gt911.pdf`, `md/gt911.md` | 8-bit→7-bit addresses; 400 kbps cap; 5-point max; register map deleted in Rev.07 (on-unit names for remaining encodings) |
 | `sht4x` | SHT40 | [Sensirion catalog](https://sensirion.com/products/catalog/SHT40) ([PDF V7.3](https://sensirion.com/media/documents/33FD6951/6A7C10A0/HT_DS_Datasheet_SHT4x_V7.3.pdf)); drivers on [GitHub](https://github.com/Sensirion/embedded-sht) | V7.3; measure `0xFD` / `0xF6` / `0xE0` | `pdf/sht4x.pdf`, `md/sht4x.md` | High/medium/low precision measure; serial command `0x89` (do not print a unit serial) |
 | `pcf8563` | PCF8563 RTC | [NXP](https://www.nxp.com/docs/en/data-sheet/PCF8563.pdf) (that path 404’d; fetch used [Rev 11 copy](https://datasheet.chipsfind.com/PCF8563T-F4-112-436673.pdf)) | Rev 11, 26 Oct 2015 | `pdf/pcf8563.pdf`, `md/pcf8563.md` | Timekeeping; seconds-register VL / integrity flag |
 | `esp32-s3-datasheet` | ESP32-S3 | [Datasheet PDF](https://documentation.espressif.com/esp32-s3_datasheet_en.pdf) on the [Espressif document list](https://documentation.espressif.com/en/documentList?eol=false) | **Version 2.2** | `pdf/esp32-s3-datasheet.pdf`, `md/esp32-s3-datasheet.md` | Strapping (GPIO0/3/45/46), JTAG pads GPIO39–42, GPIO21 no default pull, I2C 100/400 kbit/s, USB 19/20 |
@@ -120,11 +120,11 @@ register map**; this PDF is not a source of `0x814E` / command-`0` / bit
 - **I2C slave pairs** are 8-bit `0x28`/`0x29` and `0xBA`/`0xBB` (§6.1).
   The 7-bit addresses are `0x14` and `0x5D`. INT+Reset during power-on
   selects the pair (diagrams on p.10; extracted markdown has no T2/T3
-  numbers — board timings stay the on-glass 20/20/80 ms).
+  numbers — board timings stay the on-unit 20/20/80 ms).
 - **Stay at or below 400 kbps** (§6.1). embassy-debug uses the cap;
   simple-debug uses 100 kHz (inside it).
 - **Up to 5 concurrent touches** (§1). This FPC delivers **5**
-  ([touch.md](../references/touch.md#on-glass-embassy-debug)).
+  ([touch.md](../references/touch.md#on-a-physical-unit-embassy-debug)).
 - **Init, including idle-capacitance self-cal, is under 200 ms** (features,
   §8.6).
 - **`/RSTB` is active-low** and wants a 10 kΩ pull-up (pin table).
@@ -169,9 +169,9 @@ plausible-looking constant:
 | BQ27220 CEDV data-memory *block* addresses beyond SLUUBD4 `3 Data Memory Interface` headings | Standard Commands live in `crates/bq27220` `Command` (SLUUBD4 `Table 2-1`). Use a raw read/write for garbled extract rows; do not infer block maps. |
 | BQ27220 CEDV data-memory block addresses and subcommand codes | Stock firmware reads the CEDV core and thresholds; the block layout must come from SLUUBD4, not from inference. |
 | Four-gray LUT contents for this glass | No default LUT. The Sticky confirmed path is OTP (no 0x32). An MCU table stays optional and attributed; record its source and license here before adding one. |
-| GT911 coordinate / command / status bit encodings | Rev.09 deleted the register map (Rev.07). Remaining encodings are on-glass `GT911_REG_*` names, not a Rev.09 table. Do not invent a 186-byte config. |
+| GT911 coordinate / command / status bit encodings | Rev.09 deleted the register map (Rev.07). Remaining encodings are on-unit `GT911_REG_*` names, not a Rev.09 table. Do not invent a 186-byte config. |
 | ESP32-S3 GPIO hold, pad-JTAG eFuse, `ext1` register details | Datasheet v2.2 names the pads. The TRM is catalogued (`esp32-s3-trm`); search the local markdown cache when citing it. |
-| GT911 contacts this FPC actually delivers | **5** on glass (Rev.09 §1 silicon max). |
+| GT911 contacts this FPC actually delivers | **5** on a physical unit (Rev.09 §1 silicon max). |
 | Glass part number on this FPC | Schematic Rev 01 names analog rails, not a glass PN. Candidate GDEY0397T81P sheet on file. Close only with official evidence. [nyc-panel-glass](not-yet-confirmed.md). |
 
 ## Verified against the schematic

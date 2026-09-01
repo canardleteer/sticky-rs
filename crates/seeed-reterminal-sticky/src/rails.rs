@@ -111,7 +111,7 @@ impl RailKind for Touch {
 }
 
 impl RailKind for Sd {
-    // Unmeasured: no vendor figure and no on-glass measurement. Ten
+    // Unmeasured: no vendor figure and no measurement on a physical unit. Ten
     // milliseconds is a guess for a load switch, and it is labelled as one.
     const SETTLE_MS: u32 = 10;
     const NAME: &'static str = "microSD";

@@ -26,14 +26,14 @@ crate types and suggested drivers. **This crate** means a typed helper, pin
 constant, address, or rail.
 **Not in this crate** means you talk to a chip driver or the MCU HAL yourself.
 
-**On glass** is `yes` only when firmware exercises the feature and this
-project has a passing UART or glass result. `no` means the pin, address, or
-type exists so you can try; it is not a claim that the part is present or
-that the crate encoding is correct.
+**Physical unit** is `yes` only when firmware exercises the feature and this
+project has a passing UART or panel result on a physical device. `no` means
+the pin, address, or type exists so you can try; it is not a claim that the
+part is present or that the crate encoding is correct.
 
 ### Power and charging
 
-| Feature | This crate | Rest of the stack | On glass |
+| Feature | This crate | Rest of the stack | Physical unit |
 | --- | --- | --- | --- |
 | Stay-alive latch (`PWR_HOLD` GPIO45, `PWR_LOCK` GPIO46) | `Latch::acquire` / `Latch::release`; every rail constructor needs a `Latched` witness | Firmware supplies the two output pins. Releasing the latch is a software power-off on battery. | yes |
 | USB / external present | `pins::EXTERNAL_POWER_SENSE` (GPIO9, high = VBUS) | Digital input. Schematic: 5.1 kΩ / 5.1 kΩ `PWR_IN_VOLT` from `VIN_5V` (~½ VBUS); USB-C is 5 V sink only (Rd on CC1/CC2). Firmware still treats GPIO9 as a GPIO high. | yes |
@@ -43,7 +43,7 @@ that the crate encoding is correct.
 
 ### Display and touch
 
-| Feature | This crate | Rest of the stack | On glass |
+| Feature | This crate | Rest of the stack | Physical unit |
 | --- | --- | --- | --- |
 | 3.97" 800×480 mono e-paper (SSD1677, four-gray via dual planes + panel OTP) | `display`: geometry, `SPI_MAX_HZ` (10 MHz, mode 0), `RefreshKind::{Full, Partial, Gray4}`, `controller_config()` (OTP, `lut: None`) | [`ssd1677-gray4`](https://github.com/canardleteer/sticky-rs/tree/main/crates/ssd1677-gray4) for opcodes. Shared SPI with the card (`pins::SPI_SCLK` / `SPI_MOSI` / `SPI_MISO`, `pins::EPD_CS`). This crate does **not** ship a waveform LUT. | yes |
 | Panel 3.3 V rail | `EpdRail` on GPIO47; no unconditional `disable` | After the controller deep-sleep command, pass `PanelParked::after_deep_sleep_command()` into `disable_after_panel_sleep`. | yes |
@@ -58,7 +58,7 @@ pins**. Never assign them to the SPI controller. After the
 INT-during-reset dance, leave `pins::TOUCH_INT` (GPIO21) as a
 floating input — the ESP32-S3 pad has no default pull.
 
-| Feature | This crate | Rest of the stack | On glass |
+| Feature | This crate | Rest of the stack | Physical unit |
 | --- | --- | --- | --- |
 | SHT40-AD1B-R2 humidity / temperature | `addresses::SHT40` (`0x44`) | [`sht4x`](https://crates.io/crates/sht4x). Four-pin DFN; no ALERT. simple-debug prints `sht t=` / `rh=` (milli °C / milli % RH). | yes |
 | PCF8563M/TR real-time clock | `addresses::PCF8563` (`0x51`) | Time at `0x02`; VL is seconds bit 7. INT (`RTC_INTn`) is NC to the ESP32. simple-debug prints `rtc` (read only). | yes |
@@ -66,7 +66,7 @@ floating input — the ESP32-S3 pad has no default pull.
 
 ### Audio, storage, UI, debug
 
-| Feature | This crate | Rest of the stack | On glass |
+| Feature | This crate | Rest of the stack | Physical unit |
 | --- | --- | --- | --- |
 | PDM microphone (MSM261DDB020) | **Power and pins only.** `MicRail` on `pins::MIC_POWER_EN` (GPIO38, TPS22916CYFPR); clock `pins::MIC_CLK` (GPIO19), data `pins::MIC_DATA` (GPIO20). Settle time is unmeasured. There is **no** PDM/I2S driver, buffer, or sample API here. | See [PDM microphone (untested)](#pdm-microphone-untested). | no |
 | Passive buzzer (FUET-5018) | Pin only: `pins::BUZZER` (GPIO48) | PWM (LEDC) in the HAL through a CJ2324. Hold low in sleep. No helper in this crate. | yes |
@@ -79,7 +79,7 @@ floating input — the ESP32-S3 pad has no default pull.
 Seeed / community list these as ESP32-S3 or enclosure traits. This crate does
 not wrap them:
 
-| Feature | Notes | On glass |
+| Feature | Notes | Physical unit |
 | --- | --- | --- |
 | Wi-Fi 802.11 and Bluetooth LE | Radio on the ESP32-S3; schematic on-board **ANT1** (2.4 GHz). Use the firmware stack (`esp-hal` / `esp-idf`); no pin map entry. Embassy-debug `--features radio` scanned both in one UART listen. | yes |
 | 8 MB in-package octal PSRAM | MCU/HAL init. | no |

@@ -19,7 +19,7 @@ pub enum StepId {
     Gpio7,
     /// Insert/remove MicroSD (do not mount).
     SdDetect,
-    /// Finger on glass (GT911 count).
+    /// Finger on the panel (GT911 count).
     Gt911Contacts,
 }
 

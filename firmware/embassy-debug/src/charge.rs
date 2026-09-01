@@ -4,7 +4,7 @@
 //! waits [`embassy_debug::CHARGE_PULSE_MS`], parks, settles, and
 //! [`bq25616::Charger::hold_disabled`] if STAT is still low. Gauge
 //! `Current()` is a one-shot on the sensor bus before the IMU task owns
-//! it. On glass (USB): `gpio40=1→0→1`; `i=` was `0` at 200 ms and
+//! it. On a physical unit (USB): `gpio40=1→0→1`; `i=` was `0` at 200 ms and
 //! `5702` at 2 s (not a 555 mA proof). Do not combine with `mic`,
 //! `radio`, or `sd`.
 //!

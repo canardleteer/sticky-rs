@@ -34,7 +34,7 @@
 
 <div align="center">
   <img src="docs/assets/first-ferris.png"
-       alt="embassy-debug splash on glass, USB-C down"
+       alt="embassy-debug splash on a physical unit, USB-C down"
        width="360">
 </div>
 

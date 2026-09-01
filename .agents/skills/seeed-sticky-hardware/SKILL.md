@@ -48,19 +48,23 @@ path here.
    [Vendor datasheets](#vendor-datasheets-local-cache)).
 8. **Vendor C++ evidence** —
    [references/cpp-platformio.md](references/cpp-platformio.md). Sequences
-   from ESP-IDF / PlatformIO trees that ran on glass (third-party unless
-   the vendor published them).
+   from ESP-IDF / PlatformIO trees that ran on a physical unit
+   (third-party unless the vendor published them).
 9. **Measurement backlog** — remaining open nets and confirmation recipes
    live in
    [resources/not-yet-confirmed.md](resources/not-yet-confirmed.md).
 10. **External skills and sources** — including
    [varo6/reTerminal-sticky-skill](https://github.com/varo6/reTerminal-sticky-skill)
-   and on-glass ESPHome audio in
+   and ESPHome audio confirmed on a physical unit in
    [sira-fiinikkusu/reterminal-sticky-voice-companion](https://github.com/sira-fiinikkusu/reterminal-sticky-voice-companion)
    — [resources/external.md](resources/external.md).
 
 Do not mix a stack’s APIs into the pin map. Do not commit another person’s
 MAC, serial number, USB serial string, NVS, or flash image.
+
+Write evidence as **confirmed on a physical unit**, **on a physical
+device**, or **not measured**. Do not write *on glass* or *close on
+glass* for that. *Glass* is the front panel, not a synonym for the unit.
 
 ## Authority
 
@@ -80,7 +84,7 @@ winner against the user.
    that has run on this product), not ROM `board-info`.
 3. **Official** board documentation, vendor SDKs, and **chip datasheets for
    parts confirmed on this model.** Registers, opcodes, and timings belong
-   here when they have not been measured on glass. Official stock/SDK
+   here when they have not been measured on a physical unit. Official stock/SDK
    sequences still prove **intent and ordering, never electrical fact**.
    That stock firmware treats a net as a digital interrupt does not prove
    there is no divider on it. Do not apply a datasheet to a part that is
@@ -88,7 +92,7 @@ winner against the user.
 4. **Third-party** firmware, Playground apps, community skills, ESPHome,
    FreeInk profiles. Often first to carry new valid detail; also the usual
    source of stale or wrong maps. When FreeInk and Bunny disagree on
-   charger GPIO, prefer FreeInk unless glass says otherwise.
+   charger GPIO, prefer FreeInk unless a physical unit says otherwise.
 
 An observed address or pin (2) outranks a datasheet default (3): both
 GT911 7-bit addresses ACK here depending on INT at RST (Rev.09 §6.1:
@@ -114,11 +118,11 @@ populate it rather than guessing.
 | RAM | Internal SRAM + **8 MB in-package octal PSRAM** at 3.3 V (confirmed `esptool flash-id`, `AP_3v3`) |
 | Flash | **32 MB** external quad SPI, Winbond W25Q256-class (`ef 4019`; eFuse quad, 3.3 V) |
 | Display | 3.97" 800×480, 235 ppi **mono** E-Ink film; 4-gray is synthesized (dual plane + panel OTP), **SSD1677**-compatible SPI |
-| Touch | **GT911** on its own I2C; sensor reports **480×800** (portrait); map that sample onto 800×480 (`to_screen`); **5** simultaneous contacts on this FPC (Rev.09 §1). INT low at RST → `0x5D` (Rev.09 §6.1; [touch.md](references/touch.md#on-glass-embassy-debug)) |
+| Touch | **GT911** on its own I2C; sensor reports **480×800** (portrait); map that sample onto 800×480 (`to_screen`); **5** simultaneous contacts on this FPC (Rev.09 §1). INT low at RST → `0x5D` (Rev.09 §6.1; [touch.md](references/touch.md#on-a-physical-unit-embassy-debug)) |
 | USB debug | WCH **CH343P** on UART0 (`1a86:55d3`), not native USB-Serial/JTAG; udev by-id uses `_` before the USB serial |
 | Battery | 750 mAh 1S Li-ion, **BQ27220** gauge, **BQ25616** charger. STAT (GPIO40) low while `/CE` enabled, high after park + settle ([power-and-sleep.md](references/power-and-sleep.md)). Default images park `/CE` |
-| Audio | PDM MEMS **MSM261DDB020** (GPIO19/20, EN 38 / TPS22916; hole on bottom edge); **no loudspeaker** (FUET-5018 on GPIO48). On glass: 16 kHz / left energy is live; AI Voice 1 kHz dump shows a ~16-sample period. Not high-fidelity ([sensors.md](references/sensors.md#pdm-microphone)) |
-| Radio | On-board **ANT1**, shared 2.4 GHz Wi-Fi / BLE. On glass: embassy-debug `--features radio` printed `wifi n=` and `ble n=` in one listen ([pin-map.md](references/pin-map.md#on-glass-embassy-debug-radio-feature)) |
+| Audio | PDM MEMS **MSM261DDB020** (GPIO19/20, EN 38 / TPS22916; hole on bottom edge); **no loudspeaker** (FUET-5018 on GPIO48). On a physical unit: 16 kHz / left energy is live; AI Voice 1 kHz dump shows a ~16-sample period. Not high-fidelity ([sensors.md](references/sensors.md#pdm-microphone)) |
+| Radio | On-board **ANT1**, shared 2.4 GHz Wi-Fi / BLE. On a physical unit: embassy-debug `--features radio` printed `wifi n=` and `ble n=` in one listen ([pin-map.md](references/pin-map.md#on-a-physical-unit-embassy-debug-radio-feature)) |
 | Enclosure | 106 × 65.5 × 7.3 mm, 70 g, IP40, glass front, N52 corner magnets. Keys on the **right** edge (AI Voice / Page Up / Page Down); SD on the **left**; Reset, mic, lanyard, charge LED, USB-C on the **bottom**. [enclosure.md](references/enclosure.md) |
 
 Xtensa target when using Rust: `xtensa-esp32s3-none-elf` (`no_std`) or the
@@ -164,7 +168,7 @@ extracted markdown live in [resources/datasheets/](resources/datasheets/README.m
 (`pdf/`, `md/`; gitignored).
 
 **Vendor that cache** when the work is registers, opcodes, timings,
-strapping/I2C/SPI limits, SSD1677 command tables, or a datasheet-versus-glass
+strapping/I2C/SPI limits, SSD1677 command tables, or a datasheet-versus-unit
 conflict. Search `resources/datasheets/md/<id>.md` rather than loading a
 whole TRM. The cache does **not** replace the pin map, enclosure, or a
 Playground app layout.
@@ -274,7 +278,7 @@ Factory firmware also ACKs the PDM microphone and SD slot.
   when using them as GT911 RST / `TOUCH_EN`. Mux to GPIO. Same class of
   caution as GPIO19/20 USB pads (v2.2 §2.3.4).
 - Enable an MCU pull-up on GPIO21 (GT911 INT) by default: Table 2-1 has no
-  reset pull. On-glass leaves INT floating after address select.
+  reset pull. On a physical unit, leave INT floating after address select.
 - Overlap display and SD SPI transactions.
 - Invent a four-gray LUT from a generic SSD1677 example, or mix an MCU
   0x32 table with Sticky OTP gray4.

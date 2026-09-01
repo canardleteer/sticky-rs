@@ -284,7 +284,7 @@ pub fn write_mono(target: &mut [u8], width: usize, x: usize, y: usize, white: bo
 
 /// Rotates a packed 1bpp plane by 180 degrees into `target`.
 ///
-/// Pair with [`mirror_x_plane`] for the Sticky's on-glass stack (packed 180°
+/// Pair with [`mirror_x_plane`] for the Sticky's on-unit stack (packed 180°
 /// then Seeed software `mirror_x`). Do not also send Lotus `0x21`.
 pub fn rotate180_mono(
     source: &[u8],

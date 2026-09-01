@@ -8,8 +8,8 @@ contacts. Discuss the hex as crate enums, not raw ports:
 | Hex | Type | What it is |
 | --- | --- | --- |
 | `0x8040` | `Register::Command` | **Address** of the command port. Rev.09 §8.1 still names this port for Gesture (opcode `Command::Gesture` = `8`, also written to `0x8046`). The crate `init()` opcode `Command::ReadCoordinates` = `0` is **not** in Rev.09. |
-| `0x814E` | `Register::Status` | **Address** of the buffer handshake. A host write is `StatusWrite` (`Clear` = `0`). A read is `StatusBits` (bitfield: bit 7 ready, bits 3–0 count) — crate / on-glass, **not** a Rev.09 table. |
-| `0x8150` | `Register::Points` | First contact record (on-glass). Coords are LE at `POINT_X_OFFSET` / `POINT_Y_OFFSET`. |
+| `0x814E` | `Register::Status` | **Address** of the buffer handshake. A host write is `StatusWrite` (`Clear` = `0`). A read is `StatusBits` (bitfield: bit 7 ready, bits 3–0 count) — crate / on-unit, **not** a Rev.09 table. |
+| `0x8150` | `Register::Points` | First contact record (on-unit). Coords are LE at `POINT_X_OFFSET` / `POINT_Y_OFFSET`. |
 
 Rev.07 **deleted the register map** (Rev.09 revision history). Do not treat
 `0x814E` as a mode enum. Local cache: `resources/datasheets/pdf/gt911.pdf`
@@ -40,7 +40,7 @@ Rev.09 §6.1: two **8-bit** slave pairs, named in code as
 during power-on / reset (timing diagrams on datasheet p.10; the extracted
 markdown has no T2/T3 numbers).
 
-On-glass mapping (both 7-bit addresses ACK on this unit):
+Mapping on a physical unit (both 7-bit addresses ACK on this unit):
 
 | INT level at RST rising | 8-bit write/read | 7-bit |
 | --- | --- | ---: |
@@ -63,7 +63,7 @@ in **< 200 ms** (features + §8.6). Do not expect a first valid scan before
 that window.
 
 Address-select reset (Rev.09 §6.1; extracted markdown has no T2/T3).
-embassy-debug holds that worked on glass, inside the 200 ms window:
+embassy-debug holds that worked on a physical unit, inside the 200 ms window:
 
 1. RST=0, INT driven at the select level, hold **10 ms**.
 2. RST=1, INT still driven, wait **10 ms**, then **50 ms**.
@@ -104,13 +104,13 @@ RST/INT is an ESP32-S3 **TRM** topic (that PDF is not in the local
 cache yet).
 
 `get_multi_touch` returns `Err(NotReady)` when status bit `0x80` is clear
-(idle in the crate / on-glass drivers; **not** a Rev.09 bit name). The
+(idle in the crate / on-unit drivers; **not** a Rev.09 bit name). The
 operator image prints `gt911 st=0xNN` each heartbeat so a miss is status vs
 count. embassy-debug prints the same token when
 `touch::STATUS_HEARTBEAT` is on (read-only; it does not write
 `Register::Status` for that line).
 
-## On glass (embassy-debug)
+## On a physical unit (embassy-debug)
 
 2026-08-30, default embassy-debug. Rev.09 §6.1 INT-low first,
 `I2C_MAX_HZ`, `Register::Points` at `POINT_X_OFFSET`. Boot token:
@@ -142,7 +142,7 @@ Configuration) is a host-to-chip parameter lock, not a license to invent a
 186-byte table. Tx channel order also has to match the sensor (§5.2); that
 is module programming, not an MCU guess.
 
-## Coordinate transform (on-glass)
+## Coordinate transform (on a physical unit)
 
 The GT911 sample `(cx, cy)` is **portrait 480×800**, not panel 800×480.
 A host map that scaled `cx` as if the range were 800 compressed the

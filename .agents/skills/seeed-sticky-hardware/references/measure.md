@@ -33,7 +33,7 @@ the same machine.
 ROM-download DTR/RTS into the stub, then a hard-reset, is expected for
 board-info and flash I/O. The board stays powered if USB and the power latch
 are up. E-paper keeps the last frame while the ROM stub holds the CPU (a
-frozen loading bar on glass is not a hung MCU).
+frozen loading bar on the panel is not a hung MCU).
 
 QinHeng is not an Espressif VID. Bare Espressif port lists often print
 “no known ports” without `--list-all-ports`:
@@ -65,7 +65,7 @@ commands.
 | Factory UART `serial_number` | Printed ~**4.5–6.5 s** after an EN/RTS pulse into **run mode** (IDF `I (5672)`). Opening the ACM node does **not** reprint it. ROM download reset is a different sequence. |
 | Chunked 32 MiB read | 32 × 1 MiB at **921600** baud: ~**14 s/MiB**, ~**8 min** full dump. espflash may warn about baud > 115200; the dump completed. Stub loaded once for board-info and again for the dump. |
 | Custom `app0` + UART listen | A ~105–114 KiB `save-image` payload at factory `app0` (`0x90000`) booted. Factory 2nd-stage **ESP-IDF v5.4-dirty** logged DIO, 32 MB, and `Loaded app from partition at offset 0x90000`. Opening a 115200 listen produced a `rst:0x1 (POWERON)` log even after DTR/RTS were set inactive. Heartbeats showed raw GPIO/gauge/IMU levels (`vbus=1`, `gpio7=0` with pull-up, `gpio40=1`, `sd_cd=1`, `imu=FaceUp` while sitting on USB). I2C ACKs included GT911 `0x14` and SHT40 `0x44` on a real measure command. |
-| Operator UART session | Attended: `btn 4` / `5` / `6` on the three right-edge keys; USB-C unplug as host CH343 drop+return (firmware `vbus` edge usually lost); IMU `FaceUp` then `Landscape0` after tilt; GPIO7 stayed low with no edges; `gpio40=1` / `i=0` with `/CE` off after replug. GT911 `0x14` ACK. **No simple-debug `contacts=` line, ever.** Every attended `gt911_contacts` YAML is `timeout` / `operator_says_tried: true` / `gt911_st_max=0x00` / `gt911_int=1`. An earlier poll treated crate `NotReady` as failure and skipped status-clear; later images leave INT floating and still never set status bit `0x80`. Bunny on glass does report points (100 kHz, 30 ms, tap on release). MicroSD not inserted. Restoring factory `app0` then returned stock. |
+| Operator UART session | Attended: `btn 4` / `5` / `6` on the three right-edge keys; USB-C unplug as host CH343 drop+return (firmware `vbus` edge usually lost); IMU `FaceUp` then `Landscape0` after tilt; GPIO7 stayed low with no edges; `gpio40=1` / `i=0` with `/CE` off after replug. GT911 `0x14` ACK. **No simple-debug `contacts=` line, ever.** Every attended `gt911_contacts` YAML is `timeout` / `operator_says_tried: true` / `gt911_st_max=0x00` / `gt911_int=1`. An earlier poll treated crate `NotReady` as failure and skipped status-clear; later images leave INT floating and still never set status bit `0x80`. Bunny on a physical unit does report points (100 kHz, 30 ms, tap on release). MicroSD not inserted. Restoring factory `app0` then returned stock. |
 | Embassy-debug touch listen | Default image (`git=80eaf8f` dirty), 2026-08-30. INT-high + init Status-clear: `0x14 ack`, `st=` stayed `0x00`, no `touch n=`. Rev.09 INT-low select: `gt911 int=0`, **`0x5d ack`**, `0x14 nak`, first `st=0x80`. Attended: `touch n=1` / `n=0`, `n=2`, then **`n=5`** with `gt911 st=0x85` (t=43705–44046). This FPC delivers 5 contacts (Rev.09 §1). |
 | Unattended idle UART | 2026-08-30, sit still on USB, no keys / taps / `/CE`. embassy-debug default: `latched`, INT-low dance **`0x5d ack`** / `0x14 nak`, `imu accel init ok`, `imu=FaceUp`, `gt911 st=` (`0x80` then later `0x00`), `scene=splash`. simple-debug default: latch, INT-high `0x14 ack` (that image's dance), gauge `0x0220`, SHT `t=` / RTC `vl=0`, heartbeat `vbus=1 gpio7=0 gpio40=1 sd_cd=1` and `i=0` after settle, `imu=FaceUp`. Host `vet-idle-log` accepted both captures. Does not close glass PN, corners, or CEDV. Factory `app0` restored after. |
 | Panel+SD 10 MHz | 2026-08-30. Card inserted, embassy-debug default (`SPI_MAX_HZ` 10 MHz), CS high, rail off, no SD writes. UART `scene=splash` then `btn 6` → `scene=shapes`. Operator: splash and later pages looked clean. Does not close 20 MHz, card-read, or `nyc-sd-mount`. |
@@ -218,4 +218,4 @@ them out of the skill and out of committed notes.
 
 GPIO pinout, SPI clock, BUSY polarity, GT911 address/transform, IMU axes,
 charger GPIO polarity, or other firmware’s partition tables. Measure those
-from pin maps / on-glass bring-up, not from ROM `board-info`.
+from pin maps / bring-up on a physical unit, not from ROM `board-info`.

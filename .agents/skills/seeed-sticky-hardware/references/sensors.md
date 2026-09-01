@@ -35,7 +35,7 @@ firmware classified **FaceUp** while sitting still, then an in-plane pose
 after the operator lifted or rotated and held (~0.70 g map). An earlier
 token named USB-down **Landscape0**; the table above is the enclosure
 map (USB-down = Portrait 0). 2026-08-30 embassy-debug splash confirmed
-those four USB-C tokens on glass ([display.md](display.md#orientation-on-glass)). Gyro and FIFO wiring
+those four USB-C tokens on a physical unit ([display.md](display.md#orientation-on-a-physical-unit)). Gyro and FIFO wiring
 are undocumented. Stock firmware drives explicit low-power enter/exit
 transitions on this part around sleep, so expect a mode change rather than a
 single fixed ODR. **INT1 is GPIO7**, shared with BQ27220 GPOUT
@@ -53,7 +53,7 @@ and is **NC** to the ESP32. CLKOUT is a test point. The RTC cannot wake
 the MCU on a pin.
 
 simple-debug (operator) read seven bytes from `0x02` and printed
-`rtc y= mo= d= h= mi= s= vl=`. On glass: seconds advanced with the
+`rtc y= mo= d= h= mi= s= vl=`. On a physical unit: seconds advanced with the
 heartbeat, **`vl=0`**. No `init`, no `set_datetime`, no VL clear. The
 wall-clock fields are whatever the chip already held.
 
@@ -131,7 +131,7 @@ PCF8563 `0x51`, BQ27220 `0x55`, and LSM6DS3TR-C `0x6A` ACKed a 1-byte probe
 on the same bus after latch.
 
 simple-debug (operator) printed live `sht t=` / `rh=` from
-`Precision::High` (`0xFD`). On glass, one room: **`t` ~28900** (milli
+`Precision::High` (`0xFD`). On a physical unit, one room: **`t` ~28900** (milli
 °C, ~28.9 °C) and **`rh` ~27900** (milli % RH, ~27.9 %). That is one
 session, not a calibration. Do not print the Sensirion serial.
 
@@ -175,11 +175,11 @@ Firmware that has run this on production Stickys
    `pdm: true`, **left** channel, **16 kHz**, 16-bit.
 
 That is a **working recipe**. Embassy-debug `--features mic` ran the same
-clock/data/enable and **16 kHz / 16-bit / left** on glass. It is not a
-high-fidelity close of
+clock/data/enable and **16 kHz / 16-bit / left** on a physical unit. That
+does not close
 [nyc-mic-pdm](../resources/not-yet-confirmed.md#nyc-mic-pdm).
 
-### On glass (embassy-debug mic feature)
+### On a physical unit (embassy-debug mic feature)
 
 Energy (`rms` / `peak`) is live: a whistle jumped and clipped at 32768
 (16-bit full scale). One relative-quiet room (fans on) and covering as

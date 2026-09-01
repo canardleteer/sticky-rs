@@ -33,7 +33,7 @@ a second status column.
 | [nyc-gauge-profile](#nyc-gauge-profile) | BQ27220 CEDV values and chemistry on a factory unit | [sensors.md](../references/sensors.md) |
 | [nyc-mic-pdm](#nyc-mic-pdm) | PDM high-fidelity rate / slot / hole | [sensors.md](../references/sensors.md) |
 | [nyc-panel-glass](#nyc-panel-glass) | Official glass PN (candidate sheet on file) | [display.md](../references/display.md) |
-| [nyc-esphome-orient](#nyc-esphome-orient) | ESPHome `mirror_x` vs on-glass 180° | [display.md](../references/display.md) |
+| [nyc-esphome-orient](#nyc-esphome-orient) | ESPHome `mirror_x` vs 180° confirmed on a physical unit | [display.md](../references/display.md) |
 | [nyc-charge-stat](#nyc-charge-stat) | Charge-to-done and gauge current scale | [power-and-sleep.md](../references/power-and-sleep.md) |
 | [nyc-gpio7-edge](#nyc-gpio7-edge) | GPIO7 edges with IMU or gauge armed | [sensors.md](../references/sensors.md) |
 | [nyc-buzzer-spl](#nyc-buzzer-spl) | Buzzer resonance / SPL | [input-storage.md](../references/input-storage.md) |
@@ -89,11 +89,11 @@ driver does not implement that block).
 
 ### nyc-mic-pdm
 
-Pins 19/20/38 work on glass (embassy-debug `--features mic`). Energy
+Pins 19/20/38 work on a physical unit (embassy-debug `--features mic`). Energy
 jumps on a whistle. AI Voice’s 1 kHz buzzer shows a ~16-sample period
 in the PCM dump (1 kHz if the clock is 16 kHz); left slot hears it.
 That is **not** high-fidelity confirmation. Facts:
-[sensors.md](../references/sensors.md#on-glass-embassy-debug-mic-feature).
+[sensors.md](../references/sensors.md#on-a-physical-unit-embassy-debug-mic-feature).
 Schematic Rev 01 names **MSM261DDB020** and **TPS22916CYFPR** on
 `PDM_EN`.
 
@@ -192,13 +192,14 @@ until that same class of document says so. Still not a 105-byte
 
 ### nyc-esphome-orient
 
-ESPHome preset: `mirror_x`, 10 MHz, no packed 180° rotate. Bunny glass:
-`mirror_x` + 180° packed rotate.
+ESPHome preset: `mirror_x`, 10 MHz, no packed 180° rotate. Bunny on a
+physical unit: `mirror_x` + 180° packed rotate.
 
 - Flash the ESPHome e-paper example, draw a known corner. Confirmed whether
-  the preset already matches glass or needs the extra rotate. A 2026.8.2
-  Playground `.factory.bin` is a merge (app at `0x10000`); extract that
-  slice for `flash-app`. An incomplete write here did not sit orientation.
+  the preset already matches a physical unit or needs the extra rotate. A
+  2026.8.2 Playground `.factory.bin` is a merge (app at `0x10000`); extract
+  that slice for `flash-app`. An incomplete write here did not sit
+  orientation.
 
 ### nyc-charge-stat
 
@@ -215,7 +216,7 @@ and the charger LED green/yellow.
 
 ### nyc-gpio7-edge
 
-Schematic: GPIO7 is IMU INT1 and gauge GPOUT. Polled IMU on glass
+Schematic: GPIO7 is IMU INT1 and gauge GPOUT. Polled IMU on a physical unit
 changed pose with **no** GPIO7 edges; interrupts were not armed. Leave
 the pin an input. Do not enable both chips as push-pull.
 
@@ -225,7 +226,7 @@ the pin an input. Do not enable both chips as push-pull.
 
 ### nyc-buzzer-spl
 
-GPIO48 PWM beeps on glass. Embassy-debug `--features mic` already
+GPIO48 PWM beeps on a physical unit. Embassy-debug `--features mic` already
 heard the 1 kHz AI Voice tone on the PDM path (left slot, ~16-sample
 period). That is enclosure / EMI coupling, not a calibrated SPL.
 

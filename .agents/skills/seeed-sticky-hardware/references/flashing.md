@@ -54,4 +54,4 @@ live in DRAM while proving PSRAM.
 ESP32-S3: 2.4 GHz Wi-Fi + BLE 5.0 (ROM features). Station and BLE MACs are
 per-device; read them on the unit, do not copy them from notes.
 embassy-debug `--features radio` scanned both at once on ANT1
-([pin-map.md](pin-map.md#on-glass-embassy-debug-radio-feature)).
+([pin-map.md](pin-map.md#on-a-physical-unit-embassy-debug-radio-feature)).

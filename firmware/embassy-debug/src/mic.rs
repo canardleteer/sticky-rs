@@ -1,15 +1,15 @@
 //! PDM RX energy on UART (`--features mic` only).
 //!
-//! Community recipe: 16 kHz, 16-bit, left (mono). AI Voice plays a 1 kHz
-//! buzzer tone and prints the PCM window so the host can align to it.
+//! Community recipe: 16 kHz, 16-bit, left (mono). AI Voice dumps PCM
+//! windows and leaves the buzzer off so a through-hole tone is unmixed.
 
 use crate::{emit, now_ms, TONE_CAPTURE};
 
 use core::sync::atomic::Ordering;
 
 use embassy_debug::{
-    format_mic_pcm_header, format_mic_pcm_row, pcm_energy, Event, BUZZER_TONE_HZ, LINE_CAPACITY,
-    MIC_REPORT_MS, PCM_ROW_SAMPLES, PCM_WINDOW_SAMPLES,
+    format_mic_pcm_header, format_mic_pcm_row, pcm_energy, Event, LINE_CAPACITY, MIC_REPORT_MS,
+    PCM_DUMP_NO_TONE_HZ, PCM_ROW_SAMPLES, PCM_WINDOW_SAMPLES,
 };
 use embassy_time::{Duration, Timer};
 use embedded_hal::delay::DelayNs;
@@ -61,7 +61,7 @@ pub async fn mic_task(
         println!("{LOG}: pdm dma buffer failed");
         return;
     };
-    println!("{LOG}: pdm rx 16kHz mono left; AI Voice dumps pcm @ 1kHz buzzer");
+    println!("{LOG}: pdm rx 16kHz mono left; AI Voice dumps pcm (buzzer off)");
 
     loop {
         if crate::sleep::is_requested() {
@@ -119,7 +119,7 @@ fn emit_window(bytes: &[u8], dump_pcm: bool) {
         return;
     }
     let mut buf = [0u8; LINE_CAPACITY];
-    if let Ok(line) = format_mic_pcm_header(now_ms(), BUZZER_TONE_HZ, n, &mut buf) {
+    if let Ok(line) = format_mic_pcm_header(now_ms(), PCM_DUMP_NO_TONE_HZ, n, &mut buf) {
         println!("{line}");
     }
     let mut offset = 0;

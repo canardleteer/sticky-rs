@@ -18,8 +18,8 @@ On the unit:
   FaceUp / FaceDown keep the last in-plane page.
 - Default image: AI Voice / Page Up / Page Down (right-edge top /
   middle / bottom) walk splash → shapes → legend → four-tone OTP gray
-  boxes. `--features mic`: AI Voice plays a 1 kHz buzzer tone and dumps
-  PCM; it does not change the page. Page Up / Page Down still walk
+  boxes. `--features mic`: AI Voice dumps PCM and does not play the
+  buzzer or change the page. Page Up / Page Down still walk
   the drawings. `--features radio`: Wi-Fi and BLE scan together on the
   on-board antenna; keys still walk the drawings. Do not combine
   `mic` and `radio` in one image for a desk test.
@@ -191,24 +191,24 @@ usual `btn` / `touch` / `imu=` lines. About four times a second:
 embassy-debug: t=1204 mic rms=12 peak=40
 ```
 
-### Step 4: AI Voice tone (the board makes the tone)
+### Step 4: Dump PCM (you make the tone)
 
-Press **AI Voice** (right-edge top). You should hear a 1 kHz buzz for
-about 0.4 s. The page does not change. UART should print `btn 4 down`,
-then a header and 16-sample rows:
+Hold a known tone at the **microphone hole** on the USB-C side/edge.
+Then press **AI Voice** (right-edge top). You should **not** hear the
+board’s 1 kHz buzz. The page does not change. UART should print
+`btn 4 down`, then a header and 16-sample rows:
 
 ```text
 embassy-debug: t=1204 btn 4 down
 embassy-debug: t=1204 mic rms=1800 peak=4000
-embassy-debug: t=1204 mic pcm hz=1000 n=256
+embassy-debug: t=1204 mic pcm hz=0 n=256
 embassy-debug: pcm 000 120 -30 400 0 1 2 3 4 5 6 7 8 9 10 11 12
 ```
 
-`hz=1000` is the buzzer we played, not a measured mic frequency. Two
-windows (32 ms) dump while the tone is on. A 1 kHz sine at 16 kHz
-would repeat about every 16 samples — look for that period in the
-rows. If the rows stay a flat floor, the mic did not pick up the
-buzzer (enclosure coupling is weak); whistle at the hole as well.
+`hz=0` means the board did not play a tone. Two windows (32 ms) dump
+after the key. A 400 Hz sine at 16 kHz would repeat about every 40
+samples — look for that period in the rows. If the rows stay a flat
+floor, the tone did not couple through the hole.
 
 Page Up / Page Down still change the drawing and play the short chirp.
 
@@ -247,9 +247,15 @@ Desk notes from one session in one room. “Quiet” here is relative —
 - A whistle jumped to `rms` 2770–6749 and `peak` 13421, then clipped
   at 32768 (16-bit full scale). That is a live capsule, not a stuck
   rail.
+- A phone tone at the USB-C-edge hole, dump with the buzzer off
+  (`hz=0`), left the quiet floor (`rms` ~1900 / `peak` ~5200–5400).
+  After the usual `0` / spike / DC prefix, the last ~64 samples of
+  each window are a sine with about a 36–40-sample period. That is
+  through-hole, not GPIO48. One phone, not a lab oscillator.
 
-`nyc-mic-pdm` is still open: we have energy and a ~16-sample period on
-the buzzer dump, not a high-fidelity tone through the hole. Facts:
+`nyc-mic-pdm` is still open: we have energy, a GPIO48 ~16-sample
+period, and a through-hole ~36–40-sample period, not slot / polarity
+/ settle / deep-sleep pad reclaim. Facts:
 [sensors.md](../../.agents/skills/seeed-sticky-hardware/references/sensors.md#on-a-physical-unit-embassy-debug-mic-feature).
 
 ## Radio Test Instructions

@@ -42,8 +42,8 @@ Live-ask, never-erase, and flash I/O: root
   clocks the panel at 20 MHz; UART prints `spi=20000000`.
 - Microphone: default image leaves `MicRail` disabled. `--features mic`
   enables the rail and I2S PDM RX (16 kHz mono left; energy is live
-  on a physical unit and does not close nyc-mic-pdm). AI Voice plays
-  a 1 kHz buzzer tone and dumps two PCM windows; it does not change
+  on a physical unit and does not close nyc-mic-pdm). AI Voice dumps
+  two PCM windows and leaves the buzzer off; it does not change
   the page. How-to:
   [README.md](README.md#microphone-test-instructions).
 - Radio: default image leaves Wi-Fi and BLE off. `--features radio`

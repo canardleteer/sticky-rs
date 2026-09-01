@@ -26,14 +26,14 @@ use core::sync::atomic::{AtomicU32, Ordering};
 use bq25616::Charger;
 
 // Host-tested UART line format.
+#[cfg(feature = "mic")]
+use embassy_debug::TONE_DUMP_WINDOWS;
 use embassy_debug::{
     classify_sleep_hold, classify_standby_hold, format_event, format_git, format_latched, Event,
     ImuPose, ResumeHold, Scene, SleepHold, StandbyHold, TouchPoint, GIT_CAPACITY, IMU_REPORT_SECS,
     LATCHED_CAPACITY, LINE_CAPACITY, LOG_PREFIX, MAX_TOUCH_POINTS, PAGE_DOWN_SLEEP_MS,
     PAGE_UP_STANDBY_MS,
 };
-#[cfg(feature = "mic")]
-use embassy_debug::{BUZZER_TONE_MS, TONE_DUMP_WINDOWS};
 
 // Embassy runtime: tasks, channels, time.
 use embassy_executor::Spawner;
@@ -90,12 +90,10 @@ static DROPPED: AtomicU32 = AtomicU32::new(0);
 #[cfg(feature = "mic")]
 pub(crate) static TONE_CAPTURE: AtomicU32 = AtomicU32::new(0);
 
-/// Short chirp (keys / glass) or the 1 kHz AI Voice capture tone.
+/// Short chirp (keys / glass). Mic PCM dump does not use the buzzer.
 #[derive(Clone, Copy)]
 enum Beep {
     Chirp,
-    #[cfg(feature = "mic")]
-    Tone,
 }
 
 /// The page the display task should paint next.
@@ -124,10 +122,10 @@ fn ask_beep() {
     let _ = BEEPS.try_send(Beep::Chirp);
 }
 
-/// Ask the buzzer for the 1 kHz capture tone (`--features mic`).
+/// Ask the mic task to print PCM rows (`--features mic`). No buzzer.
 #[cfg(feature = "mic")]
-fn ask_tone() {
-    let _ = BEEPS.try_send(Beep::Tone);
+fn ask_pcm_dump() {
+    TONE_CAPTURE.store(TONE_DUMP_WINDOWS, Ordering::Relaxed);
 }
 
 /// Pins we must hold for the run so they stay in a safe idle state.
@@ -601,8 +599,8 @@ async fn log_task() {
 /// A short Page Up goes to the previous drawing; a short Page Down (and
 /// AI Voice on the default image) go to the next. Hold Page Up 2 s for
 /// panel standby/resume. Hold Page Down 4 s to sleep.
-/// With `--features mic`, AI Voice plays the 1 kHz capture tone and does
-/// not change the page.
+/// With `--features mic`, AI Voice dumps PCM and does not play the
+/// buzzer or change the page.
 #[embassy_executor::task]
 async fn button_task(
     mut ai_voice: Input<'static>,
@@ -639,7 +637,7 @@ async fn button_task(
         match gpio {
             4 => {
                 #[cfg(feature = "mic")]
-                ask_tone();
+                ask_pcm_dump();
                 #[cfg(not(feature = "mic"))]
                 {
                     ask_beep();
@@ -961,11 +959,6 @@ async fn buzzer_task(
         match kind {
             Beep::Chirp => {
                 Timer::after(Duration::from_millis(80)).await;
-            }
-            #[cfg(feature = "mic")]
-            Beep::Tone => {
-                TONE_CAPTURE.store(TONE_DUMP_WINDOWS, Ordering::Relaxed);
-                Timer::after(Duration::from_millis(u64::from(BUZZER_TONE_MS))).await;
             }
         }
         let _ = channel0.set_duty(0);

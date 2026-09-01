@@ -187,16 +187,27 @@ many holes as we could sat in the same band (`rms` ~900–1200). That
 is one session, not a room spec. The floor is mostly a **DC bias** in
 the PCM (samples sit near +975); `pcm_energy` is not AC-coupled.
 
-AI Voice plays a 1 kHz buzzer (GPIO48) and dumps two 256-sample
-windows. The tail of those windows repeats about every **16 samples**
-(~1 kHz if the PDM clock is 16 kHz). The left slot hears that tone.
-The wiggle is ugly (board / EMI coupling into 19/20, not a clean sine
-through the USB-C-edge hole). Each dump starts `0`, a spike, then the
-DC floor, then the wiggle. Printing the rows at 115200 inserts ~140 ms
-between windows.
+An older `--features mic` image played a 1 kHz buzzer (GPIO48) while
+dumping two 256-sample windows. The tail of those windows repeats
+about every **16 samples** (~1 kHz if the PDM clock is 16 kHz). The
+left slot hears that tone. The wiggle is ugly (board / EMI coupling
+into 19/20, not a sine through the USB-C-edge hole).
 
-Still open: a clean known-tone through the hole, slot A/B, and hole
-vs waveform polarity.
+The current `--features mic` image dumps those windows with the
+buzzer off (`mic pcm hz=0`). Each dump still starts `0`, a spike,
+then the DC floor, then the waveform. Printing the rows at 115200
+inserts ~140 ms between windows.
+
+2026-09-01: a phone tone held on the USB-C-edge hole, dump with
+buzzer off. Energy left the quiet floor (`rms` ~1900 / `peak`
+~5200–5400). After the DC prefix (~192 samples near +967), the last
+~64 samples are a sine. Peak spacing there is **about 36–40
+samples** (~420–445 Hz if the PDM clock is 16 kHz). That is a
+through-hole period on left / 16 kHz, not GPIO48. One phone, one
+short dump — not a calibrated oscillator.
+
+Still open: slot A/B, hole vs waveform polarity, GPIO38-to-first-valid
+window, and USB-pad reclaim after deep-sleep wake.
 
 Enabling GPIO38 and attaching I2S PDM RX is **not** a
 [safety.md](safety.md) destroy-the-board row. USB-C

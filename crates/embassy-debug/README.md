@@ -46,7 +46,8 @@ This FPC delivers five contacts (Rev.09 §1). `p0=` is physical
 does not classify is the token `imu=none`; the raw sample is still
 printed. The `mic`
 and `pcm` lines are printed only by the `--features mic` image. AI Voice
-plays a 1 kHz buzzer tone ([`BUZZER_TONE_HZ`]) and dumps two windows.
+dumps two windows and does not play the buzzer
+([`PCM_DUMP_NO_TONE_HZ`] is `hz=0`).
 The `wifi` and `ble` lines are printed only by the `--features radio`
 image (SSID / local name and RSSI; never a MAC or BSSID). The `sd`
 lines are printed only by `--features sd` (read-only identify and FAT

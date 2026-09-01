@@ -28,13 +28,16 @@ pub const PCM_WINDOW_SAMPLES: usize = 256;
 /// Samples per `pcm` UART row.
 pub const PCM_ROW_SAMPLES: usize = 16;
 
-/// Nominal buzzer tone on AI Voice capture, in Hz (LEDC 1 kHz).
+/// Nominal buzzer tone when firmware plays GPIO48 during a dump, in Hz.
 pub const BUZZER_TONE_HZ: u32 = 1000;
 
-/// How long the AI Voice buzzer tone stays on, in milliseconds.
+/// How long that GPIO48 tone stays on, in milliseconds.
 pub const BUZZER_TONE_MS: u32 = 400;
 
-/// PDM windows to dump after the tone starts.
+/// `mic pcm hz=` when AI Voice dumps PCM and the buzzer stays off.
+pub const PCM_DUMP_NO_TONE_HZ: u32 = 0;
+
+/// PDM windows to dump after AI Voice requests a capture.
 pub const TONE_DUMP_WINDOWS: u32 = 2;
 
 /// Wi-Fi / BLE scan period, in seconds (`--features radio` image).
@@ -1060,6 +1063,7 @@ mod tests {
         assert_eq!(PCM_ROW_SAMPLES, 16);
         assert_eq!(BUZZER_TONE_HZ, 1000);
         assert_eq!(BUZZER_TONE_MS, 400);
+        assert_eq!(PCM_DUMP_NO_TONE_HZ, 0);
         assert_eq!(TONE_DUMP_WINDOWS, 2);
     }
 
@@ -1069,6 +1073,10 @@ mod tests {
         assert_eq!(
             format_mic_pcm_header(1204, 1000, 256, &mut buf).unwrap(),
             "embassy-debug: t=1204 mic pcm hz=1000 n=256"
+        );
+        assert_eq!(
+            format_mic_pcm_header(1204, PCM_DUMP_NO_TONE_HZ, 256, &mut buf).unwrap(),
+            "embassy-debug: t=1204 mic pcm hz=0 n=256"
         );
         let row = [120i16, -30, 400, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
         assert_eq!(

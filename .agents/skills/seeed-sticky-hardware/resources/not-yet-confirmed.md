@@ -90,9 +90,11 @@ driver does not implement that block).
 ### nyc-mic-pdm
 
 Pins 19/20/38 work on a physical unit (embassy-debug `--features mic`). Energy
-jumps on a whistle. AI Voice’s 1 kHz buzzer shows a ~16-sample period
-in the PCM dump (1 kHz if the clock is 16 kHz); left slot hears it.
-That is **not** high-fidelity confirmation. Facts:
+jumps on a whistle. A GPIO48 1 kHz dump shows a ~16-sample period
+(board / EMI, not the hole). A phone tone through the USB-C-edge hole,
+dump with the buzzer off, shows a ~36–40-sample sine in the window
+tail (left / 16 kHz). That is **not** high-fidelity confirmation.
+Facts:
 [sensors.md](../references/sensors.md#on-a-physical-unit-embassy-debug-mic-feature).
 Schematic Rev 01 names **MSM261DDB020** and **TPS22916CYFPR** on
 `PDM_EN`.
@@ -103,15 +105,14 @@ uses the same 16 kHz / left / GPIO19/20 recipe and documents that
 deep-sleep wake remuxes those pins back to USB-Serial-JTAG until the
 USB pad is disabled.
 
-Still open: a clean known-tone through the hole (not board coupling to
-the buzzer), slot A/B, hole vs waveform polarity, rail settle time
+Still open: slot A/B, hole vs waveform polarity, rail settle time
 after GPIO38 rises, and USB-Serial-JTAG pad reclaim after deep-sleep
 wake (third-party notes say disable the pad before PDM RX).
 
-- Record a known tone with ESP32-S3 PDM RX; note rate, slot, and which
-  way the hole faces vs the waveform. Time GPIO38 high to first valid
-  window. After a deep-sleep wake, confirm whether PDM works only once
-  the USB pad is disabled. Confirmed with those at high fidelity.
+- Note slot A vs B and which way the hole faces vs the waveform.
+  Time GPIO38 high to first valid window. After a deep-sleep wake,
+  confirm whether PDM works only once the USB pad is disabled.
+  Confirmed with those at high fidelity.
 
 ### nyc-panel-glass
 

@@ -55,6 +55,11 @@ static DRAW: ConstStaticCell<[u8; display::PLANE_BYTES]> =
 static TX: ConstStaticCell<[u8; display::PLANE_BYTES]> =
     ConstStaticCell::new([0; display::PLANE_BYTES]);
 
+#[cfg(all(feature = "spi20", feature = "mic"))]
+compile_error!("do not combine spi20 with mic");
+#[cfg(all(feature = "spi20", feature = "radio"))]
+compile_error!("do not combine spi20 with radio");
+
 #[cfg(feature = "spi20")]
 const SPI_HZ: u32 = 20_000_000;
 #[cfg(not(feature = "spi20"))]

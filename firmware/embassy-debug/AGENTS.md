@@ -22,6 +22,7 @@ Live-ask, never-erase, and flash I/O: root
 - MicroSD: CS idle-high on the default image. `--features sd` is
   read-only identify plus a FAT root list and one `ReadOnly` file
   read. No writes, no CID product serial, no file contents on UART.
+  Do not combine with `mic` or `radio` (`compile_error!`).
 - Gauge: default image does not use it. `--features charge` reads
   `Current()` for the `ce` lines only. No unseal, no data-memory
   writes.
@@ -42,6 +43,7 @@ Live-ask, never-erase, and flash I/O: root
   legend / tones; OTP 1-bit shapes. No `0x32` LUT, no Lotus `0x21`.
   Default clock is board `SPI_MAX_HZ` (10 MHz). `--features spi20`
   clocks the panel at 20 MHz; UART prints `spi=20000000`.
+  Do not combine `spi20` with `mic` or `radio` (`compile_error!`).
 - Microphone: default image leaves `MicRail` disabled. `--features mic`
   enables the rail and I2S PDM RX (16 kHz mono left; energy is live
   on a physical unit and does not close nyc-mic-pdm). AI Voice dumps

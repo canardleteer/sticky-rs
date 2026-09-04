@@ -161,11 +161,12 @@ GPIO0.
 
 Sleep: GPIO hold + `Ext1WakeupSource` on GPIO4 ANY_LOW. Rails in
 [power-and-sleep.md](../../seeed-sticky-hardware/references/power-and-sleep.md).
-embassy-debug: a failed sleep-card paint stays awake (`EPD_EN` on; do
+embassy-debug: a failed Ferris-off paint stays awake (`EPD_EN` on; do
 not signal parked). A failed `DeepSleepMode` write holds `EPD_EN`
-high and then MCU-sleeps. This image does not deinit Wi-Fi/BLE
-before `sleep_deep`; active scan still transmits. Firmware evidence
-of intent, not an electrical measurement.
+high and then MCU-sleeps. Page Down 5 s is the named
+`Latch::release` path (not sleep). This image does not deinit
+Wi-Fi/BLE before `sleep_deep`; active scan still transmits.
+Firmware evidence of intent, not an electrical measurement.
 
 Shared SPI: `embedded-hal-bus` or `embassy-embedded-hal` — one mutex, two
 `SpiDevice`s.
@@ -213,15 +214,22 @@ Load a custom image only after a factory original exists, with
 `firmware/simple-debug` (blocking `esp-hal` latch + I2C facts + UART
 heartbeat of raw levels; host-tested line format in `crates/simple-debug`)
 and `firmware/embassy-debug` (Embassy log task, buttons, GT911 INT-low
-`touch n=5`, IMU every 5 s, `gt911 st=` every 10 s, buzzer, panel;
-host-tested lines and `IdleListen` in `crates/embassy-debug`).
-`--features pair` advertises `sticky-rs` (DisplayOnly passkey, RAM
-bonds this boot). UART tokens are `pair pin=`, `pair ok`, and
-`pair fail=` — never a MAC or eFuse. Pairing success is **not
-measured**. `trouble-host` 0.7 still needs the `central` feature so
-`GAP_SERVICE_ATTRIBUTE_COUNT` exists. Offer a phone sit first; a
-host `bluetoothctl` self-diagnostic is allowed only when the human
-asked for that live sit
+`touch n=5`, IMU every 5 s, `gt911 st=` every 10 s, buzzer, panel
+cards that follow the in-plane hold, host-tested lines and
+`IdleListen` in `crates/embassy-debug`).
+Default embassy-debug includes `pair`. Advertise `sticky-rs`
+(DisplayOnly passkey, RAM bonds this boot) **only while the pair
+card is showing**. UART tokens are `pair pin=`, `pair ok`, and
+`pair fail=` — never a MAC or eFuse. Pairing success is
+**confirmed on a physical unit** (host BlueZ Connect, UART
+`pair pin=` then `pair ok`, pair card showed `Paired`). Exclusive
+sits (`mic` / `radio` / `charge` / `sd`) build with
+`--no-default-features`. `trouble-host` 0.7 still needs the
+`central` feature so `GAP_SERVICE_ATTRIBUTE_COUNT` exists. Offer
+a phone sit first; a host BlueZ self-diagnostic is allowed only
+when the human asked for that live sit. Connect only — do not
+call BlueZ `Pair()` / `bluetoothctl pair` (SMP Security Request
+race). `btleplug` cannot enter the passkey.
 ([embassy-debug AGENTS.md](../../../../firmware/embassy-debug/AGENTS.md#bluetooth-pairing-verification-workflow)).
 
 ## Datasheet catalog vs crates
@@ -263,5 +271,5 @@ In this repository, prefer the workspace crates and the verdicts in
 | Buzzer | LEDC (`esp-hal` or IDF LEDC) | GPIO48 starts low. Chirp vs long tone are `BUZZER_CHIRP_MS` (80) vs `BUZZER_TONE_MS` (400) |
 | MicroSD | `embedded-sdmmc` | Init ≤ 400 kHz. CS arbitration is the application’s job |
 | PDM mic | I2S PDM RX | GPIO38 enable. GPIO19/20 are USB-Serial-JTAG pads: disable the USB pad after deep-sleep wake before attaching PDM. Working ESPHome recipe (16 kHz, left) in [sensors.md](../../seeed-sticky-hardware/references/sensors.md#pdm-microphone); not a crate |
-| Wi-Fi / BLE | `esp-radio` or `esp-idf-svc` | `--features pair`: DisplayOnly, advertise `sticky-rs`, RAM bonds, UART `pair pin=` / `pair ok` / `pair fail=` (never a MAC). `trouble-host` 0.7 needs `central` for `GAP_SERVICE_ATTRIBUTE_COUNT`. Radios stay up until reset |
+| Wi-Fi / BLE | `esp-radio` or `esp-idf-svc` | Default embassy-debug `pair`: DisplayOnly, advertise `sticky-rs` only on the pair card, RAM bonds, UART `pair pin=` / `pair ok` / `pair fail=` (never a MAC). On a physical unit: host BlueZ Connect + UART PIN completed SMP (`pair ok`, pair card `Paired`). Do not BlueZ `Pair()` while `request_security()` is in flight. `trouble-host` 0.7 needs `central` for `GAP_SERVICE_ATTRIBUTE_COUNT`. Controller stays up; advertise stops off that card |
 | Graphics | `embedded-graphics` | Host simulator without a physical panel |

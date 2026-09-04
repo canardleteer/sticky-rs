@@ -56,8 +56,8 @@ configurations (pull-ups, input modes), stack buffer usage, and
 reset cycles. Ground descriptions in authoritative terminology from
 *The Embedded Rust Book* and *The Rust on ESP Book*.
 
-This image has no BLE pair path. Pairing lives on
-`embassy-debug --features pair`.
+This image has no BLE pair path. Pairing lives on default
+`embassy-debug` (`scene=pair`).
 
 ## Agent Documentation Standards
 

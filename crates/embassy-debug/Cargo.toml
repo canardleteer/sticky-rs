@@ -14,7 +14,7 @@ categories.workspace = true
 
 [features]
 default = []
-# Fifth scene and `pair` UART lines. Enabled by embassy-debug-fw `--features pair`.
+# Fifth scene and `pair` UART lines. Default embassy-debug-fw enables this.
 pair = []
 
 [dev-dependencies]

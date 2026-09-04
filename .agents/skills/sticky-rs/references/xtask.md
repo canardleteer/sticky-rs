@@ -27,7 +27,7 @@ live in
 | `learn-uart-only` | yes | Same session as `learn-uart`, only named groups: `touch`, `buttons`, `vbus`, `imu`, `sd` (positional and/or `--only`). Example: `learn-uart-only touch --image FILE --yes --restore-app0` |
 | `diff-learn-uart` | no | Host-only compare of two YAML reports or factory serials. Default paste uses `UNIT_A` / `UNIT_B`; `--show-serials` prints serials locally |
 | `vet-idle-log` | no | Host-only. `--embassy FILE` or `--simple FILE` from `monitor --output`. Checks unattended tokens (latch, GT911 dance / `0x5D`, idle `imu=` / `gt911 st=`, or simple-debug heartbeat + SHT/RTC). Does not open a UART |
-| `build-fw` | no | Host-only. `cargo +esp build -p <fw> --profile release-fw --target xtensa-esp32s3-none-elf -Zbuild-std=core,alloc --locked` then `espflash save-image` (no port). IMAGE is `simple-debug` or `embassy-debug`. `--features operator` on simple-debug; `--features mic`, `radio`, `pair`, `spi20`, `sd`, or `charge` on embassy-debug. ELF and `.bin` under workspace `target/xtensa-esp32s3-none-elf/release-fw/` |
+| `build-fw` | no | Host-only. `cargo +esp build -p <fw> --profile release-fw --target xtensa-esp32s3-none-elf -Zbuild-std=core,alloc --locked` then `espflash save-image` (no port). IMAGE is `simple-debug` or `embassy-debug`. Default embassy-debug includes `pair` (advertise only on that card). `--features operator` on simple-debug; `--features mic`, `radio`, `pair`, `spi20`, `sd`, or `charge` on embassy-debug. Exclusive sits (`mic` / `radio` / `charge` / `sd`) pass `--no-default-features`. ELF and `.bin` under workspace `target/xtensa-esp32s3-none-elf/release-fw/` |
 | `ci` | no | Host-only CI gate. `cargo fmt --check --all`; host clippy+test (default-members, `--all-features`, `ssd1677-gray4 --no-default-features`); `cargo +esp` clippy for `simple-debug-fw` (default and `operator`) and `embassy-debug-fw` (default, `mic`, `radio`, `pair`, `spi20`, `sd`, and `charge`); then `rumdl check`, `cargo machete`, `cargo audit`. Missing extra tools print `cargo install …` and fail. Does not open a UART and does not refuse leftover `backups/` |
 | `monitor` | yes | UART0 listen. Flags below; not nested subcommands. Pair with `flash-app` / `restore-factory-firmware` / `confirm-factory-firmware` |
 
@@ -75,8 +75,10 @@ not flash, restore, or compile. Hold the [UART session lock](#uart-session-lock-
 for the whole listen. Default listen claims the CH343 over USB CDC so
 Linux `cdc-acm` never opens the ACM TTY (that open asserts DTR+RTS and
 pulses EN / `POWERON`). Baud is 115200. Needs write access on the usbfs
-node (`/dev/bus/usb/…`); a udev rule for `1a86:55d3` in group `dialout`
-is enough. `--acm-tty` is the old TTY path (embassy will reboot).
+node (`/dev/bus/usb/…`). A udev rule for `1a86:55d3` in group `dialout`
+must live in `/etc/udev/rules.d/` (a file in `/etc/udev/` is ignored);
+reload rules, then a USB replug (POWERON). `--acm-tty` is the old TTY
+path (embassy will reboot).
 Ctrl-C reattaches `cdc-acm` so the next live command can see the TTY.
 `CdcListen::open` must also reattach if the first interface claim
 succeeds and the listen then fails (`ClaimedIfaces`; Drop is the

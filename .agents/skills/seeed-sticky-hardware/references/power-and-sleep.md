@@ -120,7 +120,14 @@ Sleep current: [nyc-sleep-current](../resources/not-yet-confirmed.md#nyc-sleep-c
 Which keys request sleep is application policy (top-button hold vs
 both side keys). Electrically, GPIO4 is the stock/docs `ext1`
 **ANY_LOW** wake pin; GPIO5/6 are ordinary active-low keys and can
-use the same path. In-repo default `embassy-debug` (2026-08-30,
+use the same path. In-repo default `embassy-debug` now: Page Up
+**2 s** panel standby (sit until Page Up 1 s), Page Up **5 s** MCU
+deep sleep (Ferris, then park; the same hold can enter standby
+first), wake on GPIO5 `ext1` ANY_LOW, Page Up **1 s** to restore
+Ferris, Page Down **5 s** `Latch::release`. Power-on after that
+cut is USB-C plug (firmware latches at boot) or the stock ~3 s
+AI Voice hold. The sit below is the earlier 4 s / sleep-card
+image. In-repo default `embassy-debug` (2026-08-30,
 USB-C down, no `charge`): hold Page Down 4 s paints a sleep card,
 UART `scene=sleeping` then `embassy-debug: sleeping`, factory
 bootloader `rst:0x5 (DSLEEP)`. Wake is GPIO6 ANY_LOW. Hold 1 s

@@ -15,22 +15,25 @@ On the unit:
 
 - Cold boot paints a portrait splash (USB-C down) or a landscape
   splash (USB-C right / left) so Ferris and `sticky-rs` stay upright.
-  FaceUp / FaceDown keep the last in-plane page.
+  Shapes, legend, tones, pair, and the Ferris off-screen follow that
+  same hold. FaceUp / FaceDown keep the last in-plane page. Tilt after
+  walking pages: the current card should stay readable.
 - Default image: AI Voice / Page Up / Page Down (right-edge top /
   middle / bottom) walk splash → shapes → legend → four-tone OTP gray
-  boxes. `--features mic`: AI Voice dumps PCM and does not play the
+  boxes → pair. `--features mic`: AI Voice dumps PCM and does not play the
   buzzer or change the page. Page Up / Page Down still walk
   the drawings. `--features radio`: Wi-Fi and BLE scan together on the
   on-board antenna; keys still walk the drawings. Do not combine
   `mic` and `radio` in one image for a desk test.
-  `--features pair`: BLE advertise `sticky-rs` and a DisplayOnly
-  passkey card (Page Up / Page Down walk to that fifth page). Do
-  not combine `pair` with `mic`, `radio`, `charge`, or `sd`.
+  Default image includes a DisplayOnly passkey card (Page Up /
+  Page Down walk to `scene=pair`). BLE advertises `sticky-rs` only
+  on that card. Do not combine `pair` with `mic`, `radio`,
+  `charge`, or `sd`.
   `--features spi20` clocks the panel at 20 MHz (`spi=20000000`);
   default stays 10 MHz. `--features sd` runs a read-only card
   identify (`sd cd=`, `sd hz=` / `ack`); no writes. `--features
   charge` pulses `/CE` for ≤ 2 s when USB is present after a cold
-  boot or a 1 s Page Down resume hold, then parks. A wake that
+  boot or a 1 s Page Up resume hold, then parks. A wake that
   re-sleeps does not pulse `/CE`.
   Do not combine `spi20` / `sd` / `charge` with `mic` or `radio`.
   Do not combine `charge` with `sd`.
@@ -39,21 +42,28 @@ On the unit:
   unit through `n=5`).
 - Page Up under 2 s walks to the previous drawing. Hold 2 s to
   send panel `standby()` on the **current** card (`EPD_EN` stays
-  high). UART prints `standby` at once (BUSY may stay high). After
-  a 2 s look, stock `resume()` (`0xC0`) and `ENABLE_CLOCK`
-  (`0x80`) left `busy=1` on this unit. The image then pulses RST,
-  OTP-inits, prints `epd resume rst` then `resume`, and redraws
-  the same `scene=`. That is not MCU deep sleep and not RAM-keep
-  resume.
-- Page Down under 4 s walks to the next drawing. Hold 4 s to sleep:
-  the glass shows "sleeping, hold page down to resume", UART prints
-  `scene=sleeping` then `embassy-debug: sleeping`, and UART0 goes
-  quiet. The CH343 stays enumerated (the board does not drop USB).
-  Hold Page Down about 1 s to wake the **same** page. A shorter press
-  after wake goes back to sleep without painting. Recessed Reset or
-  unplug/replug USB starts at splash. Listen with
-  `cargo xtask monitor` **without** `--acm-tty`. `--acm-tty` pulses
-  EN and is a POWERON, not a resume.
+  high). UART prints `standby` at once (BUSY may stay high). The
+  sit stays until you hold Page Up about 1 s (resume) or 5 s
+  (MCU sleep). The same hold can do 2 s then 5 s. Stock
+  `resume()` (`0xC0`) and `ENABLE_CLOCK` (`0x80`) left `busy=1`
+  on this unit. The image then pulses RST, OTP-inits, prints
+  `epd resume rst` then `resume`, and redraws the same `scene=`.
+  That is not MCU deep sleep and not RAM-keep resume.
+- Page Up hold 5 s sleeps: the glass shows Ferris (`sticky-rs`
+  splash), UART prints `scene=sleeping` then `embassy-debug:
+  sleeping`, and UART0 goes quiet. The CH343 stays enumerated
+  (the latch stays high; the board does not drop USB). Hold
+  Page Up about 1 s to wake Ferris. A shorter press after wake
+  goes back to sleep without painting. Listen with
+  `cargo xtask monitor` **without** `--acm-tty`. `--acm-tty`
+  pulses EN and is a POWERON, not a resume.
+- Page Down under 5 s walks to the next drawing. Hold 5 s to
+  power off: Ferris, then `embassy-debug: t=… poweroff` and
+  `embassy-debug: poweroff`, then the latch drops. That is not
+  sleep. Power-on is plug USB-C (the image latches at boot) or
+  the stock ~3 s hold of AI Voice. Recessed Reset or
+  unplug/replug USB is a POWERON (splash) when a rail is
+  already present.
 
 Agent / toolchain:
 
@@ -353,7 +363,8 @@ not treat a successful scan as a license to write NVS or print a MAC.
 
 ## Pair Test Instructions
 
-Default `embassy-debug` does not start BLE. This feature advertises
+Default `embassy-debug` starts BLE but advertises `sticky-rs` only
+while the pair card is showing. Walking to that page advertises
 as `sticky-rs` and shows a six-digit passkey only after a phone
 starts pairing. Bonds stay in RAM for this boot. The image does
 not write factory NVS and does not print a MAC. The MCU walkthrough
@@ -384,7 +395,7 @@ Run `detect-connected` again.
 
 ```shell
 . $HOME/export-esp.sh
-cargo xtask build-fw embassy-debug --features pair
+cargo xtask build-fw embassy-debug
 cargo xtask flash-app --image target/xtensa-esp32s3-none-elf/release-fw/embassy-debug.bin --yes
 cargo xtask monitor
 ```
@@ -400,12 +411,15 @@ once (same as Step 1).
 ### Step 3: Open the pair card
 
 You should still see `embassy-debug: latched` and the usual `btn` /
-`touch` / `imu=` lines. Default pages are still splash → shapes →
-legend → tones. Press Page Down until UART prints `scene=pair`.
+`touch` / `imu=` lines. There is no `pair advertise` yet. Pages
+are splash → shapes → legend → tones → pair. Press Page Down
+until UART prints `scene=pair`, then `pair advertise sticky-rs`.
 
-The glass should show a large `sticky-rs`, then `Settings,`,
-`Bluetooth,`, and `then sticky-rs`. There is no PIN yet. The
-six-digit PIN, when it appears, is the same large size.
+The glass should show `BLUETOOTH PAIRING`, `Device: sticky-rs`,
+empty PIN boxes, and a short how-to. There is no PIN yet. Tilt
+the card: this page stays upright like splash. When the six
+digits appear they sit in those boxes (`FONT_10X20`, not a
+3× scale).
 
 Right-edge keys still change the page. AI Voice is not a pair
 confirm.
@@ -447,8 +461,9 @@ If BLE never starts, you should see `pair fail=ble_start` (or
 - **Fail**: hang, panic, a PIN before you tap the phone, or a
   `pair` line that includes a MAC.
 
-This image exists; pairing is **not measured** on a physical unit
-until someone records that sit.
+On a physical unit a host BlueZ Connect typed the UART passkey:
+`pair ok`, and the pair card showed `Paired`. A phone Settings
+sit is still a valid second path.
 
 ## Charge Test Instructions
 
@@ -457,7 +472,7 @@ feature is an attended sit for
 [`nyc-charge-stat`](../../.agents/skills/seeed-sticky-hardware/resources/not-yet-confirmed.md#nyc-charge-stat):
 print parked STAT / VBUS / gauge current, enable `/CE` for two
 seconds only when GPIO9 is high, print STAT and `i=`, then park
-again. A cold boot or a 1 s Page Down resume hold repeats that
+again. A cold boot or a 1 s Page Up resume hold repeats that
 pulse. A wake that re-sleeps does not. Do not leave it as a daily
 driver. Do not combine with `mic`, `radio`, `pair`, or `sd`.
 

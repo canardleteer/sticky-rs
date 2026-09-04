@@ -36,6 +36,12 @@ embassy-debug: ce skip no-vbus
 embassy-debug: t=1204 pair pin=000042
 embassy-debug: t=1800 pair ok
 embassy-debug: t=2100 pair fail=ble_start
+embassy-debug: t=13 standby
+embassy-debug: t=15 resume
+embassy-debug: t=9 scene=sleeping
+embassy-debug: sleeping
+embassy-debug: t=17 poweroff
+embassy-debug: poweroff
 ```
 
 [`IdleListen`] vets an unattended `monitor` capture (boot dance, idle
@@ -53,8 +59,11 @@ dumps two windows and does not play the buzzer
 ([`PCM_DUMP_NO_TONE_HZ`] is `hz=0`).
 The `wifi` and `ble` lines are printed only by the `--features radio`
 image (SSID / local name and RSSI; never a MAC or BSSID). The `pair`
-lines are printed only by the `--features pair` image (a six-digit
-passkey or `ok` / `fail=`; never a MAC). The `sd`
+lines are printed by the default embassy-debug image while the pair
+card is showing (a six-digit passkey or `ok` / `fail=`; never a MAC).
+On a physical unit a host central typed the UART passkey and UART
+printed `pair ok`.
+The `sd`
 lines are printed only by `--features sd` (read-only identify and FAT
 list; never a CID product serial or file contents). The `ce` lines are
 printed only by `--features charge` (a ≤ 2 s `/CE` pulse when VBUS is

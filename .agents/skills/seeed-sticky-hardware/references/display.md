@@ -73,6 +73,11 @@ ESPHome `mirror_x` only:
 
 IMU-driven UI rotation is a logical-canvas concern: keep the physical
 framebuffer mapping fixed, then rotate drawing/touch into page axes.
+embassy-debug composes splash, shapes, legend, tones, pair, and the
+sleep card in that page (480×800 or 800×480) and maps through
+`page_to_framebuffer`. FaceUp / FaceDown keep the last in-plane page.
+That is firmware intent. The sit below measured splash only.
+
 2026-08-30, embassy-debug splash, glass facing the operator:
 
 | USB-C | UART | Splash |
@@ -117,6 +122,9 @@ Refresh is expensive; the panel holds pixels without power.
   Table 7-1 `0x80` left `busy=1`. Recovery was hardware reset +
   OTP init + redraw (`epd resume rst`). That is not RAM-keep
   resume. The MCU stayed awake (`imu=` / `gt911` continued).
+  Current embassy-debug keeps that sit until Page Up 1 s (or
+  Page Up 5 s sleep / Page Down 5 s latch off). The 2 s look
+  auto-resume is no longer the policy.
 
 Seeed’s open `seeed_epaper` SSD1677 driver and stock `reterminal_template`
 agree on that OTP path. They do **not** write a 105-byte LUT. A FreeInk MCU

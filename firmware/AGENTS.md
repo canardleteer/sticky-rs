@@ -24,7 +24,7 @@ excludes `simple-debug-fw` and `embassy-debug-fw`.
 | Path | Stack | Status |
 | --- | --- | --- |
 | `simple-debug/` | blocking `esp-hal` | Member. Latch, park hazards, I2C facts, UART heartbeat. No Embassy. `--features operator` for `learn-uart` |
-| `embassy-debug/` | `esp-hal` + Embassy | Member. Panel always on. Default image is keys / glass / IMU / splash. `mic` / `radio` / `pair` / `sd` / `charge` / `spi20` are opt-in and exclusive where the package `AGENTS.md` says so. Pair verification (phone or host `bluetoothctl`): [embassy-debug/AGENTS.md](embassy-debug/AGENTS.md#bluetooth-pairing-verification-workflow) |
+| `embassy-debug/` | `esp-hal` + Embassy | Member. Panel always on. Default image is keys / glass / IMU / oriented cards / pair (advertise only on that card). `mic` / `radio` / `sd` / `charge` / `spi20` are opt-in and exclusive where the package `AGENTS.md` says so. Pair verification (phone or host BlueZ Connect): [embassy-debug/AGENTS.md](embassy-debug/AGENTS.md#bluetooth-pairing-verification-workflow) |
 
 Envelope for every image:
 

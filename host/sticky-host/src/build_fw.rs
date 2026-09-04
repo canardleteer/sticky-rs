@@ -40,6 +40,9 @@ pub struct BuildFwArgs {
     /// Which firmware package to build.
     pub image: FirmwareImage,
     /// Cargo features on that package (`operator` on simple-debug).
+    ///
+    /// Embassy-debug defaults to `pair`. Exclusive sits (`mic` /
+    /// `radio` / `charge` / `sd`) add `--no-default-features`.
     pub features: Vec<String>,
     /// `true` is `--profile release-fw` (the documented default).
     pub release: bool,
@@ -73,6 +76,11 @@ pub fn build_fw(repo_root: &Path, args: &BuildFwArgs) -> Result<BuildFwOutput, E
         .arg("-Zbuild-std=core,alloc");
     if args.release {
         cargo.arg("--profile").arg("release-fw");
+    }
+    if args.image == FirmwareImage::EmbassyDebug
+        && embassy_debug_needs_no_default_features(&args.features)
+    {
+        cargo.arg("--no-default-features");
     }
     if !args.features.is_empty() {
         cargo.arg("--features").arg(args.features.join(","));
@@ -126,4 +134,41 @@ pub fn build_fw(repo_root: &Path, args: &BuildFwArgs) -> Result<BuildFwOutput, E
     }
 
     Ok(BuildFwOutput { elf, bin })
+}
+
+/// Cargo features that cannot share a binary with default `pair`.
+pub const EMBASSY_DEBUG_EXCLUSIVE_OF_PAIR: &[&str] = &["mic", "radio", "charge", "sd"];
+
+/// Whether `build-fw` / firmware clippy must pass `--no-default-features`.
+#[must_use]
+pub fn embassy_debug_needs_no_default_features(features: &[String]) -> bool {
+    features
+        .iter()
+        .any(|feature| EMBASSY_DEBUG_EXCLUSIVE_OF_PAIR.contains(&feature.as_str()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn exclusive_sits_drop_default_pair() {
+        assert!(embassy_debug_needs_no_default_features(
+            &["mic".to_string()]
+        ));
+        assert!(embassy_debug_needs_no_default_features(&[
+            "radio".to_string()
+        ]));
+        assert!(embassy_debug_needs_no_default_features(&[
+            "charge".to_string()
+        ]));
+        assert!(embassy_debug_needs_no_default_features(&["sd".to_string()]));
+        assert!(!embassy_debug_needs_no_default_features(&[
+            "pair".to_string()
+        ]));
+        assert!(!embassy_debug_needs_no_default_features(&[
+            "spi20".to_string()
+        ]));
+        assert!(!embassy_debug_needs_no_default_features(&[]));
+    }
 }

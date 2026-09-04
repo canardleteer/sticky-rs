@@ -130,8 +130,12 @@ well over a hundred advertisements and a few unique local names
 (plus `name=?` when the ad had no name). Printed SSID RSSI ran from
 the high −40s to the mid −90s. Scan only: no STA join, no BLE
 connect, no MAC or BSSID on UART. Not an NYC pin.
-embassy-debug `--features pair` exists (advertise `sticky-rs`,
-DisplayOnly passkey, RAM bonds). On a physical unit: UART printed
-`scene=pair`, then `pair pin=` (six digits), then `pair fail=pairing`.
-Advertisement and passkey display worked. Pairing success is **not
-measured**.
+Default embassy-debug includes pair (advertise `sticky-rs` only on
+`scene=pair`, DisplayOnly passkey, RAM bonds). On a physical unit
+(earlier `--features pair` image): UART printed `scene=pair`, then
+`pair pin=` (six digits), then `pair fail=pairing`. Advertisement
+and passkey display worked. On a later default-image sit a host
+BlueZ **Connect** (not `Pair()`) typed a new UART `pair pin=` and
+completed SMP: `pair ok`, host `Paired` / `Connected`, pair card
+showed `Paired`. A concurrent BlueZ `Pair()` raced the image’s
+SMP Security Request (`0x0B`) and canceled.

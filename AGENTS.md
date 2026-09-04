@@ -77,23 +77,31 @@ repo-root `backups/`.
 
 ## Bluetooth testing options
 
-When testing Bluetooth pairing on `embassy-debug-fw --features pair`,
-always offer the human the option to test with their own personal
-devices (for example a smartphone). If the host environment has an
-available, unblocked Bluetooth controller (for example via BlueZ
-`bluetoothctl`), agents may also offer an automated host
+When testing Bluetooth pairing on default `embassy-debug-fw` (walk
+to `scene=pair` so it advertises), always offer the human the
+option to test with their own personal devices (for example a
+smartphone). Pairing success is **confirmed on a physical unit**
+(host BlueZ Connect, UART `pair pin=` then `pair ok`, pair card
+showed `Paired`). If the host has an available, unblocked
+Bluetooth controller, agents may also offer an automated host
 self-diagnostic when the human **explicitly asked** for that sit
-in that message: listen with `cargo xtask monitor` (not
-`--acm-tty`), extract the generated PIN from the UART stream
-(`pair pin=`), submit it to complete authentication, and ask the
-human to visually confirm that the identical PIN was rendered on
-the e-paper panel. UART tokens stay `pair pin=`, `pair ok`, and
-`pair fail=` — never a MAC. This host-driven pathway enables
-fast agent self-diagnostics while preserving manual testing
-flexibility. Step-by-step:
+in that message.
+
+On Linux (BlueZ): listen with `cargo xtask monitor` (not
+`--acm-tty`), scan for advertise name `sticky-rs`, **Connect**
+(do not call BlueZ `Device1.Pair()` / `bluetoothctl pair` — that
+races the image’s SMP Security Request and cancels), wait for a
+**new** UART `pair pin=`, submit those six digits through a
+KeyboardOnly agent `RequestPasskey` without blocking the D-Bus
+loop, then look for `pair ok` and ask the human to confirm the
+same PIN and `Paired` on the pair card. Never a MAC. Stop LE
+discovery before Connect. There is no portable native Rust crate
+that can enter that passkey (`btleplug` is GATT-only). A Linux
+xtask would wrap BlueZ (`bluer` or D-Bus), not `bluetoothctl`.
+Step-by-step:
 [firmware/embassy-debug/AGENTS.md](firmware/embassy-debug/AGENTS.md#bluetooth-pairing-verification-workflow).
-Do not run `bluetoothctl` (or any other host BLE central) against
-the unit unless that live ask is present.
+Do not run a host BLE central against the unit unless that live
+ask is present.
 
 ## Keep skills updated
 

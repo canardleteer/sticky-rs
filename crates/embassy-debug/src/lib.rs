@@ -46,10 +46,11 @@ pub const TONE_DUMP_WINDOWS: u32 = 2;
 /// Wi-Fi / BLE scan period, in seconds (`--features radio` image).
 pub const RADIO_REPORT_SECS: u32 = 10;
 
-/// BLE advertise name on `--features pair` (`Complete Local Name`).
+/// BLE advertise name (`Complete Local Name`) while the pair card is showing.
 ///
 /// Nine ASCII bytes so it fits a 31-byte adv payload with flags.
 /// UART and the idle pair card print the same string. Not a MAC.
+/// The image does not advertise on splash / shapes / legend / tones.
 #[cfg(feature = "pair")]
 pub const PAIR_ADV_NAME: &str = "sticky-rs";
 
@@ -110,9 +111,9 @@ pub enum ImuPose {
     Landscape0,
     /// USB-C on the left short edge.
     Landscape180,
-    /// Lying face up. Embassy-debug still draws the USB-down portrait page.
+    /// Lying face up. Embassy-debug keeps the last in-plane page.
     FaceUp,
-    /// Lying face down. Embassy-debug still draws the USB-down portrait page.
+    /// Lying face down. Embassy-debug keeps the last in-plane page.
     FaceDown,
 }
 
@@ -145,18 +146,23 @@ pub struct TouchPoint {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Scene {
     /// Cold-boot title card: Ferris, `sticky-rs`, then a smaller hint.
-    /// Drawn USB-down portrait (also used for FaceUp / FaceDown).
+    /// Composed in the current in-plane page (FaceUp / FaceDown keep the last).
     Splash,
-    /// Geometric shapes.
+    /// Geometric calibration (nested frames, Koch snowflake, triangle, rect).
+    /// Composed in the current in-plane page.
     Shapes,
-    /// Button legend.
+    /// Document-style key / value legend for this enclosure.
+    /// Composed in the current in-plane page.
     Legend,
     /// Four boxes, one OTP gray level each.
+    /// Composed in the current in-plane page.
     Tones,
     /// BLE pair card (`--features pair` image).
     ///
-    /// Walk splash → shapes → legend → tones → here. Idle is a how-to;
-    /// the PIN appears only after `PassKeyDisplay`.
+    /// Walk splash → shapes → legend → tones → here. Advertise only
+    /// while this card is showing. Idle is a how-to with empty PIN
+    /// boxes; the digits appear only after `PassKeyDisplay`.
+    /// Composed in the current in-plane page.
     #[cfg(feature = "pair")]
     Pair,
 }
@@ -295,95 +301,137 @@ impl Scene {
     }
 }
 
-/// How long Page Down must stay low to request deep sleep, in milliseconds.
-pub const PAGE_DOWN_SLEEP_MS: u32 = 4_000;
-
-/// How long Page Down must stay low after a deep-sleep wake to resume, in
-/// milliseconds.
-pub const PAGE_DOWN_RESUME_MS: u32 = 1_000;
-
-/// How long Page Up must stay low to run panel standby then resume, in
-/// milliseconds.
+/// How long Page Up must stay low to enter panel standby, in milliseconds.
+///
+/// The same hold can continue to [`PAGE_UP_SLEEP_MS`].
 pub const PAGE_UP_STANDBY_MS: u32 = 2_000;
 
-/// How long the glass sits after panel `standby()` so a human can
-/// confirm the last card stayed.
-pub const STANDBY_LOOK_MS: u32 = 2_000;
+/// How long Page Up must stay low to request MCU deep sleep, in milliseconds.
+///
+/// Embassy-debug paints Ferris (splash) first, then parks the panel.
+/// Latch stays high. USB stays enumerated.
+pub const PAGE_UP_SLEEP_MS: u32 = 5_000;
 
-/// Page Down hold while awake: short press versus sleep request.
+/// How long Page Up must stay low to leave standby or to stay awake after
+/// a deep-sleep wake, in milliseconds.
+pub const PAGE_UP_RESUME_MS: u32 = 1_000;
+
+/// How long Page Down must stay low to request latch power-off, in
+/// milliseconds.
+///
+/// This drops `PWR_HOLD` / `PWR_LOCK` (`Latch::release`), not MCU
+/// sleep. Power-on is USB-C plug or the stock ~3 s AI Voice hold.
+pub const PAGE_DOWN_POWER_OFF_MS: u32 = 5_000;
+
+/// Awake Page Up hold: short press, panel standby, or MCU sleep.
+///
+/// One hold can fire [`PageUpHold::RequestStandby`] at 2 s and then
+/// [`PageUpHold::RequestSleep`] at 5 s.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SleepHold {
-    /// Still low, under [`PAGE_DOWN_SLEEP_MS`].
-    Waiting,
-    /// Released before the sleep threshold.
-    Short,
-    /// Held through [`PAGE_DOWN_SLEEP_MS`].
-    RequestSleep,
-}
-
-/// Classifies an awake Page Down hold.
-#[inline]
-#[must_use]
-pub const fn classify_sleep_hold(held_ms: u32, still_low: bool) -> SleepHold {
-    if still_low {
-        if held_ms >= PAGE_DOWN_SLEEP_MS {
-            SleepHold::RequestSleep
-        } else {
-            SleepHold::Waiting
-        }
-    } else if held_ms < PAGE_DOWN_SLEEP_MS {
-        SleepHold::Short
-    } else {
-        SleepHold::RequestSleep
-    }
-}
-
-/// Page Down hold after `ext1` wake: resume versus go back to sleep.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ResumeHold {
-    /// Still low, under [`PAGE_DOWN_RESUME_MS`].
-    Waiting,
-    /// Held through [`PAGE_DOWN_RESUME_MS`].
-    Ready,
-    /// Released before the resume threshold.
-    Abort,
-}
-
-/// Page Up hold while awake: short press versus panel standby.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StandbyHold {
+pub enum PageUpHold {
     /// Still low, under [`PAGE_UP_STANDBY_MS`].
     Waiting,
     /// Released before the standby threshold.
     Short,
-    /// Held through [`PAGE_UP_STANDBY_MS`].
+    /// Crossed [`PAGE_UP_STANDBY_MS`], still under [`PAGE_UP_SLEEP_MS`].
     RequestStandby,
+    /// Held through [`PAGE_UP_SLEEP_MS`].
+    RequestSleep,
 }
 
 /// Classifies an awake Page Up hold.
 #[inline]
 #[must_use]
-pub const fn classify_standby_hold(held_ms: u32, still_low: bool) -> StandbyHold {
-    if still_low {
-        if held_ms >= PAGE_UP_STANDBY_MS {
-            StandbyHold::RequestStandby
-        } else {
-            StandbyHold::Waiting
-        }
-    } else if held_ms < PAGE_UP_STANDBY_MS {
-        StandbyHold::Short
+pub const fn classify_page_up_hold(held_ms: u32, still_low: bool) -> PageUpHold {
+    if held_ms >= PAGE_UP_SLEEP_MS {
+        PageUpHold::RequestSleep
+    } else if held_ms >= PAGE_UP_STANDBY_MS {
+        PageUpHold::RequestStandby
+    } else if still_low {
+        PageUpHold::Waiting
     } else {
-        StandbyHold::RequestStandby
+        PageUpHold::Short
     }
 }
 
-/// Classifies a post-wake Page Down hold.
+/// Page Up hold while the panel is already in standby.
+///
+/// Resume fires on release after [`PAGE_UP_RESUME_MS`] so the same hold
+/// can continue to [`PAGE_UP_SLEEP_MS`]. A release before 1 s stays in
+/// standby.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StandbyExitHold {
+    /// Still low, under [`PAGE_UP_SLEEP_MS`].
+    Waiting,
+    /// Released before the resume threshold. Stay in standby.
+    Abort,
+    /// Released after [`PAGE_UP_RESUME_MS`], still under [`PAGE_UP_SLEEP_MS`].
+    Resume,
+    /// Held through [`PAGE_UP_SLEEP_MS`].
+    RequestSleep,
+}
+
+/// Classifies a Page Up hold that started in panel standby.
+#[inline]
+#[must_use]
+pub const fn classify_standby_exit_hold(held_ms: u32, still_low: bool) -> StandbyExitHold {
+    if held_ms >= PAGE_UP_SLEEP_MS {
+        StandbyExitHold::RequestSleep
+    } else if still_low {
+        StandbyExitHold::Waiting
+    } else if held_ms >= PAGE_UP_RESUME_MS {
+        StandbyExitHold::Resume
+    } else {
+        StandbyExitHold::Abort
+    }
+}
+
+/// Page Up hold after `ext1` wake: resume versus go back to sleep.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResumeHold {
+    /// Still low, under [`PAGE_UP_RESUME_MS`].
+    Waiting,
+    /// Held through [`PAGE_UP_RESUME_MS`].
+    Ready,
+    /// Released before the resume threshold.
+    Abort,
+}
+
+/// Page Down hold while awake: short press versus latch power-off.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PowerOffHold {
+    /// Still low, under [`PAGE_DOWN_POWER_OFF_MS`].
+    Waiting,
+    /// Released before the power-off threshold.
+    Short,
+    /// Held through [`PAGE_DOWN_POWER_OFF_MS`].
+    RequestPowerOff,
+}
+
+/// Classifies an awake Page Down hold.
+#[inline]
+#[must_use]
+pub const fn classify_power_off_hold(held_ms: u32, still_low: bool) -> PowerOffHold {
+    if still_low {
+        if held_ms >= PAGE_DOWN_POWER_OFF_MS {
+            PowerOffHold::RequestPowerOff
+        } else {
+            PowerOffHold::Waiting
+        }
+    } else if held_ms < PAGE_DOWN_POWER_OFF_MS {
+        PowerOffHold::Short
+    } else {
+        PowerOffHold::RequestPowerOff
+    }
+}
+
+/// Classifies a post-wake Page Up hold.
 #[inline]
 #[must_use]
 pub const fn classify_resume_hold(held_ms: u32, still_low: bool) -> ResumeHold {
     if !still_low {
         ResumeHold::Abort
-    } else if held_ms >= PAGE_DOWN_RESUME_MS {
+    } else if held_ms >= PAGE_UP_RESUME_MS {
         ResumeHold::Ready
     } else {
         ResumeHold::Waiting
@@ -471,8 +519,13 @@ pub enum Event {
         /// How many events were discarded.
         dropped: u32,
     },
-    /// Sleep card is on the panel; MCU will enter deep sleep after release.
+    /// Ferris is on the panel; MCU will enter deep sleep after release.
     Sleeping {
+        /// Milliseconds since boot.
+        t_ms: u32,
+    },
+    /// Ferris is on the panel; latch will drop after the panel parks.
+    PowerOff {
         /// Milliseconds since boot.
         t_ms: u32,
     },
@@ -716,6 +769,9 @@ pub fn format_event<'a>(event: &Event, buf: &'a mut [u8]) -> Result<&'a str, For
         Event::Sleeping { t_ms } => {
             write_into(buf, format_args!("{LOG_PREFIX}: t={t_ms} scene=sleeping"))
         }
+        Event::PowerOff { t_ms } => {
+            write_into(buf, format_args!("{LOG_PREFIX}: t={t_ms} poweroff"))
+        }
         Event::Woke { t_ms } => write_into(buf, format_args!("{LOG_PREFIX}: t={t_ms} woke")),
         Event::Standby { t_ms } => write_into(buf, format_args!("{LOG_PREFIX}: t={t_ms} standby")),
         Event::Resumed { t_ms } => write_into(buf, format_args!("{LOG_PREFIX}: t={t_ms} resume")),
@@ -737,6 +793,11 @@ pub fn format_event<'a>(event: &Event, buf: &'a mut [u8]) -> Result<&'a str, For
 /// Writes `embassy-debug: sleeping` (MCU about to `sleep_deep`).
 pub fn format_sleeping(buf: &mut [u8]) -> Result<&str, FormatError> {
     write_into(buf, format_args!("{LOG_PREFIX}: sleeping"))
+}
+
+/// Writes `embassy-debug: poweroff` (latch about to drop).
+pub fn format_poweroff(buf: &mut [u8]) -> Result<&str, FormatError> {
+    write_into(buf, format_args!("{LOG_PREFIX}: poweroff"))
 }
 
 /// Integer RMS and peak of a PCM window. Empty window is `(0, 0)`.
@@ -1260,32 +1321,68 @@ mod tests {
     }
 
     #[test]
-    fn page_down_holds_classify_short_sleep_and_resume() {
-        assert_eq!(PAGE_DOWN_SLEEP_MS, 4_000);
-        assert_eq!(PAGE_DOWN_RESUME_MS, 1_000);
-        assert_eq!(classify_sleep_hold(20, true), SleepHold::Waiting);
-        assert_eq!(classify_sleep_hold(20, false), SleepHold::Short);
+    fn page_up_holds_classify_standby_then_sleep_and_resume() {
+        assert_eq!(PAGE_UP_STANDBY_MS, 2_000);
+        assert_eq!(PAGE_UP_SLEEP_MS, 5_000);
+        assert_eq!(PAGE_UP_RESUME_MS, 1_000);
+        assert_eq!(classify_page_up_hold(20, true), PageUpHold::Waiting);
+        assert_eq!(classify_page_up_hold(20, false), PageUpHold::Short);
         assert_eq!(
-            classify_sleep_hold(PAGE_DOWN_SLEEP_MS, true),
-            SleepHold::RequestSleep
+            classify_page_up_hold(PAGE_UP_STANDBY_MS, true),
+            PageUpHold::RequestStandby
         );
         assert_eq!(
-            classify_sleep_hold(PAGE_DOWN_SLEEP_MS, false),
-            SleepHold::RequestSleep
+            classify_page_up_hold(PAGE_UP_STANDBY_MS + 20, false),
+            PageUpHold::RequestStandby
+        );
+        assert_eq!(
+            classify_page_up_hold(PAGE_UP_SLEEP_MS, true),
+            PageUpHold::RequestSleep
+        );
+        assert_eq!(
+            classify_standby_exit_hold(20, true),
+            StandbyExitHold::Waiting
+        );
+        assert_eq!(
+            classify_standby_exit_hold(20, false),
+            StandbyExitHold::Abort
+        );
+        assert_eq!(
+            classify_standby_exit_hold(PAGE_UP_RESUME_MS, true),
+            StandbyExitHold::Waiting
+        );
+        assert_eq!(
+            classify_standby_exit_hold(PAGE_UP_RESUME_MS, false),
+            StandbyExitHold::Resume
+        );
+        assert_eq!(
+            classify_standby_exit_hold(PAGE_UP_RESUME_MS + 20, false),
+            StandbyExitHold::Resume
+        );
+        assert_eq!(
+            classify_standby_exit_hold(PAGE_UP_SLEEP_MS, true),
+            StandbyExitHold::RequestSleep
         );
         assert_eq!(classify_resume_hold(20, true), ResumeHold::Waiting);
         assert_eq!(classify_resume_hold(20, false), ResumeHold::Abort);
         assert_eq!(
-            classify_resume_hold(PAGE_DOWN_RESUME_MS, true),
+            classify_resume_hold(PAGE_UP_RESUME_MS, true),
             ResumeHold::Ready
         );
-        assert_eq!(PAGE_UP_STANDBY_MS, 2_000);
-        assert_eq!(STANDBY_LOOK_MS, 2_000);
-        assert_eq!(classify_standby_hold(20, true), StandbyHold::Waiting);
-        assert_eq!(classify_standby_hold(20, false), StandbyHold::Short);
+    }
+
+    #[test]
+    fn page_down_holds_classify_short_and_power_off() {
+        assert_eq!(PAGE_DOWN_POWER_OFF_MS, 5_000);
+        assert_eq!(classify_power_off_hold(20, true), PowerOffHold::Waiting);
+        assert_eq!(classify_power_off_hold(20, false), PowerOffHold::Short);
         assert_eq!(
-            classify_standby_hold(PAGE_UP_STANDBY_MS, true),
-            StandbyHold::RequestStandby
+            classify_power_off_hold(PAGE_DOWN_POWER_OFF_MS, true),
+            PowerOffHold::RequestPowerOff
+        );
+        assert_eq!(
+            classify_power_off_hold(PAGE_DOWN_POWER_OFF_MS, false),
+            PowerOffHold::RequestPowerOff
         );
     }
 
@@ -1312,10 +1409,18 @@ mod tests {
             line(&Event::Resumed { t_ms: 15 }),
             "embassy-debug: t=15 resume"
         );
+        assert_eq!(
+            line(&Event::PowerOff { t_ms: 17 }),
+            "embassy-debug: t=17 poweroff"
+        );
         let mut buf = [0u8; LINE_CAPACITY];
         assert_eq!(
             format_sleeping(&mut buf).unwrap(),
             "embassy-debug: sleeping"
+        );
+        assert_eq!(
+            format_poweroff(&mut buf).unwrap(),
+            "embassy-debug: poweroff"
         );
     }
 

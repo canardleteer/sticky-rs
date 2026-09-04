@@ -14,7 +14,9 @@
 //!   combine with `mic`, `radio`, `charge`, or `sd` (compile_error
 //!   below).
 //! - **DisplayOnly SMP.** The board shows a passkey; the phone types
-//!   it. Keys still walk pages. AI Voice is not a confirm.
+//!   it. Advertise only while [`embassy_debug::Scene::Pair`] is the
+//!   current card. Walking away stops advertising and drops a
+//!   connection. Keys still walk pages. AI Voice is not a confirm.
 //! - **RAM bonds this boot.** `HostResources` holds them. Do not write
 //!   factory NVS (RF cal and identity live there).
 //! - **Fixed random address.** Do not read or print the eFuse MAC.
@@ -40,10 +42,12 @@ compile_error!("do not combine pair with sd");
 use crate::{emit, now_ms};
 
 use core::cell::RefCell;
+use core::sync::atomic::{AtomicBool, Ordering};
 
 use bt_hci::cmd::le::{LeSetAdvData, LeSetAdvEnable, LeSetAdvParams, LeSetScanResponseData};
 use bt_hci::controller::ControllerCmdSync;
 use embassy_debug::{Event, PairFailWhy, PAIR_ADV_NAME, PAIR_FAIL_HOLD_MS};
+use embassy_futures::select::{select, Either};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::blocking_mutex::Mutex;
 use embassy_sync::signal::Signal;
@@ -84,6 +88,45 @@ pub static PAIR_VIEW: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 static CURRENT: Mutex<CriticalSectionRawMutex, RefCell<PairView>> =
     Mutex::new(RefCell::new(PairView::Idle));
 
+/// True only while the operator is on [`embassy_debug::Scene::Pair`].
+///
+/// The display task writes this; the BLE task waits on [`PAIR_GATE`].
+static PAIR_VISIBLE: AtomicBool = AtomicBool::new(false);
+
+/// Wake the BLE task when [`set_visible`] changes the gate.
+static PAIR_GATE: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+
+/// Allow or stop advertising. The display task calls this on every
+/// scene change and before the Ferris off-screen.
+///
+/// `true` only for [`embassy_debug::Scene::Pair`]. A falling edge
+/// cancels an in-flight advertise or drops an accepted connection.
+pub fn set_visible(on: bool) {
+    let was = PAIR_VISIBLE.swap(on, Ordering::SeqCst);
+    if was != on {
+        PAIR_GATE.signal(());
+    }
+}
+
+/// Current pair-card gate. Safe to poll from the BLE task.
+#[must_use]
+pub fn is_visible() -> bool {
+    PAIR_VISIBLE.load(Ordering::Acquire)
+}
+
+/// Wait until [`is_visible`] matches `want`.
+///
+/// [`PAIR_GATE`] is single-waiter. The display task is the only
+/// signaler; this function is the only waiter.
+async fn wait_until_visible(want: bool) {
+    loop {
+        if is_visible() == want {
+            return;
+        }
+        PAIR_GATE.wait().await;
+    }
+}
+
 /// Last pair card contents (idle / PIN / ok / fail).
 #[must_use]
 pub fn current_view() -> PairView {
@@ -116,12 +159,13 @@ struct PairService {
     token: u8,
 }
 
-/// Bring up BLE advertise and drive the pair card.
+/// Bring up the BLE host; advertise only while the pair card is showing.
 ///
-/// On the unit: UART `pair advertise sticky-rs; no NVS; no MAC`, then
-/// the how-to card. In the MCU: controller → trouble-host runner +
-/// peripheral accept loop. The runner must stay polled or `LeRand`
-/// never seeds SMP.
+/// On the unit: walking to `scene=pair` prints
+/// `pair advertise sticky-rs; no NVS; no MAC` and starts connectable
+/// advertise. Leaving that card stops it. In the MCU: controller →
+/// trouble-host runner + gated accept loop. The runner must stay
+/// polled or `LeRand` never seeds SMP.
 #[embassy_executor::task]
 pub async fn pair_task(bluetooth: BT<'static>) {
     let Ok(connector) = BleConnector::new(bluetooth, Default::default()) else {
@@ -150,16 +194,24 @@ pub async fn pair_task(bluetooth: BT<'static>) {
     // Keep the derived service in the binary; Settings pairing reads it.
     let _ = &server.pair;
 
-    println!("{LOG}: pair advertise {PAIR_ADV_NAME}; no NVS; no MAC");
     show(PairView::Idle);
 
     let pair_loop = async {
         loop {
-            if let Err(why) = advertise_once(&mut peripheral, &server).await {
-                fail_and_hold(why).await;
-                // How-to comes back so a second phone tap is possible
-                // without resetting the chip.
-                show(PairView::Idle);
+            wait_until_visible(true).await;
+            println!("{LOG}: pair advertise {PAIR_ADV_NAME}; no NVS; no MAC");
+            show(PairView::Idle);
+            match advertise_once(&mut peripheral, &server).await {
+                Ok(()) => {
+                    // Disconnect or the operator left the pair card.
+                    show(PairView::Idle);
+                }
+                Err(why) => {
+                    if is_visible() {
+                        fail_and_hold(why).await;
+                    }
+                    show(PairView::Idle);
+                }
             }
         }
     };
@@ -205,19 +257,27 @@ where
         .await
         .map_err(|_| PairFailWhy::Advertise)?;
 
-    let conn = advertiser
-        .accept()
-        .await
-        .map_err(|_| PairFailWhy::Advertise)?;
-    // Bondable + request_security starts DisplayOnly passkey as soon
-    // as the phone wants to pair. The PIN is not shown before that.
+    // Dropping `advertiser` here (operator left the card) stops ADV.
+    let conn = match select(advertiser.accept(), wait_until_visible(false)).await {
+        Either::First(Ok(conn)) => conn,
+        Either::First(Err(_)) => return Err(PairFailWhy::Advertise),
+        Either::Second(()) => return Ok(()),
+    };
+    // Bondable + request_security sends SMP Security Request so a
+    // central Connect (phone Settings or BlueZ Connect) starts
+    // DisplayOnly passkey. The PIN is not shown before that. On
+    // Linux, do not also call BlueZ Pair(): that races this
+    // Security Request (kernel unexpected SMP 0x0B) and cancels.
     let _ = conn.set_bondable(true);
     let _ = conn.request_security();
     let gatt = conn
         .with_attribute_server(server)
         .map_err(|_| PairFailWhy::Pairing)?;
 
-    drive_connection(&gatt).await
+    match select(drive_connection(&gatt), wait_until_visible(false)).await {
+        Either::First(result) => result,
+        Either::Second(()) => Ok(()),
+    }
 }
 
 /// GATT + SMP events on one accepted connection.

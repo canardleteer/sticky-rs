@@ -75,7 +75,10 @@ heapless = { version = "0.8.0", optional = true }
 embedded-sdmmc = { version = "0.10.0", optional = true, default-features = false }
 
 [features]
-default = []
+# Pair is on the default walkthrough image. Advertise only while the
+# pair card is showing. Exclusive sits (`mic` / `radio` / `charge` /
+# `sd`) must pass `--no-default-features` (xtask `build-fw` / `ci` do).
+default = ["pair"]
 # Enable MicRail + I2S PDM RX and print `mic rms=` / `peak=` lines.
 # Community 16 kHz / 16-bit / left recipe; unconfirmed on this unit.
 mic = []

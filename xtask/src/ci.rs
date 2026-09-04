@@ -74,6 +74,13 @@ fn fw_clippy(repo_root: &Path, package: &str, feature: Option<&str>) -> Result<(
         ESP_TARGET,
         "-Zbuild-std=core,alloc",
     ];
+    if package == "embassy-debug-fw" {
+        if let Some(feature) = feature {
+            if sticky_host::embassy_debug_needs_no_default_features(&[feature.to_string()]) {
+                args.push("--no-default-features");
+            }
+        }
+    }
     if let Some(feature) = feature {
         args.push("--features");
         args.push(feature);

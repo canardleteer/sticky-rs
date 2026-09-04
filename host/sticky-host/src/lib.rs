@@ -34,7 +34,10 @@ pub mod uart_lock;
 use std::path::{Path, PathBuf};
 
 pub use backup::BackupRequest;
-pub use build_fw::{build_fw, BuildFwArgs, BuildFwOutput, FirmwareImage};
+pub use build_fw::{
+    build_fw, embassy_debug_needs_no_default_features, BuildFwArgs, BuildFwOutput, FirmwareImage,
+    EMBASSY_DEBUG_EXCLUSIVE_OF_PAIR,
+};
 pub use confirm::DivergenceReport;
 pub use device::{DeviceIo, RealDevice};
 pub use error::Error;

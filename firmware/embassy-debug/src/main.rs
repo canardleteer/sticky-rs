@@ -1,16 +1,16 @@
 //! reTerminal Sticky Embassy event-logger image.
 //!
-//! On the unit: splash stays upright in the four in-plane holds; right-edge
-//! keys change the drawing; a 2 s Page Up hold runs panel standby then
-//! resume; a 4 s Page Down hold paints a sleep card and deep-sleeps;
-//! hold Page Down 1 s after wake to restore that card; taps
-//! and tilts print on UART0; a short beep answers a key or the first
-//! finger on the glass.
+//! On the unit: cards stay upright in the four in-plane holds; right-edge
+//! keys change the drawing; Page Up 2 s is panel standby, Page Up 5 s
+//! is MCU sleep (one hold can do both); Page Up 1 s leaves either;
+//! Page Down 5 s drops the latch. Power-on is USB-C plug or the stock
+//! ~3 s AI Voice hold. Taps and tilts print on UART0; a short beep
+//! answers a key or the first finger on the glass.
 //!
 //! In the MCU: latch power, park the charger and unused rails, bring up
 //! the two I2C buses and the panel OTP path. `--features charge` may
 //! pulse `/CE` for two seconds when VBUS is present after a cold boot
-//! or a 1 s Page Down resume hold, then parks again. A wake that
+//! or a 1 s Page Up resume hold, then parks again. A wake that
 //! re-sleeps does not pulse `/CE`.
 //! No invented LUT.
 //!
@@ -31,10 +31,11 @@ use bq25616::Charger;
 #[cfg(feature = "mic")]
 use embassy_debug::TONE_DUMP_WINDOWS;
 use embassy_debug::{
-    classify_sleep_hold, classify_standby_hold, format_event, format_git, format_latched, Event,
-    ImuPose, ResumeHold, Scene, SleepHold, StandbyHold, TouchPoint, BUZZER_CHIRP_MS,
-    BUZZER_TONE_HZ, GIT_CAPACITY, IMU_REPORT_SECS, LATCHED_CAPACITY, LINE_CAPACITY, LOG_PREFIX,
-    MAX_TOUCH_POINTS, PAGE_DOWN_SLEEP_MS, PAGE_UP_STANDBY_MS,
+    classify_page_up_hold, classify_power_off_hold, classify_standby_exit_hold, format_event,
+    format_git, format_latched, Event, ImuPose, PageUpHold, PowerOffHold, ResumeHold, Scene,
+    StandbyExitHold, TouchPoint, BUZZER_CHIRP_MS, BUZZER_TONE_HZ, GIT_CAPACITY, IMU_REPORT_SECS,
+    LATCHED_CAPACITY, LINE_CAPACITY, LOG_PREFIX, MAX_TOUCH_POINTS, PAGE_DOWN_POWER_OFF_MS,
+    PAGE_UP_SLEEP_MS,
 };
 
 // Embassy runtime: tasks, channels, time.
@@ -101,8 +102,11 @@ enum Beep {
 /// The page the display task should paint next.
 pub(crate) static SCENE: Signal<CriticalSectionRawMutex, Scene> = Signal::new();
 
-/// Display task: run panel `standby()` / `resume()` on the current card.
+/// Display task: run panel `standby()` on the current card and wait.
 pub(crate) static STANDBY_REQUEST: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+
+/// Display task: leave panel standby (`resume` / RST path).
+pub(crate) static STANDBY_RESUME: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 
 /// In-plane splash page. Face-up / face-down / unknown do not signal.
 pub(crate) static PAGE_ROTATION: Signal<CriticalSectionRawMutex, PageRotation> = Signal::new();
@@ -393,7 +397,9 @@ fn spawn_tasks(spawner: &Spawner, parts: SpawnParts, start: Scene, rotation: Pag
 ///
 /// On the unit: power stays on, UART says we latched, the glass shows
 /// Ferris + `sticky-rs` (or the restored card after a deep-sleep wake),
-/// and a right-edge key changes the drawing. A 4 s Page Down hold sleeps.
+/// and a right-edge key changes the drawing. Page Up 5 s paints
+/// Ferris and sleeps. Page Down 5 s drops the latch. BLE
+/// advertises only on the pair card.
 #[esp_hal::main]
 async fn main(spawner: Spawner) {
     let peripherals = esp_hal::init(esp_hal::Config::default());
@@ -451,7 +457,8 @@ async fn main(spawner: Spawner) {
     .with_scl(peripherals.GPIO0);
 
     let resume = crate::sleep::resume_snap();
-    let mut page_down = crate::sleep::page_down_input(peripherals.GPIO6);
+    let mut page_up = crate::sleep::page_up_input(peripherals.GPIO5);
+    let page_down = crate::sleep::page_down_input(peripherals.GPIO6);
     let (start_scene, start_rotation) = if let Some(snap) = resume {
         {
             let mut buf = [0u8; LINE_CAPACITY];
@@ -459,7 +466,7 @@ async fn main(spawner: Spawner) {
                 println!("{line}");
             }
         }
-        match crate::sleep::wait_resume_hold(&page_down, &mut delay) {
+        match crate::sleep::wait_resume_hold(&page_up, &mut delay) {
             ResumeHold::Ready => (snap.scene, snap.rotation),
             ResumeHold::Abort | ResumeHold::Waiting => {
                 crate::sleep::park_epd_en_low(peripherals.GPIO47);
@@ -474,7 +481,7 @@ async fn main(spawner: Spawner) {
                 }
                 hold_parked(parked);
                 crate::sleep::hold_latch(latch);
-                crate::sleep::arm_page_down_and_sleep(&mut page_down, lpwr);
+                crate::sleep::arm_page_up_and_sleep(&mut page_up, lpwr);
             }
         }
     } else {
@@ -513,10 +520,6 @@ async fn main(spawner: Spawner) {
     // Page Down. Active-low with external pull-ups.
     let ai_voice = Input::new(
         peripherals.GPIO4,
-        InputConfig::default().with_pull(Pull::Up),
-    );
-    let page_up = Input::new(
-        peripherals.GPIO5,
         InputConfig::default().with_pull(Pull::Up),
     );
     let epd_rail = enable_epd_rail(peripherals.GPIO47, latch.witness(), &mut delay);
@@ -580,11 +583,26 @@ async fn main(spawner: Spawner) {
     #[cfg(feature = "pair")]
     spawner.spawn(crate::pair::pair_task(peripherals.BT).expect("pair task"));
 
-    crate::sleep::PANEL_PARKED.wait().await;
-    crate::sleep::WAKE_ARMED.wait().await;
-    hold_parked(parked);
-    crate::sleep::hold_latch(latch);
-    crate::sleep::enter_deep_sleep(lpwr);
+    match select(
+        crate::sleep::PANEL_PARKED.wait(),
+        crate::sleep::POWER_OFF_READY.wait(),
+    )
+    .await
+    {
+        Either::First(()) => {
+            crate::sleep::WAKE_ARMED.wait().await;
+            hold_parked(parked);
+            crate::sleep::hold_latch(latch);
+            crate::sleep::enter_deep_sleep(lpwr);
+        }
+        Either::Second(()) => {
+            hold_parked(parked);
+            crate::sleep::release_latch(latch);
+            loop {
+                Timer::after(Duration::from_secs(3_600)).await;
+            }
+        }
+    }
 }
 
 /// Print timestamped lines on UART0 (CH343, USB-C).
@@ -613,9 +631,10 @@ async fn log_task() {
 ///
 /// A short Page Up goes to the previous drawing; a short Page Down (and
 /// AI Voice on the default image) go to the next. Hold Page Up 2 s for
-/// panel standby/resume. Hold Page Down 4 s to sleep.
-/// With `--features mic`, AI Voice dumps PCM and does not play the
-/// buzzer or change the page.
+/// panel standby; keep holding to 5 s for MCU sleep. Page Up 1 s leaves
+/// standby or sleep. Hold Page Down 5 s to drop the latch. With
+/// `--features mic`, AI Voice dumps PCM and does not play the buzzer
+/// or change the page.
 #[embassy_executor::task]
 async fn button_task(
     mut ai_voice: Input<'static>,
@@ -661,80 +680,161 @@ async fn button_task(
                 }
             }
             5 => {
-                let mut held = 20u32;
-                loop {
-                    match classify_standby_hold(held, page_up.is_low()) {
-                        StandbyHold::Waiting => {
-                            Timer::after(Duration::from_millis(20)).await;
-                            held = held.saturating_add(20);
-                            if held > PAGE_UP_STANDBY_MS {
-                                held = PAGE_UP_STANDBY_MS;
-                            }
-                        }
-                        StandbyHold::Short => {
-                            ask_beep();
-                            emit(Event::Button {
-                                t_ms: now_ms(),
-                                gpio: 5,
-                                down: false,
-                            });
-                            scene = scene.prev();
-                            SCENE.signal(scene);
-                            break;
-                        }
-                        StandbyHold::RequestStandby => {
-                            crate::STANDBY_REQUEST.signal(());
-                            if page_up.is_low() {
-                                page_up.wait_for_high().await;
-                            }
-                            emit(Event::Button {
-                                t_ms: now_ms(),
-                                gpio: 5,
-                                down: false,
-                            });
-                            break;
-                        }
-                    }
+                if crate::sleep::is_in_standby() {
+                    hold_page_up_from_standby(&mut page_up).await;
+                } else {
+                    hold_page_up_awake(&mut page_up, &mut scene).await;
                 }
             }
-            6 => {
-                let mut held = 20u32;
-                loop {
-                    match classify_sleep_hold(held, page_down.is_low()) {
-                        SleepHold::Waiting => {
-                            Timer::after(Duration::from_millis(20)).await;
-                            held = held.saturating_add(20);
-                            if held > PAGE_DOWN_SLEEP_MS {
-                                held = PAGE_DOWN_SLEEP_MS;
-                            }
-                        }
-                        SleepHold::Short => {
-                            ask_beep();
-                            emit(Event::Button {
-                                t_ms: now_ms(),
-                                gpio: 6,
-                                down: false,
-                            });
-                            scene = scene.next();
-                            SCENE.signal(scene);
-                            break;
-                        }
-                        SleepHold::RequestSleep => {
-                            crate::sleep::request_sleep();
-                            crate::sleep::wait_release_and_arm(&mut page_down).await;
-                            emit(Event::Button {
-                                t_ms: now_ms(),
-                                gpio: 6,
-                                down: false,
-                            });
-                            loop {
-                                Timer::after(Duration::from_secs(3_600)).await;
-                            }
-                        }
-                    }
-                }
-            }
+            6 => hold_page_down(&mut page_down, &mut scene).await,
             _ => {}
+        }
+    }
+}
+
+/// Awake Page Up: short = previous card; 2 s = standby; 5 s = sleep.
+///
+/// The same hold can enter standby at 2 s and continue to sleep at 5 s.
+async fn hold_page_up_awake(page_up: &mut Input<'static>, scene: &mut Scene) {
+    let mut held = 20u32;
+    let mut standby_signaled = false;
+    loop {
+        match classify_page_up_hold(held, page_up.is_low()) {
+            PageUpHold::Waiting => {
+                Timer::after(Duration::from_millis(20)).await;
+                held = held.saturating_add(20);
+            }
+            PageUpHold::Short => {
+                ask_beep();
+                emit(Event::Button {
+                    t_ms: now_ms(),
+                    gpio: 5,
+                    down: false,
+                });
+                *scene = scene.prev();
+                SCENE.signal(*scene);
+                break;
+            }
+            PageUpHold::RequestStandby => {
+                if !standby_signaled {
+                    crate::sleep::enter_standby();
+                    crate::STANDBY_REQUEST.signal(());
+                    standby_signaled = true;
+                }
+                if !page_up.is_low() {
+                    emit(Event::Button {
+                        t_ms: now_ms(),
+                        gpio: 5,
+                        down: false,
+                    });
+                    break;
+                }
+                Timer::after(Duration::from_millis(20)).await;
+                held = held.saturating_add(20);
+                if held > PAGE_UP_SLEEP_MS {
+                    held = PAGE_UP_SLEEP_MS;
+                }
+            }
+            PageUpHold::RequestSleep => {
+                crate::sleep::request_sleep();
+                crate::sleep::wait_release_and_arm(page_up).await;
+                emit(Event::Button {
+                    t_ms: now_ms(),
+                    gpio: 5,
+                    down: false,
+                });
+                loop {
+                    Timer::after(Duration::from_secs(3_600)).await;
+                }
+            }
+        }
+    }
+}
+
+/// Standby Page Up: release before 1 s stays; release after 1 s resumes;
+/// hold 5 s sleeps.
+async fn hold_page_up_from_standby(page_up: &mut Input<'static>) {
+    let mut held = 20u32;
+    loop {
+        match classify_standby_exit_hold(held, page_up.is_low()) {
+            StandbyExitHold::Waiting => {
+                Timer::after(Duration::from_millis(20)).await;
+                held = held.saturating_add(20);
+                if held > PAGE_UP_SLEEP_MS {
+                    held = PAGE_UP_SLEEP_MS;
+                }
+            }
+            StandbyExitHold::Abort => {
+                emit(Event::Button {
+                    t_ms: now_ms(),
+                    gpio: 5,
+                    down: false,
+                });
+                break;
+            }
+            StandbyExitHold::Resume => {
+                crate::sleep::leave_standby();
+                crate::STANDBY_RESUME.signal(());
+                emit(Event::Button {
+                    t_ms: now_ms(),
+                    gpio: 5,
+                    down: false,
+                });
+                break;
+            }
+            StandbyExitHold::RequestSleep => {
+                crate::sleep::request_sleep();
+                crate::sleep::wait_release_and_arm(page_up).await;
+                emit(Event::Button {
+                    t_ms: now_ms(),
+                    gpio: 5,
+                    down: false,
+                });
+                loop {
+                    Timer::after(Duration::from_secs(3_600)).await;
+                }
+            }
+        }
+    }
+}
+
+/// Awake Page Down: short = next card; 5 s = latch power-off.
+async fn hold_page_down(page_down: &mut Input<'static>, scene: &mut Scene) {
+    let mut held = 20u32;
+    loop {
+        match classify_power_off_hold(held, page_down.is_low()) {
+            PowerOffHold::Waiting => {
+                Timer::after(Duration::from_millis(20)).await;
+                held = held.saturating_add(20);
+                if held > PAGE_DOWN_POWER_OFF_MS {
+                    held = PAGE_DOWN_POWER_OFF_MS;
+                }
+            }
+            PowerOffHold::Short => {
+                ask_beep();
+                emit(Event::Button {
+                    t_ms: now_ms(),
+                    gpio: 6,
+                    down: false,
+                });
+                *scene = scene.next();
+                SCENE.signal(*scene);
+                break;
+            }
+            PowerOffHold::RequestPowerOff => {
+                crate::sleep::request_power_off();
+                if page_down.is_low() {
+                    page_down.wait_for_high().await;
+                }
+                emit(Event::Button {
+                    t_ms: now_ms(),
+                    gpio: 6,
+                    down: false,
+                });
+                loop {
+                    Timer::after(Duration::from_secs(3_600)).await;
+                }
+            }
         }
     }
 }
@@ -851,7 +951,7 @@ async fn touch_task(
     }
 }
 
-/// Tilt the card: splash follows in-plane pose; UART about every
+/// Tilt the card: the current page follows in-plane pose; UART about every
 /// [`IMU_REPORT_SECS`].
 #[embassy_executor::task]
 async fn imu_task(i2c: I2c<'static, Blocking>, start_rotation: PageRotation) {
@@ -986,6 +1086,7 @@ async fn buzzer_task(
 #[cfg(feature = "charge")]
 mod charge;
 mod display;
+mod draw;
 #[cfg(feature = "mic")]
 mod mic;
 #[cfg(feature = "pair")]

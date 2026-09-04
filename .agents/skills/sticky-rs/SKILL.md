@@ -52,8 +52,9 @@ that live command:
 
 When a live ask is present, the **only** in-repo device I/O is `cargo xtask`
 as catalogued in [xtask.md](references/xtask.md). `flash-app` does not
-compile; `cargo xtask build-fw` first. Host BLE pairing
-(`bluetoothctl` against `sticky-rs`) is a separate live ask; see
+compile; `cargo xtask build-fw` first. Host BLE pairing (BlueZ **Connect**
+against advertise name `sticky-rs`, not `bluetoothctl pair`) is a
+separate live ask; see
 [Bluetooth testing options](../../../AGENTS.md#bluetooth-testing-options).
 
 A device may be attached for unrelated reasons; ignore it.

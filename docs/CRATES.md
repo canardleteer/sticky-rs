@@ -34,6 +34,7 @@ in the lockfile).
 | [`epd-waveshare`](https://crates.io/crates/epd-waveshare) | — | Different controller and panel families; its waveform assumptions do not transfer. |
 | [`ssd1675`](https://crates.io/crates/ssd1675) | — | Different controller. Byte-addressed windowing assumptions do not hold for SSD1677's 10-bit address units. |
 | [`lsm6ds3trc`](https://crates.io/crates/lsm6ds3trc) | 0.1.0 | Not needed: `lsm6ds3tr` already supports I2C. Fewer dependencies beats a second candidate at 0.1.0. |
+| [`btleplug`](https://crates.io/crates/btleplug) | — | Cross-platform BLE **GATT** central only. No pairing-agent / DisplayOnly passkey API. Cannot complete the embassy-debug pair sit. |
 
 ## Written here
 
@@ -66,10 +67,17 @@ ESP-IDF 2nd-stage bootloader and `espflash save-image` accept the payload.
 Do not `--merge`. `esp-alloc` is present because `lsm6ds3tr` 0.2.2 pulls
 `alloc`. `embassy-debug-fw --features radio` also takes `esp-radio` from
 that tag plus `trouble-host` / `bt-hci` for concurrent scan.
-`--features pair` takes the same radio crates for BLE peripheral +
-DisplayOnly passkey (no Wi-Fi, no `coex`). `trouble-host` 0.7 still
+Default embassy-debug `pair` takes the same radio crates for BLE
+peripheral + DisplayOnly passkey (no Wi-Fi, no `coex`). Advertise
+only while the pair card is showing. `trouble-host` 0.7 still
 needs the `central` feature so `GAP_SERVICE_ATTRIBUTE_COUNT` exists
 (`security` + `derive` alone is not enough).
+A host pair sit on a physical unit used BlueZ D-Bus **Connect** plus
+a KeyboardOnly `RequestPasskey` (UART `pair pin=` then `pair ok`).
+Do not call BlueZ `Pair()` while the image’s `request_security()` is
+in flight. [`bluer`](https://crates.io/crates/bluer) would wrap that
+on Linux if an xtask lands; it is not in the lockfile. Do not wrap
+`bluetoothctl`.
 `sticky-host` serializes learn-uart YAML with
 [`noyalib`](https://crates.io/crates/noyalib) 0.0.30 (serde, no `unsafe` in
 sticky-host). Operator prompts use [`anstyle`](https://crates.io/crates/anstyle)
@@ -86,4 +94,4 @@ operator TTY in cbreak so `learn-uart` can skip a wait on `s` without Enter
 
 ## Counts
 
-5 adopted from crates.io, 6 explicitly rejected, 6 written here.
+5 adopted from crates.io, 7 explicitly rejected, 6 written here.

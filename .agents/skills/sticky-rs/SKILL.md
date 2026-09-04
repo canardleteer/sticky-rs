@@ -56,6 +56,9 @@ compile; `cargo xtask build-fw` first. Host BLE pairing (BlueZ **Connect**
 against advertise name `sticky-rs`, not `bluetoothctl pair`) is a
 separate live ask; see
 [Bluetooth testing options](../../../AGENTS.md#bluetooth-testing-options).
+A host SoftAP check (`nmcli` join `sticky-rs-AP` / `curl` on
+`192.168.4.1`) is a separate live ask; see
+[Wi-Fi SoftAP testing options](../../../AGENTS.md#wi-fi-softap-testing-options).
 
 A device may be attached for unrelated reasons; ignore it.
 

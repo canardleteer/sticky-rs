@@ -15,20 +15,23 @@ On the unit:
 
 - Cold boot paints a portrait splash (USB-C down) or a landscape
   splash (USB-C right / left) so Ferris and `sticky-rs` stay upright.
-  Shapes, legend, tones, pair, and the Ferris off-screen follow that
-  same hold. FaceUp / FaceDown keep the last in-plane page. Tilt after
-  walking pages: the current card should stay readable.
+  Shapes, legend, tones, pair, Wi-Fi survey / SoftAP, and the Ferris
+  off-screen follow that same hold. FaceUp / FaceDown keep the last
+  in-plane page. Tilt after walking pages: the current card should
+  stay readable.
 - Default image: AI Voice / Page Up / Page Down (right-edge top /
   middle / bottom) walk splash → shapes → legend → four-tone OTP gray
-  boxes → pair. `--features mic`: AI Voice dumps PCM and does not play the
-  buzzer or change the page. Page Up / Page Down still walk
-  the drawings. `--features radio`: Wi-Fi and BLE scan together on the
-  on-board antenna; keys still walk the drawings. Do not combine
-  `mic` and `radio` in one image for a desk test.
+  boxes → pair → wifi_survey → wifi_ap. `--features mic`: AI Voice
+  dumps PCM and does not play the buzzer or change the page. Page Up
+  / Page Down still walk the drawings. `--features radio`: Wi-Fi and
+  BLE scan together on the on-board antenna; keys still walk the
+  drawings. Do not combine `mic` and `radio` in one image for a desk
+  test.
   Default image includes a DisplayOnly passkey card (Page Up /
   Page Down walk to `scene=pair`). BLE advertises `sticky-rs` only
-  on that card. Do not combine `pair` with `mic`, `radio`,
-  `charge`, or `sd`.
+  on that card. It also includes idle-until-touch Wi-Fi survey and
+  WPA2 SoftAP cards. Do not combine `pair` / `wifi` with `mic`,
+  `radio`, `charge`, or `sd`.
   `--features spi20` clocks the panel at 20 MHz (`spi=20000000`);
   default stays 10 MHz. `--features sd` runs a read-only card
   identify (`sd cd=`, `sd hz=` / `ack`); no writes. `--features
@@ -36,7 +39,7 @@ On the unit:
   boot or a 1 s Page Up resume hold, then parks. A wake that
   re-sleeps does not pulse `/CE`.
   Do not combine `spi20` / `sd` / `charge` with `mic` or `radio`.
-  Do not combine `charge` with `sd`.
+  Do not combine `charge` with `sd` or `wifi`.
 - Tilt the card for `imu=…`. A short beep answers a key-down. Tap the
   glass for `touch n=` (Rev.09 INT-low address select; on a physical
   unit through `n=5`).
@@ -412,8 +415,9 @@ once (same as Step 1).
 
 You should still see `embassy-debug: latched` and the usual `btn` /
 `touch` / `imu=` lines. There is no `pair advertise` yet. Pages
-are splash → shapes → legend → tones → pair. Press Page Down
-until UART prints `scene=pair`, then `pair advertise sticky-rs`.
+are splash → shapes → legend → tones → pair → wifi_survey →
+wifi_ap. Press Page Down until UART prints `scene=pair`, then
+`pair advertise sticky-rs`.
 
 The glass should show `BLUETOOTH PAIRING`, `Device: sticky-rs`,
 empty PIN boxes, and a short how-to. There is no PIN yet. Tilt
@@ -465,6 +469,120 @@ On a physical unit a host BlueZ Connect typed the UART passkey:
 `pair ok`, and the pair card showed `Paired`. A phone Settings
 sit is still a valid second path.
 
+## Wifi Test Instructions
+
+Default `embassy-debug` starts Wi-Fi idle. Walk to
+`scene=wifi_survey` or `scene=wifi_ap`, then tap START on the
+glass. Survey and SoftAP cannot run at once: starting one stops
+the other. Walking to another page does **not** stop the radio.
+Page Up 5 s (MCU sleep) or Page Down 5 s (latch off) does.
+Bonds and scan results stay in RAM. The image does not write
+factory NVS and does not print a neighbor SSID, BSSID, or MAC.
+The MCU walkthrough is [src/wifi.rs](src/wifi.rs). Snapshot
+first:
+[docs/getting-started.md](../../docs/getting-started.md).
+
+Do not combine with `mic`, `radio`, `charge`, or `sd`.
+
+To perform the test:
+
+### Step 1: Is the port free?
+
+Same as the microphone test. Only one `monitor` at a time. Ctrl-C an
+old listen. Do not `kill -9`.
+
+Then:
+
+```shell
+cargo xtask detect-connected
+```
+
+You should see a Sticky path. If you do not, and you already killed a
+listen the hard way, unplug the USB-C cable and plug it back in once.
+Run `detect-connected` again.
+
+### Step 2: Build, flash, and listen
+
+```shell
+. $HOME/export-esp.sh
+cargo xtask build-fw embassy-debug
+cargo xtask flash-app --image target/xtensa-esp32s3-none-elf/release-fw/embassy-debug.bin --yes
+cargo xtask monitor
+```
+
+The image is on the chip only after `flash-app` finishes. A successful
+build alone does not flash. If `flash-app` says no QinHeng CH343, go
+back to Step 1.
+
+Ctrl-C when you are done so the next `flash-app` can see the device.
+Do not `kill -9` that listen. If you already did, unplug and replug
+once (same as Step 1).
+
+### Step 3: Run a channel survey
+
+You should still see `embassy-debug: latched` and the usual `btn` /
+`touch` / `imu=` lines. Pages are splash → shapes → legend → tones
+→ pair → wifi_survey → wifi_ap. Press Page Down until UART prints
+`scene=wifi_survey`.
+
+The glass should show `WIFI SURVEY` and `[ START SURVEY ]`. Tilt
+the card: this page stays upright like splash. Right-edge keys
+still change the page. AI Voice is not a start/stop.
+
+Tap `[ START SURVEY ]`. UART should print a counts line, for
+example:
+
+```text
+embassy-debug: t=1204 wifi_survey count=5 ch1=1 ch6=2 ch11=1 other=1
+```
+
+The glass should show those channel counts and up to four nearby
+names. Those names stay on the glass. They must not appear on
+UART.
+
+Tap `[ STOP SURVEY ]` if you want idle. Starting the hotspot
+from the next card also stops the survey.
+
+### Step 4: Start the hotspot
+
+Press Page Down until UART prints `scene=wifi_ap`. The glass
+should show `WIFI HOTSPOT`, SSID `sticky-rs-AP`, password
+`sticky26`, and `http://192.168.4.1/`.
+
+Tap `[ START HOTSPOT ]`. UART should print:
+
+```text
+embassy-debug: t=1204 wifi_ap state=active ssid=sticky-rs-AP pass=sticky26 ip=192.168.4.1 clients=0
+```
+
+On a phone or PC, open Wi-Fi settings, join `sticky-rs-AP` with
+password `sticky26`, then open `http://192.168.4.1/` in a
+browser. You should see JSON with `device`, `scene`, and a
+`wifi` object (`hotspot`, `ssid`, `clients`, `requests`). UART
+should print `wifi_http req=` plus `path=/`.
+
+This is WPA2 only. The board does not offer WPA3.
+
+Tap `[ STOP HOTSPOT ]` when you are done. UART should print
+`wifi_ap state=stopped`. Walking away without tapping STOP
+leaves the hotspot up until sleep or power-off.
+
+### Step 5: Observe and report
+
+- **Idle first**: neither card starts a radio until you tap
+  START.
+- **Survey**: `wifi_survey count=` on UART; nearby names on
+  glass only.
+- **Hotspot**: `wifi_ap state=active` with the fixed demo
+  SSID/pass, then `wifi_http` after a `GET /`.
+- **Fail**: hang, panic, a neighbor SSID or MAC on UART, or a
+  SoftAP that stays up after latch power-off.
+
+A host `nmcli` / `curl` sit is optional and only when you asked
+for it. On a physical unit a spare host STA joined
+`sticky-rs-AP`, got `192.168.4.50`, and `GET /` returned JSON
+with `device`, `scene=wifi_ap`, and `wifi` counts.
+
 ## Charge Test Instructions
 
 Default `embassy-debug` parks `/CE` and never enables charging. This
@@ -474,7 +592,7 @@ print parked STAT / VBUS / gauge current, enable `/CE` for two
 seconds only when GPIO9 is high, print STAT and `i=`, then park
 again. A cold boot or a 1 s Page Up resume hold repeats that
 pulse. A wake that re-sleeps does not. Do not leave it as a daily
-driver. Do not combine with `mic`, `radio`, `pair`, or `sd`.
+driver. Do not combine with `mic`, `radio`, `pair`, `wifi`, or `sd`.
 
 FreeInk is the SDK wiring: GPIO40 STAT low = charging, GPIO39
 undriven at idle. Bunny enables charge at boot; this image does

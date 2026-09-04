@@ -45,7 +45,7 @@ in the lockfile).
 | [`bq25616`](../crates/bq25616) | A GPIO-only charger has no I2C driver to adopt; the value is making active-low `/CE` impossible to get wrong (`Drop` parks, VBUS interlock, `hold_disabled`). |
 | [`seeed-reterminal-sticky`](../crates/seeed-reterminal-sticky) | No board crate exists for this product. |
 | [`simple-debug`](../crates/simple-debug) | UART heartbeat, GPIO edges, and [`IdleListen`](../crates/simple-debug/src/idle.rs) for unattended `vet-idle-log`. Host-tested because the Xtensa image cannot run `cargo test` on the host compiler. |
-| [`embassy-debug`](../crates/embassy-debug) | Timestamped button / touch / IMU / mic / radio / BLE pair-card / read-only SD identify / charge-sit lines and [`IdleListen`](../crates/embassy-debug/src/idle.rs) for unattended `vet-idle-log`. Host-tested because the Xtensa image cannot run `cargo test` on the host compiler. |
+| [`embassy-debug`](../crates/embassy-debug) | Timestamped button / touch / IMU / mic / radio / BLE pair-card / Wi-Fi survey + SoftAP / read-only SD identify / charge-sit lines and [`IdleListen`](../crates/embassy-debug/src/idle.rs) for unattended `vet-idle-log`. Host-tested because the Xtensa image cannot run `cargo test` on the host compiler. |
 
 ## Infrastructure
 
@@ -68,8 +68,15 @@ Do not `--merge`. `esp-alloc` is present because `lsm6ds3tr` 0.2.2 pulls
 `alloc`. `embassy-debug-fw --features radio` also takes `esp-radio` from
 that tag plus `trouble-host` / `bt-hci` for concurrent scan.
 Default embassy-debug `pair` takes the same radio crates for BLE
-peripheral + DisplayOnly passkey (no Wi-Fi, no `coex`). Advertise
-only while the pair card is showing. `trouble-host` 0.7 still
+peripheral + DisplayOnly passkey. Advertise only while the pair
+card is showing. Default `wifi` adds `esp-radio` `wifi` + `coex`
+plus crates.io [`embassy-net`](https://crates.io/crates/embassy-net)
+0.9, [`edge-dhcp`](https://crates.io/crates/edge-dhcp) 0.8,
+[`edge-nal`](https://crates.io/crates/edge-nal) 0.7, and
+[`edge-nal-embassy`](https://crates.io/crates/edge-nal-embassy)
+0.9 for SoftAP DHCP + `GET /` JSON. That is infrastructure for
+this image, not a chip-driver verdict. Do not merge `--features
+radio` (scan-only sit) into `wifi`. `trouble-host` 0.7 still
 needs the `central` feature so `GAP_SERVICE_ATTRIBUTE_COUNT` exists
 (`security` + `derive` alone is not enough).
 A host pair sit on a physical unit used BlueZ D-Bus **Connect** plus

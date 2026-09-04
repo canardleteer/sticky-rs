@@ -2,8 +2,9 @@
 //!
 //! # Architecture
 //!
-//! On the unit every equivalent card (splash, shapes, legend, tones, pair)
-//! stays upright in the four in-plane holds. Deep sleep paints Ferris first. FaceUp / FaceDown keep
+//! On the unit every equivalent card (splash, shapes, legend, tones, pair,
+//! Wi-Fi survey / SoftAP) stays upright in the four in-plane holds. Deep
+//! sleep paints Ferris first. FaceUp / FaceDown keep
 //! the last of those. This module never talks SPI: it only fills the two
 //! SSD1677 RAM planes. [`crate::display`] owns ExclusiveDevice, BUSY, and
 //! the OTP sequences. No `0x32` LUT.
@@ -20,8 +21,8 @@
 //! bands on the USB-down page).
 //!
 //! Refresh kinds stay with the caller: OTP gray4 for splash / legend /
-//! tones / pair / sleep; OTP 1-bit full for shapes. Koch timing is glass
-//! only — no UART microsecond token.
+//! tones / pair / Wi-Fi / sleep; OTP 1-bit full for shapes. Koch timing
+//! is glass only — no UART microsecond token.
 
 use core::fmt::Write;
 
@@ -164,7 +165,7 @@ pub(crate) fn draw_legend(bw: &mut [u8], red: &mut [u8], rotation: PageRotation)
         ("SLEEP", "Latch stays high. USB stays up"),
         ("STANDBY", "EPD_EN high. Page Up 1 s leaves"),
         ("POWER OFF", "Latch low. USB plug or AI Voice"),
-        ("TOUCH", "GT911. This FPC reports five contacts"),
+        ("TOUCH", "GT911. Tap START on the Wi-Fi cards"),
         ("OTP PANEL", "Seeed sequences. No MCU 0x32 LUT"),
     ];
 
@@ -593,6 +594,200 @@ pub(crate) fn draw_pair(bw: &mut [u8], red: &mut [u8], rotation: PageRotation) {
     .draw(&mut ink);
 }
 
+/// Channel survey card: histogram, top APs, `[ START/STOP SURVEY ]`.
+///
+/// Neighbor SSIDs stay on this card. UART is counts only.
+#[cfg(feature = "wifi")]
+pub(crate) fn draw_wifi_survey(bw: &mut [u8], red: &mut [u8], rotation: PageRotation) {
+    use crate::wifi::{survey_data, wifi_mode, WifiMode};
+
+    clear_gray(bw, red, gray::WHITE, rotation);
+    let (page_w, page_h) = rotation.page_size();
+    let cx = i32::from(page_w / 2);
+    let style = MonoTextStyle::new(&FONT_10X20, BinaryColor::On);
+    let scanning = wifi_mode() == WifiMode::SurveyScanning;
+    let data = survey_data();
+    let (bx, by, bw_btn, bh_btn) = wifi_action_rect(rotation);
+
+    stroke_rect_gray(
+        bw,
+        red,
+        20,
+        20,
+        page_w.saturating_sub(40),
+        page_h.saturating_sub(40),
+        gray::BLACK,
+        rotation,
+    );
+    stroke_rect_gray(bw, red, bx, by, bw_btn, bh_btn, gray::BLACK, rotation);
+
+    let mut ink = GrayInk::new(bw, red, 1, rotation);
+    let _ = Text::with_alignment("WIFI SURVEY", Point::new(cx, 48), style, Alignment::Center)
+        .draw(&mut ink);
+    let _ = Text::with_alignment(
+        "2.4 GHz channels. No MAC on UART.",
+        Point::new(cx, 76),
+        style,
+        Alignment::Center,
+    )
+    .draw(&mut ink);
+
+    let mut line = [0u8; 48];
+    if let Some(data) = data {
+        let mut w = BufWriter {
+            buf: &mut line,
+            pos: 0,
+        };
+        let _ = write!(
+            w,
+            "count={}  1:{}  6:{}  11:{}",
+            data.total_aps, data.ch1_count, data.ch6_count, data.ch11_count
+        );
+        if let Ok(text) = core::str::from_utf8(&w.buf[..w.pos]) {
+            let _ = Text::with_alignment(text, Point::new(cx, 110), style, Alignment::Center)
+                .draw(&mut ink);
+        }
+        let mut y = 150;
+        for ap in data.top_aps.into_iter().flatten() {
+            let mut row = [0u8; 40];
+            let mut rw = BufWriter {
+                buf: &mut row,
+                pos: 0,
+            };
+            let _ = write!(
+                rw,
+                "ch{} {:>4}dBm {} {}",
+                ap.channel,
+                ap.rssi,
+                ap.auth,
+                ap.ssid_str()
+            );
+            if let Ok(text) = core::str::from_utf8(&rw.buf[..rw.pos]) {
+                let _ = Text::new(text, Point::new(32, y), style).draw(&mut ink);
+            }
+            y += 28;
+        }
+    } else {
+        let hint = if scanning {
+            "Scanning channels 1-13..."
+        } else {
+            "Tap START. Walking away keeps radio."
+        };
+        let _ = Text::with_alignment(hint, Point::new(cx, 140), style, Alignment::Center)
+            .draw(&mut ink);
+    }
+
+    let label = if scanning {
+        "[ STOP SURVEY ]"
+    } else {
+        "[ START SURVEY ]"
+    };
+    let _ = Text::with_alignment(
+        label,
+        Point::new(i32::from(bx) + i32::from(bw_btn) / 2, i32::from(by) + 36),
+        style,
+        Alignment::Center,
+    )
+    .draw(&mut ink);
+}
+
+/// SoftAP card: fixed SSID/pass/URL, client and HTTP counts, START/STOP.
+#[cfg(feature = "wifi")]
+pub(crate) fn draw_wifi_ap(bw: &mut [u8], red: &mut [u8], rotation: PageRotation) {
+    use crate::wifi::{ap_status, wifi_mode, WifiMode};
+    use embassy_debug::{AP_IP_STR, AP_PASSWORD, AP_SSID};
+
+    clear_gray(bw, red, gray::WHITE, rotation);
+    let (page_w, page_h) = rotation.page_size();
+    let cx = i32::from(page_w / 2);
+    let style = MonoTextStyle::new(&FONT_10X20, BinaryColor::On);
+    let status = ap_status();
+    let hot = wifi_mode() == WifiMode::Hotspot || status.active;
+    let (bx, by, bw_btn, bh_btn) = wifi_action_rect(rotation);
+
+    stroke_rect_gray(
+        bw,
+        red,
+        20,
+        20,
+        page_w.saturating_sub(40),
+        page_h.saturating_sub(40),
+        gray::BLACK,
+        rotation,
+    );
+    stroke_rect_gray(bw, red, bx, by, bw_btn, bh_btn, gray::BLACK, rotation);
+
+    let mut ink = GrayInk::new(bw, red, 1, rotation);
+    let _ = Text::with_alignment("WIFI HOTSPOT", Point::new(cx, 48), style, Alignment::Center)
+        .draw(&mut ink);
+    let _ = Text::with_alignment(
+        "WPA2 only. Demo password on UART.",
+        Point::new(cx, 76),
+        style,
+        Alignment::Center,
+    )
+    .draw(&mut ink);
+
+    let mut ssid_line = [0u8; 40];
+    let mut w = BufWriter {
+        buf: &mut ssid_line,
+        pos: 0,
+    };
+    let _ = write!(w, "SSID {AP_SSID}");
+    if let Ok(text) = core::str::from_utf8(&w.buf[..w.pos]) {
+        let _ = Text::with_alignment(text, Point::new(cx, 120), style, Alignment::Center)
+            .draw(&mut ink);
+    }
+    let mut pass_line = [0u8; 32];
+    let mut pw = BufWriter {
+        buf: &mut pass_line,
+        pos: 0,
+    };
+    let _ = write!(pw, "PASS {AP_PASSWORD}");
+    if let Ok(text) = core::str::from_utf8(&pw.buf[..pw.pos]) {
+        let _ = Text::with_alignment(text, Point::new(cx, 148), style, Alignment::Center)
+            .draw(&mut ink);
+    }
+    let mut url_line = [0u8; 40];
+    let mut uw = BufWriter {
+        buf: &mut url_line,
+        pos: 0,
+    };
+    let _ = write!(uw, "http://{AP_IP_STR}/");
+    if let Ok(text) = core::str::from_utf8(&uw.buf[..uw.pos]) {
+        let _ = Text::with_alignment(text, Point::new(cx, 176), style, Alignment::Center)
+            .draw(&mut ink);
+    }
+
+    let mut counts = [0u8; 40];
+    let mut cw = BufWriter {
+        buf: &mut counts,
+        pos: 0,
+    };
+    let _ = write!(
+        cw,
+        "clients={}  http={}",
+        status.clients, status.http_requests
+    );
+    if let Ok(text) = core::str::from_utf8(&cw.buf[..cw.pos]) {
+        let _ = Text::with_alignment(text, Point::new(cx, 216), style, Alignment::Center)
+            .draw(&mut ink);
+    }
+
+    let label = if hot {
+        "[ STOP HOTSPOT ]"
+    } else {
+        "[ START HOTSPOT ]"
+    };
+    let _ = Text::with_alignment(
+        label,
+        Point::new(i32::from(bx) + i32::from(bw_btn) / 2, i32::from(by) + 36),
+        style,
+        Alignment::Center,
+    )
+    .draw(&mut ink);
+}
+
 /// Page-space geometry for the pair card (portrait 480×800 vs landscape 800×480).
 ///
 /// Digit boxes stay 40×50 at 52 px pitch (papermono). Landscape compresses
@@ -942,6 +1137,59 @@ fn is_portrait(rotation: PageRotation) -> bool {
         rotation,
         PageRotation::Portrait0 | PageRotation::Portrait180
     )
+}
+
+/// START/STOP button in **page** pixels (same space as the card draw).
+#[cfg(feature = "wifi")]
+pub(crate) fn wifi_action_rect(rotation: PageRotation) -> (u16, u16, u16, u16) {
+    let (page_w, page_h) = rotation.page_size();
+    if is_portrait(rotation) {
+        (
+            50,
+            page_h.saturating_sub(150),
+            page_w.saturating_sub(100),
+            90,
+        )
+    } else {
+        (
+            80,
+            page_h.saturating_sub(100),
+            page_w.saturating_sub(160),
+            72,
+        )
+    }
+}
+
+/// Extra page pixels around [`wifi_action_rect`] for a fat finger.
+///
+/// Landscape holds get a wider pad: the button is shorter and the
+/// long-edge hold is easier to miss.
+#[cfg(feature = "wifi")]
+fn wifi_action_slop(rotation: PageRotation) -> u16 {
+    if is_portrait(rotation) {
+        10
+    } else {
+        20
+    }
+}
+
+/// True when a **pre-rotation framebuffer** tap lands in the START/STOP button.
+///
+/// Pass [`seeed_reterminal_sticky::touch::to_framebuffer`] (raw GT911),
+/// not UART `p0=` / [`seeed_reterminal_sticky::touch::to_screen`].
+/// [`framebuffer_to_page`] handles all four in-plane holds.
+#[cfg(feature = "wifi")]
+pub(crate) fn wifi_action_hit(fx: u16, fy: u16, rotation: PageRotation) -> bool {
+    let Some((px, py)) = display::framebuffer_to_page(fx, fy, rotation) else {
+        return false;
+    };
+    let (x, y, w, h) = wifi_action_rect(rotation);
+    let slop = wifi_action_slop(rotation);
+    let x0 = x.saturating_sub(slop);
+    let y0 = y.saturating_sub(slop);
+    let x1 = x.saturating_add(w).saturating_add(slop);
+    let y1 = y.saturating_add(h).saturating_add(slop);
+    px >= x0 && px < x1 && py >= y0 && py < y1
 }
 
 /// Fill the current page with one OTP gray tone.

@@ -3,7 +3,7 @@
 //! The firmware owns buses, pins, and the Embassy tasks. This crate owns the
 //! **strings** it prints so the log contract can be tested on the host:
 //! timestamped button, touch, GT911 status, IMU, mic-energy, PCM-dump,
-//! radio-scan, BLE pair-card, read-only SD identify, and charge-sit lines,
+//! radio-scan, BLE pair-card, Wi-Fi survey / SoftAP, read-only SD identify, and charge-sit lines,
 //! and no factory serial / USB serial / MAC / card product-serial fields.
 
 #![no_std]
@@ -60,6 +60,18 @@ pub const PAIR_ADV_NAME: &str = "sticky-rs";
 /// a second phone tap does not need a reset.
 #[cfg(feature = "pair")]
 pub const PAIR_FAIL_HOLD_MS: u32 = 4000;
+
+/// SoftAP SSID (`--features wifi` image). Fixed demo name, not a MAC.
+#[cfg(feature = "wifi")]
+pub const AP_SSID: &str = "sticky-rs-AP";
+
+/// SoftAP WPA2-Personal password (`--features wifi` image). Eight ASCII.
+#[cfg(feature = "wifi")]
+pub const AP_PASSWORD: &str = "sticky26";
+
+/// SoftAP gateway printed on UART and the hotspot card.
+#[cfg(feature = "wifi")]
+pub const AP_IP_STR: &str = "192.168.4.1";
 
 /// How long `/CE` stays enabled on `--features charge`, in milliseconds.
 ///
@@ -165,6 +177,21 @@ pub enum Scene {
     /// Composed in the current in-plane page.
     #[cfg(feature = "pair")]
     Pair,
+    /// 2.4 GHz channel survey (`--features wifi` image).
+    ///
+    /// Idle until a tap on `[ START SURVEY ]`. Top APs stay on this
+    /// card; UART is counts only (never a neighbor SSID or BSSID).
+    /// Composed in the current in-plane page.
+    #[cfg(feature = "wifi")]
+    WifiSurvey,
+    /// WPA2 SoftAP + JSON HTTP (`--features wifi` image).
+    ///
+    /// Idle until a tap on `[ START HOTSPOT ]`. Mutually exclusive
+    /// with [`Self::WifiSurvey`]. UART may print the fixed demo SSID
+    /// and password. Never a station MAC.
+    /// Composed in the current in-plane page.
+    #[cfg(feature = "wifi")]
+    WifiAp,
 }
 
 /// Why a `--features pair` attempt did not finish.
@@ -211,16 +238,37 @@ impl PairFailWhy {
 
 impl Scene {
     /// Cycle order for Page Up / Page Down.
-    #[cfg(not(feature = "pair"))]
+    #[cfg(all(not(feature = "pair"), not(feature = "wifi")))]
     pub const ALL: [Self; 4] = [Self::Splash, Self::Shapes, Self::Legend, Self::Tones];
-    /// Cycle order for Page Up / Page Down (`--features pair`).
-    #[cfg(feature = "pair")]
+    /// Cycle order when only the pair card is compiled in.
+    #[cfg(all(feature = "pair", not(feature = "wifi")))]
     pub const ALL: [Self; 5] = [
         Self::Splash,
         Self::Shapes,
         Self::Legend,
         Self::Tones,
         Self::Pair,
+    ];
+    /// Cycle order when only the Wi-Fi cards are compiled in.
+    #[cfg(all(not(feature = "pair"), feature = "wifi"))]
+    pub const ALL: [Self; 6] = [
+        Self::Splash,
+        Self::Shapes,
+        Self::Legend,
+        Self::Tones,
+        Self::WifiSurvey,
+        Self::WifiAp,
+    ];
+    /// Default embassy-debug walk (`pair` + `wifi`).
+    #[cfg(all(feature = "pair", feature = "wifi"))]
+    pub const ALL: [Self; 7] = [
+        Self::Splash,
+        Self::Shapes,
+        Self::Legend,
+        Self::Tones,
+        Self::Pair,
+        Self::WifiSurvey,
+        Self::WifiAp,
     ];
 
     /// Token written after `scene=`.
@@ -234,6 +282,10 @@ impl Scene {
             Self::Tones => "tones",
             #[cfg(feature = "pair")]
             Self::Pair => "pair",
+            #[cfg(feature = "wifi")]
+            Self::WifiSurvey => "wifi_survey",
+            #[cfg(feature = "wifi")]
+            Self::WifiAp => "wifi_ap",
         }
     }
 
@@ -248,6 +300,10 @@ impl Scene {
             Self::Tones => 3,
             #[cfg(feature = "pair")]
             Self::Pair => 4,
+            #[cfg(feature = "wifi")]
+            Self::WifiSurvey => 5,
+            #[cfg(feature = "wifi")]
+            Self::WifiAp => 6,
         }
     }
 
@@ -262,6 +318,10 @@ impl Scene {
             3 => Some(Self::Tones),
             #[cfg(feature = "pair")]
             4 => Some(Self::Pair),
+            #[cfg(feature = "wifi")]
+            5 => Some(Self::WifiSurvey),
+            #[cfg(feature = "wifi")]
+            6 => Some(Self::WifiAp),
             _ => None,
         }
     }
@@ -274,12 +334,13 @@ impl Scene {
             Self::Splash => Self::Shapes,
             Self::Shapes => Self::Legend,
             Self::Legend => Self::Tones,
-            #[cfg(not(feature = "pair"))]
-            Self::Tones => Self::Splash,
+            Self::Tones => Self::after_tones(),
             #[cfg(feature = "pair")]
-            Self::Tones => Self::Pair,
-            #[cfg(feature = "pair")]
-            Self::Pair => Self::Splash,
+            Self::Pair => Self::after_pair(),
+            #[cfg(feature = "wifi")]
+            Self::WifiSurvey => Self::WifiAp,
+            #[cfg(feature = "wifi")]
+            Self::WifiAp => Self::Splash,
         }
     }
 
@@ -288,15 +349,70 @@ impl Scene {
     #[must_use]
     pub const fn prev(self) -> Self {
         match self {
-            #[cfg(not(feature = "pair"))]
-            Self::Splash => Self::Tones,
-            #[cfg(feature = "pair")]
-            Self::Splash => Self::Pair,
+            Self::Splash => Self::before_splash(),
             Self::Shapes => Self::Splash,
             Self::Legend => Self::Shapes,
             Self::Tones => Self::Legend,
             #[cfg(feature = "pair")]
             Self::Pair => Self::Tones,
+            #[cfg(feature = "wifi")]
+            Self::WifiSurvey => Self::before_wifi_survey(),
+            #[cfg(feature = "wifi")]
+            Self::WifiAp => Self::WifiSurvey,
+        }
+    }
+
+    const fn after_tones() -> Self {
+        #[cfg(feature = "pair")]
+        {
+            Self::Pair
+        }
+        #[cfg(all(not(feature = "pair"), feature = "wifi"))]
+        {
+            Self::WifiSurvey
+        }
+        #[cfg(all(not(feature = "pair"), not(feature = "wifi")))]
+        {
+            Self::Splash
+        }
+    }
+
+    #[cfg(feature = "pair")]
+    const fn after_pair() -> Self {
+        #[cfg(feature = "wifi")]
+        {
+            Self::WifiSurvey
+        }
+        #[cfg(not(feature = "wifi"))]
+        {
+            Self::Splash
+        }
+    }
+
+    const fn before_splash() -> Self {
+        #[cfg(feature = "wifi")]
+        {
+            Self::WifiAp
+        }
+        #[cfg(all(not(feature = "wifi"), feature = "pair"))]
+        {
+            Self::Pair
+        }
+        #[cfg(all(not(feature = "wifi"), not(feature = "pair")))]
+        {
+            Self::Tones
+        }
+    }
+
+    #[cfg(feature = "wifi")]
+    const fn before_wifi_survey() -> Self {
+        #[cfg(feature = "pair")]
+        {
+            Self::Pair
+        }
+        #[cfg(not(feature = "pair"))]
+        {
+            Self::Tones
         }
     }
 }
@@ -575,6 +691,50 @@ pub enum Event {
         /// Short why token. Never a MAC.
         why: PairFailWhy,
     },
+    /// Channel survey finished (`--features wifi` image). Counts only.
+    ///
+    /// Line: `wifi_survey count=… ch1=… ch6=… ch11=… other=…`. Never a
+    /// neighbor SSID, BSSID, or MAC.
+    #[cfg(feature = "wifi")]
+    WifiSurvey {
+        /// Milliseconds since boot.
+        t_ms: u32,
+        /// Access points the scan returned (may exceed the four on glass).
+        count: u16,
+        /// APs on channel 1.
+        ch1: u16,
+        /// APs on channel 6.
+        ch6: u16,
+        /// APs on channel 11.
+        ch11: u16,
+        /// APs on every other 1..=13 channel.
+        other: u16,
+    },
+    /// SoftAP start or stop (`--features wifi` image).
+    ///
+    /// Active line includes the fixed demo SSID, password, and
+    /// [`AP_IP_STR`]. Stopped line keeps the SSID only. Never a station
+    /// MAC.
+    #[cfg(feature = "wifi")]
+    WifiAp {
+        /// Milliseconds since boot.
+        t_ms: u32,
+        /// SoftAP is beaconing.
+        active: bool,
+        /// Associated stations (counts only).
+        clients: u16,
+    },
+    /// HTTP `GET /` served (`--features wifi` image).
+    ///
+    /// Line: `wifi_http req=<n> path=/`. Never a MAC. Other paths go
+    /// through [`format_wifi_http`].
+    #[cfg(feature = "wifi")]
+    WifiHttp {
+        /// Milliseconds since boot.
+        t_ms: u32,
+        /// 1-based request count this SoftAP session.
+        req: u32,
+    },
 }
 
 /// Writes `embassy-debug: latched` into `buf` without a trailing newline.
@@ -787,7 +947,70 @@ pub fn format_event<'a>(event: &Event, buf: &'a mut [u8]) -> Result<&'a str, For
             buf,
             format_args!("{}: t={t_ms} pair fail={}", LOG_PREFIX, why.as_str()),
         ),
+        #[cfg(feature = "wifi")]
+        Event::WifiSurvey {
+            t_ms,
+            count,
+            ch1,
+            ch6,
+            ch11,
+            other,
+        } => write_into(
+            buf,
+            format_args!(
+                "{LOG_PREFIX}: t={t_ms} wifi_survey count={count} ch1={ch1} ch6={ch6} ch11={ch11} other={other}"
+            ),
+        ),
+        #[cfg(feature = "wifi")]
+        Event::WifiAp {
+            t_ms,
+            active,
+            clients,
+        } => format_wifi_ap_event(t_ms, active, clients, buf),
+        #[cfg(feature = "wifi")]
+        Event::WifiHttp { t_ms, req } => format_wifi_http(t_ms, req, "/", buf),
     }
+}
+
+/// Writes `wifi_ap state=active|stopped` plus the fixed demo SSID.
+///
+/// Active also prints `pass=` and `ip=`. Never a station MAC.
+#[cfg(feature = "wifi")]
+fn format_wifi_ap_event(
+    t_ms: u32,
+    active: bool,
+    clients: u16,
+    buf: &mut [u8],
+) -> Result<&str, FormatError> {
+    if active {
+        write_into(
+            buf,
+            format_args!(
+                "{LOG_PREFIX}: t={t_ms} wifi_ap state=active ssid={AP_SSID} pass={AP_PASSWORD} ip={AP_IP_STR} clients={clients}"
+            ),
+        )
+    } else {
+        write_into(
+            buf,
+            format_args!("{LOG_PREFIX}: t={t_ms} wifi_ap state=stopped ssid={AP_SSID}"),
+        )
+    }
+}
+
+/// Writes `embassy-debug: t=<ms> wifi_http req=<n> path=<path>`.
+///
+/// `path` is already sanitized. Never a MAC.
+#[cfg(feature = "wifi")]
+pub fn format_wifi_http<'a>(
+    t_ms: u32,
+    req: u32,
+    path: &str,
+    buf: &'a mut [u8],
+) -> Result<&'a str, FormatError> {
+    write_into(
+        buf,
+        format_args!("{LOG_PREFIX}: t={t_ms} wifi_http req={req} path={path}"),
+    )
 }
 
 /// Writes `embassy-debug: sleeping` (MCU about to `sleep_deep`).
@@ -1296,14 +1519,30 @@ mod tests {
         assert_eq!(Scene::Tones.next(), Scene::Splash);
         #[cfg(not(feature = "pair"))]
         assert_eq!(Scene::Splash.prev(), Scene::Tones);
-        #[cfg(feature = "pair")]
+        #[cfg(all(feature = "pair", not(feature = "wifi")))]
         assert_eq!(Scene::Tones.next(), Scene::Pair);
-        #[cfg(feature = "pair")]
+        #[cfg(all(feature = "pair", not(feature = "wifi")))]
         assert_eq!(Scene::Pair.next(), Scene::Splash);
-        #[cfg(feature = "pair")]
+        #[cfg(all(feature = "pair", not(feature = "wifi")))]
         assert_eq!(Scene::Splash.prev(), Scene::Pair);
-        #[cfg(feature = "pair")]
+        #[cfg(all(feature = "pair", not(feature = "wifi")))]
         assert_eq!(Scene::Pair.prev(), Scene::Tones);
+        #[cfg(all(feature = "pair", feature = "wifi"))]
+        assert_eq!(Scene::Tones.next(), Scene::Pair);
+        #[cfg(all(feature = "pair", feature = "wifi"))]
+        assert_eq!(Scene::Pair.next(), Scene::WifiSurvey);
+        #[cfg(all(feature = "pair", feature = "wifi"))]
+        assert_eq!(Scene::WifiSurvey.next(), Scene::WifiAp);
+        #[cfg(all(feature = "pair", feature = "wifi"))]
+        assert_eq!(Scene::WifiAp.next(), Scene::Splash);
+        #[cfg(all(feature = "pair", feature = "wifi"))]
+        assert_eq!(Scene::Splash.prev(), Scene::WifiAp);
+        #[cfg(all(feature = "pair", feature = "wifi"))]
+        assert_eq!(Scene::WifiSurvey.prev(), Scene::Pair);
+        #[cfg(all(not(feature = "pair"), feature = "wifi"))]
+        assert_eq!(Scene::Tones.next(), Scene::WifiSurvey);
+        #[cfg(all(not(feature = "pair"), feature = "wifi"))]
+        assert_eq!(Scene::WifiAp.next(), Scene::Splash);
         assert_eq!(
             line(&Event::Scene {
                 t_ms: 9,
@@ -1542,6 +1781,83 @@ mod tests {
             assert!(!lower.contains("mac"));
             assert!(!lower.contains("serial"));
             assert!(text.contains("pair fail="));
+        }
+    }
+
+    #[cfg(feature = "wifi")]
+    #[test]
+    fn wifi_card_lines_match_the_agreed_shape() {
+        assert_eq!(AP_SSID, "sticky-rs-AP");
+        assert_eq!(AP_PASSWORD, "sticky26");
+        assert_eq!(AP_IP_STR, "192.168.4.1");
+        assert_eq!(Scene::WifiSurvey.persist_byte(), 5);
+        assert_eq!(Scene::WifiAp.persist_byte(), 6);
+        assert_eq!(Scene::from_persist_byte(5), Some(Scene::WifiSurvey));
+        assert_eq!(Scene::from_persist_byte(6), Some(Scene::WifiAp));
+        assert_eq!(
+            line(&Event::WifiSurvey {
+                t_ms: 1204,
+                count: 5,
+                ch1: 1,
+                ch6: 2,
+                ch11: 1,
+                other: 1,
+            }),
+            "embassy-debug: t=1204 wifi_survey count=5 ch1=1 ch6=2 ch11=1 other=1"
+        );
+        assert_eq!(
+            line(&Event::WifiAp {
+                t_ms: 1204,
+                active: true,
+                clients: 1,
+            }),
+            "embassy-debug: t=1204 wifi_ap state=active ssid=sticky-rs-AP pass=sticky26 ip=192.168.4.1 clients=1"
+        );
+        assert_eq!(
+            line(&Event::WifiAp {
+                t_ms: 1204,
+                active: false,
+                clients: 0,
+            }),
+            "embassy-debug: t=1204 wifi_ap state=stopped ssid=sticky-rs-AP"
+        );
+        assert_eq!(
+            line(&Event::WifiHttp { t_ms: 1204, req: 1 }),
+            "embassy-debug: t=1204 wifi_http req=1 path=/"
+        );
+        assert_eq!(
+            line(&Event::Scene {
+                t_ms: 9,
+                scene: Scene::WifiSurvey,
+            }),
+            "embassy-debug: t=9 scene=wifi_survey"
+        );
+        assert_eq!(
+            line(&Event::Scene {
+                t_ms: 11,
+                scene: Scene::WifiAp,
+            }),
+            "embassy-debug: t=11 scene=wifi_ap"
+        );
+        for text in [
+            line(&Event::WifiSurvey {
+                t_ms: 1,
+                count: 1,
+                ch1: 1,
+                ch6: 0,
+                ch11: 0,
+                other: 0,
+            }),
+            line(&Event::WifiAp {
+                t_ms: 1,
+                active: true,
+                clients: 0,
+            }),
+            line(&Event::WifiHttp { t_ms: 1, req: 1 }),
+        ] {
+            let lower = text.to_ascii_lowercase();
+            assert!(!lower.contains("mac"));
+            assert!(!lower.contains("bssid"));
         }
     }
 }

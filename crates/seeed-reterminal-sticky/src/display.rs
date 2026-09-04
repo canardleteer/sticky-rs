@@ -87,6 +87,44 @@ pub const fn page_to_framebuffer(px: u16, py: u16, rotation: PageRotation) -> Op
     })
 }
 
+/// Inverse of [`page_to_framebuffer`].
+///
+/// Input is the **pre-rotation** 800×480 canvas ([`crate::touch::to_framebuffer`]),
+/// not [`crate::touch::to_screen`] (that already undoes the panel 180°
+/// transmit). Gray4 embassy-debug cards write [`page_to_framebuffer`]
+/// without a second 180°.
+#[must_use]
+pub const fn framebuffer_to_page(fx: u16, fy: u16, rotation: PageRotation) -> Option<(u16, u16)> {
+    if fx >= WIDTH || fy >= HEIGHT {
+        return None;
+    }
+    let (px, py) = match rotation {
+        PageRotation::Portrait0 => (HEIGHT - 1 - fy, WIDTH - 1 - fx),
+        PageRotation::Portrait180 => (fy, fx),
+        PageRotation::Landscape0 => (WIDTH - 1 - fx, fy),
+        PageRotation::Landscape180 => (fx, HEIGHT - 1 - fy),
+    };
+    let (page_w, page_h) = rotation.page_size();
+    if px >= page_w || py >= page_h {
+        return None;
+    }
+    Some((px, py))
+}
+
+/// Undo the panel 180° transmit on a [`crate::touch::to_screen`] point.
+///
+/// UART `p0=` is already in that glass space. Gray4 ink and
+/// [`framebuffer_to_page`] use the pre-rotation canvas
+/// ([`crate::touch::to_framebuffer`]). Prefer mapping the raw GT911
+/// sample with `to_framebuffer` when the digits are still in hand.
+#[must_use]
+pub const fn screen_to_framebuffer(sx: u16, sy: u16) -> Option<(u16, u16)> {
+    if sx >= WIDTH || sy >= HEIGHT {
+        return None;
+    }
+    Some((WIDTH - 1 - sx, HEIGHT - 1 - sy))
+}
+
 /// Last RAM X address unit for a full-width window (`8.3` address units).
 pub const RAM_X_END: u16 = WIDTH - 1;
 /// Last RAM Y address unit for a full-height window (`8.4` address units).
@@ -333,6 +371,109 @@ mod tests {
             page_to_framebuffer(800, 0, PageRotation::Landscape180),
             None
         );
+    }
+
+    #[test]
+    fn framebuffer_to_page_inverts_page_to_framebuffer() {
+        for rotation in [
+            PageRotation::Portrait0,
+            PageRotation::Portrait180,
+            PageRotation::Landscape0,
+            PageRotation::Landscape180,
+        ] {
+            let (page_w, page_h) = rotation.page_size();
+            for (px, py) in [
+                (0, 0),
+                (page_w - 1, 0),
+                (0, page_h - 1),
+                (page_w - 1, page_h - 1),
+                (page_w / 2, page_h / 2),
+            ] {
+                let (fx, fy) = page_to_framebuffer(px, py, rotation).expect("page pixel");
+                assert_eq!(
+                    framebuffer_to_page(fx, fy, rotation),
+                    Some((px, py)),
+                    "{rotation:?} ({px},{py})"
+                );
+            }
+        }
+        assert_eq!(framebuffer_to_page(800, 0, PageRotation::Landscape0), None);
+        // embassy-debug UART `p0=` is `to_screen`. Gray4 writes the
+        // pre-rotation canvas. Undo the transmit 180°, then invert.
+        // Sit: survey START at `p0=679,189` while `imu=Portrait0`.
+        let (fx, fy) = screen_to_framebuffer(679, 189).expect("on panel");
+        let (px, py) = framebuffer_to_page(fx, fy, PageRotation::Portrait0).expect("in page");
+        assert!((50..430).contains(&px));
+        assert!((650..740).contains(&py));
+    }
+
+    /// Same geometry as embassy-debug `draw::wifi_action_rect`.
+    fn wifi_action_rect(rotation: PageRotation) -> (u16, u16, u16, u16) {
+        let (page_w, page_h) = rotation.page_size();
+        match rotation {
+            PageRotation::Portrait0 | PageRotation::Portrait180 => (
+                50,
+                page_h.saturating_sub(150),
+                page_w.saturating_sub(100),
+                90,
+            ),
+            PageRotation::Landscape0 | PageRotation::Landscape180 => (
+                80,
+                page_h.saturating_sub(100),
+                page_w.saturating_sub(160),
+                72,
+            ),
+        }
+    }
+
+    fn in_wifi_action(px: u16, py: u16, rotation: PageRotation, slop: u16) -> bool {
+        let (x, y, w, h) = wifi_action_rect(rotation);
+        let x0 = x.saturating_sub(slop);
+        let y0 = y.saturating_sub(slop);
+        let x1 = x.saturating_add(w).saturating_add(slop);
+        let y1 = y.saturating_add(h).saturating_add(slop);
+        px >= x0 && px < x1 && py >= y0 && py < y1
+    }
+
+    #[test]
+    fn screen_to_framebuffer_undoes_transmit_180() {
+        assert_eq!(screen_to_framebuffer(0, 0), Some((799, 479)));
+        assert_eq!(screen_to_framebuffer(799, 479), Some((0, 0)));
+        assert_eq!(screen_to_framebuffer(679, 189), Some((120, 290)));
+        assert_eq!(screen_to_framebuffer(800, 0), None);
+    }
+
+    #[test]
+    fn wifi_start_button_hits_in_every_in_plane_hold() {
+        // Portrait slop 10, landscape slop 20 (embassy-debug `wifi_action_slop`).
+        for (rotation, slop) in [
+            (PageRotation::Portrait0, 10),
+            (PageRotation::Portrait180, 10),
+            (PageRotation::Landscape0, 20),
+            (PageRotation::Landscape180, 20),
+        ] {
+            let (x, y, w, h) = wifi_action_rect(rotation);
+            let cx = x + w / 2;
+            let cy = y + h / 2;
+            let (fx, fy) = page_to_framebuffer(cx, cy, rotation).expect("button center");
+            // UART `p0=` is to_screen: 180° of the canvas.
+            let sx = WIDTH - 1 - fx;
+            let sy = HEIGHT - 1 - fy;
+            let (back_fx, back_fy) = screen_to_framebuffer(sx, sy).expect("on panel");
+            assert_eq!((back_fx, back_fy), (fx, fy), "{rotation:?} canvas");
+            let (px, py) = framebuffer_to_page(back_fx, back_fy, rotation).expect("page");
+            assert!(
+                in_wifi_action(px, py, rotation, slop),
+                "{rotation:?} center ({px},{py}) missed START"
+            );
+            // Page origin is never the START strip.
+            let (ox, oy) = page_to_framebuffer(0, 0, rotation).expect("origin");
+            let (opx, opy) = framebuffer_to_page(ox, oy, rotation).expect("origin page");
+            assert!(
+                !in_wifi_action(opx, opy, rotation, slop),
+                "{rotation:?} origin must miss START"
+            );
+        }
     }
 
     #[test]

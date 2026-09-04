@@ -55,7 +55,7 @@ use esp_hal::i2c::master::{Config as I2cConfig, I2c};
 use esp_hal::ledc::channel::{self, ChannelIFace};
 use esp_hal::ledc::timer::{self, TimerIFace};
 use esp_hal::ledc::{LSGlobalClkSource, Ledc, LowSpeed};
-#[cfg(any(feature = "radio", feature = "pair"))]
+#[cfg(any(feature = "radio", feature = "pair", feature = "wifi"))]
 use esp_hal::ram;
 use esp_hal::rtc_cntl::sleep::LowPower;
 use esp_hal::time::Rate;
@@ -403,10 +403,10 @@ fn spawn_tasks(spawner: &Spawner, parts: SpawnParts, start: Scene, rotation: Pag
 #[esp_hal::main]
 async fn main(spawner: Spawner) {
     let peripherals = esp_hal::init(esp_hal::Config::default());
-    #[cfg(not(any(feature = "radio", feature = "pair")))]
+    #[cfg(not(any(feature = "radio", feature = "pair", feature = "wifi")))]
     esp_alloc::heap_allocator!(size: 8 * 1024);
     // Same class of heap as the esp-hal embassy_coex example.
-    #[cfg(any(feature = "radio", feature = "pair"))]
+    #[cfg(any(feature = "radio", feature = "pair", feature = "wifi"))]
     {
         esp_alloc::heap_allocator!(#[ram(reclaimed)] size: 64 * 1024);
         esp_alloc::heap_allocator!(size: 64 * 1024);
@@ -579,9 +579,14 @@ async fn main(spawner: Spawner) {
     #[cfg(feature = "radio")]
     spawner.spawn(crate::radio::radio_task(peripherals.WIFI, peripherals.BT).expect("radio task"));
 
-    // BLE only (no Wi-Fi). Advertise `sticky-rs`; PIN after PassKeyDisplay.
+    // BLE only on this path. Advertise `sticky-rs`; PIN after PassKeyDisplay.
+    // Wi-Fi owns `WIFI` separately (`init_wifi`); do not double-init the
+    // same peripheral.
     #[cfg(feature = "pair")]
     spawner.spawn(crate::pair::pair_task(peripherals.BT).expect("pair task"));
+
+    #[cfg(feature = "wifi")]
+    crate::wifi::init_wifi(peripherals.WIFI, spawner);
 
     match select(
         crate::sleep::PANEL_PARKED.wait(),
@@ -901,6 +906,7 @@ async fn touch_task(
             if bits.buffer_ready() {
                 let n = core::cmp::min(bits.touch_count() as usize, MAX_TOUCH_POINTS);
                 let mut mapped = [TouchPoint::default(); MAX_TOUCH_POINTS];
+                let mut fb0 = None;
                 if n > 0 {
                     let mut raw = [0u8; MAX_TOUCH_POINTS * POINT_RECORD_LEN];
                     if i2c
@@ -918,7 +924,7 @@ async fn touch_task(
                             let cy =
                                 u16::from_le_bytes([rec[POINT_Y_OFFSET], rec[POINT_Y_OFFSET + 1]]);
                             // GT911 reports portrait 480×800; to_screen maps
-                            // that onto physical 800×480.
+                            // that onto physical 800×480 (UART `p0=`).
                             let (x, y) = seeed_reterminal_sticky::touch::to_screen(
                                 u32::from(cx),
                                 u32::from(cy),
@@ -927,6 +933,15 @@ async fn touch_task(
                                 x: x as u16,
                                 y: y as u16,
                             };
+                            if i == 0 {
+                                // Pre-rotation canvas for START/STOP. Works
+                                // for landscape holds; do not hit-test `p0=`.
+                                let (fx, fy) = seeed_reterminal_sticky::touch::to_framebuffer(
+                                    u32::from(cx),
+                                    u32::from(cy),
+                                );
+                                fb0 = Some((fx as u16, fy as u16));
+                            }
                         }
                     }
                 }
@@ -942,6 +957,35 @@ async fn touch_task(
                     });
                     if became_contact {
                         ask_beep();
+                        #[cfg(feature = "wifi")]
+                        if let Some(scene) = crate::wifi::ui_scene() {
+                            let rotation = crate::wifi::ui_rotation();
+                            if let Some((fx, fy)) = fb0 {
+                                if crate::draw::wifi_action_hit(fx, fy, rotation) {
+                                    match scene {
+                                        Scene::WifiSurvey => {
+                                            let cmd = match crate::wifi::wifi_mode() {
+                                                crate::wifi::WifiMode::SurveyScanning => {
+                                                    crate::wifi::WifiCommand::StopSurvey
+                                                }
+                                                _ => crate::wifi::WifiCommand::StartSurvey,
+                                            };
+                                            crate::wifi::send_wifi_cmd(cmd);
+                                        }
+                                        Scene::WifiAp => {
+                                            let cmd = match crate::wifi::wifi_mode() {
+                                                crate::wifi::WifiMode::Hotspot => {
+                                                    crate::wifi::WifiCommand::StopHotspot
+                                                }
+                                                _ => crate::wifi::WifiCommand::StartHotspot,
+                                            };
+                                            crate::wifi::send_wifi_cmd(cmd);
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 let _ = i2c.write(addr, &Register::Status.write_u8(StatusWrite::Clear.byte()));
@@ -1096,3 +1140,5 @@ mod radio;
 #[cfg(feature = "sd")]
 mod sd;
 mod sleep;
+#[cfg(feature = "wifi")]
+mod wifi;

@@ -217,20 +217,31 @@ and `firmware/embassy-debug` (Embassy log task, buttons, GT911 INT-low
 `touch n=5`, IMU every 5 s, `gt911 st=` every 10 s, buzzer, panel
 cards that follow the in-plane hold, host-tested lines and
 `IdleListen` in `crates/embassy-debug`).
-Default embassy-debug includes `pair`. Advertise `sticky-rs`
-(DisplayOnly passkey, RAM bonds this boot) **only while the pair
-card is showing**. UART tokens are `pair pin=`, `pair ok`, and
-`pair fail=` — never a MAC or eFuse. Pairing success is
-**confirmed on a physical unit** (host BlueZ Connect, UART
-`pair pin=` then `pair ok`, pair card showed `Paired`). Exclusive
+Default embassy-debug includes `pair` + `wifi`. Advertise
+`sticky-rs` (DisplayOnly passkey, RAM bonds this boot) **only
+while the pair card is showing**. UART tokens are `pair pin=`,
+`pair ok`, and `pair fail=` — never a MAC or eFuse. Pairing
+success is **confirmed on a physical unit** (host BlueZ Connect,
+UART `pair pin=` then `pair ok`, pair card showed `Paired`).
+Wi-Fi cards (`wifi_survey` / `wifi_ap`) stay idle until a tap.
+UART is counts plus the fixed demo SSID/pass; never a neighbor
+SSID, BSSID, or station MAC. SoftAP is WPA2 `sticky-rs-AP` /
+`sticky26` at `192.168.4.1`. SoftAP join / `GET /` is
+**host-verified** (2026-09-04; spare STA, DHCP `192.168.4.50`,
+JSON `device` / `scene=wifi_ap` / `wifi` counts; UART
+`wifi_ap … clients=1` then `wifi_http req=1 path=/`). Host
+disconnect produced no later `wifi_ap` decrement. Exclusive
 sits (`mic` / `radio` / `charge` / `sd`) build with
-`--no-default-features`. `trouble-host` 0.7 still needs the
-`central` feature so `GAP_SERVICE_ATTRIBUTE_COUNT` exists. Offer
-a phone sit first; a host BlueZ self-diagnostic is allowed only
-when the human asked for that live sit. Connect only — do not
-call BlueZ `Pair()` / `bluetoothctl pair` (SMP Security Request
-race). `btleplug` cannot enter the passkey.
-([embassy-debug AGENTS.md](../../../../firmware/embassy-debug/AGENTS.md#bluetooth-pairing-verification-workflow)).
+`--no-default-features`.
+`wifi` is **not** exclusive of `pair`. `trouble-host` 0.7 still
+needs the `central` feature so `GAP_SERVICE_ATTRIBUTE_COUNT`
+exists. Offer a phone sit first; a host BlueZ or SoftAP
+self-diagnostic is allowed only when the human asked for that
+live sit. Connect only — do not call BlueZ `Pair()` /
+`bluetoothctl pair` (SMP Security Request race). `btleplug`
+cannot enter the passkey.
+([embassy-debug AGENTS.md](../../../../firmware/embassy-debug/AGENTS.md#bluetooth-pairing-verification-workflow),
+[Wi-Fi workflow](../../../../firmware/embassy-debug/AGENTS.md#wi-fi-survey-and-softap-verification-workflow)).
 
 ## Datasheet catalog vs crates
 
@@ -262,7 +273,7 @@ In this repository, prefer the workspace crates and the verdicts in
 | --- | --- | --- |
 | Board pins / latch / rails | `seeed-reterminal-sticky` | This repo. Keep chip drivers MCU-agnostic |
 | SSD1677 | `ssd1677-gray4` (this repo) | Dual-plane four-gray; Sticky uses **OTP** (no default MCU LUT). 10 MHz SPI. Wait on BUSY with `embedded-hal-async` `Wait`, not a spin loop. Not crates.io `ssd1677` |
-| GT911 | board `touch` + embassy-debug `Register` poll | Own EN/RST/INT + Sticky transform. Mux GPIO41/42 off JTAG F0. `Register` / `Command` / `StatusWrite` / `StatusBits` / `StatusHeartbeat`. Crate `init()` writes `Command::ReadCoordinates` — embassy does not call it. On a physical unit: INT=0 → `PairBaBb`, `I2C_MAX_HZ`, `Register::Points` byte 0, **`touch n=5`**. `to_screen` takes the **480×800** sample (not panel 800×480); USB-down ink corners land on 800×480. `STATUS_HEARTBEAT` is `EverySecs(10)` or `Off`. INT-high + init Status-clear stayed `st=0x00`. INT after reset: floating (`Pull::None`) |
+| GT911 | board `touch` + embassy-debug `Register` poll | Own EN/RST/INT + Sticky transform. Mux GPIO41/42 off JTAG F0. `Register` / `Command` / `StatusWrite` / `StatusBits` / `StatusHeartbeat`. Crate `init()` writes `Command::ReadCoordinates` — embassy does not call it. On a physical unit: INT=0 → `PairBaBb`, `I2C_MAX_HZ`, `Register::Points` byte 0, **`touch n=5`**. `to_screen` takes the **480×800** sample (not panel 800×480); USB-down ink corners land on 800×480. Wi-Fi START/STOP hit-test uses `to_framebuffer` + `framebuffer_to_page` (gray4 writes the pre-rotation canvas; `to_screen` already undoes the panel 180°). `STATUS_HEARTBEAT` is `EverySecs(10)` or `Off`. INT-high + init Status-clear stayed `st=0x00`. INT after reset: floating (`Pull::None`) |
 | SHT40 | `sht4x` | Sensor I2C `0x44`. On a physical unit: `sht t=` / `rh=` (~28.9 °C / ~27.9 % RH) |
 | PCF8563 | raw `0x02` in simple-debug | Sensor I2C `0x51`. On a physical unit: `rtc` ticks, `vl=0` |
 | LSM6DS3TR-C | `lsm6ds3tr` | Mutex the shared sensor I2C. Do not drive GPIO7 |
@@ -271,5 +282,5 @@ In this repository, prefer the workspace crates and the verdicts in
 | Buzzer | LEDC (`esp-hal` or IDF LEDC) | GPIO48 starts low. Chirp vs long tone are `BUZZER_CHIRP_MS` (80) vs `BUZZER_TONE_MS` (400) |
 | MicroSD | `embedded-sdmmc` | Init ≤ 400 kHz. CS arbitration is the application’s job |
 | PDM mic | I2S PDM RX | GPIO38 enable. GPIO19/20 are USB-Serial-JTAG pads: disable the USB pad after deep-sleep wake before attaching PDM. Working ESPHome recipe (16 kHz, left) in [sensors.md](../../seeed-sticky-hardware/references/sensors.md#pdm-microphone); not a crate |
-| Wi-Fi / BLE | `esp-radio` or `esp-idf-svc` | Default embassy-debug `pair`: DisplayOnly, advertise `sticky-rs` only on the pair card, RAM bonds, UART `pair pin=` / `pair ok` / `pair fail=` (never a MAC). On a physical unit: host BlueZ Connect + UART PIN completed SMP (`pair ok`, pair card `Paired`). Do not BlueZ `Pair()` while `request_security()` is in flight. `trouble-host` 0.7 needs `central` for `GAP_SERVICE_ATTRIBUTE_COUNT`. Controller stays up; advertise stops off that card |
+| Wi-Fi / BLE | `esp-radio` or `esp-idf-svc` | Default embassy-debug `pair` + `wifi`: DisplayOnly advertise `sticky-rs` only on the pair card; idle-until-touch STA survey + WPA2 SoftAP (`sticky-rs-AP` / `sticky26`, `embassy-net` + `edge-dhcp`). UART `pair pin=` / `pair ok` / `wifi_survey` / `wifi_ap` / `wifi_http` (never a MAC / neighbor SSID). On a physical unit: host BlueZ Connect completed SMP. 2026-09-04 walk printed both Wi-Fi scene tokens; START that hit-tested `to_screen` as gray4 canvas produced no radio line; hit-test is raw `to_framebuffer` + `framebuffer_to_page` (all four holds). SoftAP join / `GET /` is **host-verified** (spare STA, DHCP `192.168.4.50`, JSON `device` / `scene=wifi_ap` / `wifi` counts; UART `wifi_ap … clients=1` then `wifi_http req=1 path=/`). Host disconnect produced no later `wifi_ap` decrement on that image (leave-drop + gray4 wake is firmware-intended, not re-measured). `--features radio` remains the exclusive scan sit. Do not BlueZ `Pair()` while `request_security()` is in flight. `trouble-host` 0.7 needs `central` for `GAP_SERVICE_ATTRIBUTE_COUNT` |
 | Graphics | `embedded-graphics` | Host simulator without a physical panel |

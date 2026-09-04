@@ -1,7 +1,8 @@
 //! OTP panel path: every equivalent card follows the in-plane IMU hold.
 //!
-//! Splash, shapes, legend, tones, pair, and the Ferris off-screen compose in
-//! page space (480×800 portrait or 800×480 landscape) then map through
+//! Splash, shapes, legend, tones, pair, Wi-Fi survey / SoftAP, and the
+//! Ferris off-screen compose in page space (480×800 portrait or
+//! 800×480 landscape) then map through
 //! [`seeed_reterminal_sticky::display::page_to_framebuffer`]. FaceUp /
 //! FaceDown keep the last in-plane page. Waveforms stay in the panel
 //! OTP — this file never writes a `0x32` LUT. Pixel work lives in
@@ -10,6 +11,8 @@
 #[cfg(feature = "pair")]
 use crate::draw::draw_pair;
 use crate::draw::{draw_legend, draw_shapes, draw_splash, draw_tones};
+#[cfg(feature = "wifi")]
+use crate::draw::{draw_wifi_ap, draw_wifi_survey};
 use crate::{emit, now_ms};
 
 // Embassy time + UART scene token.
@@ -140,6 +143,10 @@ pub async fn display_task(
     let mut kind = scene_kind(scene);
     #[cfg(feature = "pair")]
     crate::pair::set_visible(scene == Scene::Pair);
+    #[cfg(feature = "wifi")]
+    crate::wifi::set_ui_scene(scene);
+    #[cfg(feature = "wifi")]
+    crate::wifi::set_ui_rotation(rotation);
     driver
         .as_mut()
         .expect("panel driver")
@@ -160,7 +167,56 @@ pub async fn display_task(
     .await;
 
     loop {
-        #[cfg(feature = "pair")]
+        #[cfg(all(feature = "pair", feature = "wifi"))]
+        let e4 = match select(
+            select4(
+                crate::SCENE.wait(),
+                crate::PAGE_ROTATION.wait(),
+                crate::sleep::SLEEP_REQUEST.wait(),
+                select(
+                    crate::STANDBY_REQUEST.wait(),
+                    crate::sleep::POWER_OFF_REQUEST.wait(),
+                ),
+            ),
+            select(crate::pair::PAIR_VIEW.wait(), crate::wifi::WIFI_VIEW.wait()),
+        )
+        .await
+        {
+            Either::First(e4) => e4,
+            Either::Second(Either::First(())) => {
+                // PIN / ok / fail arrived. Repaint only if the operator
+                // is already on the pair card so a key-walk stays put.
+                if scene == Scene::Pair {
+                    refresh(
+                        driver.as_mut().expect("panel driver"),
+                        draw,
+                        tx,
+                        scene,
+                        rotation,
+                        &mut kind,
+                    )
+                    .await;
+                }
+                continue;
+            }
+            Either::Second(Either::Second(())) => {
+                if matches!(scene, Scene::WifiSurvey | Scene::WifiAp)
+                    && crate::wifi::state_rev() != 0
+                {
+                    refresh(
+                        driver.as_mut().expect("panel driver"),
+                        draw,
+                        tx,
+                        scene,
+                        rotation,
+                        &mut kind,
+                    )
+                    .await;
+                }
+                continue;
+            }
+        };
+        #[cfg(all(feature = "pair", not(feature = "wifi")))]
         let e4 = match select(
             select4(
                 crate::SCENE.wait(),
@@ -177,8 +233,6 @@ pub async fn display_task(
         {
             Either::First(e4) => e4,
             Either::Second(()) => {
-                // PIN / ok / fail arrived. Repaint only if the operator
-                // is already on the pair card so a key-walk stays put.
                 if scene == Scene::Pair {
                     refresh(
                         driver.as_mut().expect("panel driver"),
@@ -193,7 +247,40 @@ pub async fn display_task(
                 continue;
             }
         };
-        #[cfg(not(feature = "pair"))]
+        #[cfg(all(not(feature = "pair"), feature = "wifi"))]
+        let e4 = match select(
+            select4(
+                crate::SCENE.wait(),
+                crate::PAGE_ROTATION.wait(),
+                crate::sleep::SLEEP_REQUEST.wait(),
+                select(
+                    crate::STANDBY_REQUEST.wait(),
+                    crate::sleep::POWER_OFF_REQUEST.wait(),
+                ),
+            ),
+            crate::wifi::WIFI_VIEW.wait(),
+        )
+        .await
+        {
+            Either::First(e4) => e4,
+            Either::Second(()) => {
+                if matches!(scene, Scene::WifiSurvey | Scene::WifiAp)
+                    && crate::wifi::state_rev() != 0
+                {
+                    refresh(
+                        driver.as_mut().expect("panel driver"),
+                        draw,
+                        tx,
+                        scene,
+                        rotation,
+                        &mut kind,
+                    )
+                    .await;
+                }
+                continue;
+            }
+        };
+        #[cfg(not(any(feature = "pair", feature = "wifi")))]
         let e4 = select4(
             crate::SCENE.wait(),
             crate::PAGE_ROTATION.wait(),
@@ -209,6 +296,8 @@ pub async fn display_task(
                 scene = next;
                 #[cfg(feature = "pair")]
                 crate::pair::set_visible(scene == Scene::Pair);
+                #[cfg(feature = "wifi")]
+                crate::wifi::set_ui_scene(scene);
                 refresh(
                     driver.as_mut().expect("panel driver"),
                     draw,
@@ -224,6 +313,8 @@ pub async fn display_task(
                     continue;
                 }
                 rotation = next;
+                #[cfg(feature = "wifi")]
+                crate::wifi::set_ui_rotation(rotation);
                 refresh(
                     driver.as_mut().expect("panel driver"),
                     draw,
@@ -286,7 +377,7 @@ pub async fn display_task(
     }
 }
 
-/// Gray4 for splash, legend, tones, and pair; OTP 1-bit full for shapes.
+/// Gray4 for splash, legend, tones, pair, and Wi-Fi; OTP 1-bit full for shapes.
 ///
 /// The Ferris off-screen is [`Scene::Splash`]: [`paint_off_card`] forces gray4.
 fn scene_kind(scene: Scene) -> RefreshKind {
@@ -294,6 +385,8 @@ fn scene_kind(scene: Scene) -> RefreshKind {
         Scene::Splash | Scene::Legend | Scene::Tones => RefreshKind::Gray4,
         #[cfg(feature = "pair")]
         Scene::Pair => RefreshKind::Gray4,
+        #[cfg(feature = "wifi")]
+        Scene::WifiSurvey | Scene::WifiAp => RefreshKind::Gray4,
         Scene::Shapes => RefreshKind::Full,
     }
 }
@@ -726,6 +819,8 @@ where
         Scene::Splash | Scene::Legend | Scene::Tones => {}
         #[cfg(feature = "pair")]
         Scene::Pair => {}
+        #[cfg(feature = "wifi")]
+        Scene::WifiSurvey | Scene::WifiAp => {}
     }
     if rotate180_mono(draw, display::WIDTH as usize, display::HEIGHT as usize, tx).is_err() {
         println!("embassy-debug: epd rotate failed");
@@ -744,7 +839,7 @@ where
     true
 }
 
-/// Splash, legend, tones, or pair. Gray4 pixels are already 180°-aware
+/// Splash, legend, tones, pair, or Wi-Fi. Gray4 pixels are already 180°-aware
 /// in [`crate::draw`]. No `mirror_x_plane` — see [`write_mono_scene`].
 fn write_gray4_scene<SPI, DC, RST, BUSY, DELAY>(
     driver: &mut Ssd1677<SPI, DC, RST, BUSY, DELAY, ssd1677_gray4::Active>,
@@ -766,6 +861,10 @@ where
         Scene::Tones => draw_tones(bw, red, rotation),
         #[cfg(feature = "pair")]
         Scene::Pair => draw_pair(bw, red, rotation),
+        #[cfg(feature = "wifi")]
+        Scene::WifiSurvey => draw_wifi_survey(bw, red, rotation),
+        #[cfg(feature = "wifi")]
+        Scene::WifiAp => draw_wifi_ap(bw, red, rotation),
         Scene::Shapes => {}
     }
 

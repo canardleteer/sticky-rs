@@ -73,10 +73,16 @@ ESPHome `mirror_x` only:
 
 IMU-driven UI rotation is a logical-canvas concern: keep the physical
 framebuffer mapping fixed, then rotate drawing/touch into page axes.
-embassy-debug composes splash, shapes, legend, tones, pair, and the
-sleep card in that page (480×800 or 800×480) and maps through
-`page_to_framebuffer`. FaceUp / FaceDown keep the last in-plane page.
-That is firmware intent. The sit below measured splash only.
+embassy-debug composes splash, shapes, legend, tones, pair, Wi-Fi
+survey / SoftAP, and the sleep card in that page (480×800 or
+800×480) and maps through `page_to_framebuffer`. FaceUp / FaceDown
+keep the last in-plane page. Gray4 writes that canvas without a
+second 180°. Touch hit-test on those cards uses
+`framebuffer_to_page` on `to_framebuffer`, not UART `p0=` /
+`to_screen` (that already undoes the panel transmit 180°).
+[touch.md](touch.md#coordinate-transform-on-a-physical-unit).
+That page-walk is firmware intent. The sit below measured splash
+only. The Wi-Fi START miss (glass vs canvas) is the touch sit.
 
 2026-08-30, embassy-debug splash, glass facing the operator:
 

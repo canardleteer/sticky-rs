@@ -103,6 +103,38 @@ Step-by-step:
 Do not run a host BLE central against the unit unless that live
 ask is present.
 
+## Wi-Fi SoftAP testing options
+
+When testing the default embassy-debug Wi-Fi cards (walk to
+`scene=wifi_survey` or `scene=wifi_ap`, then tap START on the
+glass), always offer the human the option to join from their own
+phone or PC. Survey and SoftAP are mutually exclusive: starting
+one stops the other. Walking away does **not** auto-stop the
+radio; deep sleep and latch power-off do. On a physical unit
+(2026-09-04) the walk printed `scene=wifi_survey` /
+`scene=wifi_ap`; START must hit-test `to_framebuffer` (not UART
+`p0=` / `to_screen`) or the radio never starts. SoftAP join /
+`GET /` JSON is **host-verified** (2026-09-04): spare STA joined
+`sticky-rs-AP` / `sticky26`, DHCP `192.168.4.50`,
+`curl http://192.168.4.1/` returned
+`device` / `scene=wifi_ap` / `wifi` counts. After STOP +
+replug + START: UART `wifi_ap … clients=1` then
+`wifi_http req=1 path=/`. Host disconnect produced no later
+`wifi_ap` decrement.
+
+If the host has a spare STA adapter **and** the human
+**explicitly asked** for that sit in that message, agents may
+also offer a host self-diagnostic: listen with
+`cargo xtask monitor` (not `--acm-tty`), watch UART `wifi_ap` /
+`wifi_http`, `nmcli` scan/join `sticky-rs-AP` / `sticky26`,
+`curl http://192.168.4.1/`, then disconnect. Never a neighbor
+SSID, BSSID, or station MAC on UART. The JSON body is
+device/scene/wifi counts — no gauge field. WPA3 is not
+advertised. Step-by-step:
+[firmware/embassy-debug/AGENTS.md](firmware/embassy-debug/AGENTS.md#wi-fi-survey-and-softap-verification-workflow).
+Do not run a host STA against the unit unless that live ask is
+present. There is no `cargo xtask` SoftAP helper.
+
 ## Keep skills updated
 
 Project-local skills must stay aligned with the tree. When you change a

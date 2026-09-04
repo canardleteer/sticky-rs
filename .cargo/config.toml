@@ -19,3 +19,7 @@ rustflags = ["-C", "link-arg=-Tlinkall.x"]
 
 [env]
 ESP_LOG = "info"
+# esp-radio default is 2. A SoftAP connect+disconnect pair is lost when
+# the pub/sub queue fills during a gray4 paint (`Lost event`). Firmware
+# only; host crates do not compile esp-radio.
+ESP_RADIO_CONFIG_EVENT_CHANNEL_CAPACITY = "16"

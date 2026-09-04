@@ -8,7 +8,7 @@
 //! one-shot on the sensor bus before the IMU task owns it. On a
 //! physical unit (USB): `gpio40=1→0→1`; `i=` was `0` at 200 ms and
 //! `5702` at 2 s (not a 555 mA proof). Do not combine with `mic`,
-//! `radio`, or `sd`.
+//! `radio`, `pair`, `wifi`, or `sd`.
 //!
 //! FreeInk `FREEINK_DEVICE_STICKY` is the SDK wiring we follow here:
 //! GPIO40 STAT **low** = charging, GPIO39 left undriven at idle. Bunny
@@ -23,6 +23,8 @@ compile_error!("do not combine charge with radio");
 compile_error!("do not combine charge with sd");
 #[cfg(all(feature = "charge", feature = "pair"))]
 compile_error!("do not combine charge with pair");
+#[cfg(all(feature = "charge", feature = "wifi"))]
+compile_error!("do not combine charge with wifi");
 
 use bq25616::{ChargeStatus, Charger, ExternalPower, Level};
 use bq27220::Bq27220;

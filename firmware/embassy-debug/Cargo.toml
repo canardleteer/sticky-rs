@@ -73,12 +73,23 @@ ssd1677-gray4 = { path = "../../crates/ssd1677-gray4", default-features = false,
 static_cell = "2.1.1"
 heapless = { version = "0.8.0", optional = true }
 embedded-sdmmc = { version = "0.10.0", optional = true, default-features = false }
+embassy-net = { version = "0.9.0", optional = true, features = [
+  "dhcpv4",
+  "medium-ethernet",
+  "tcp",
+  "udp",
+] }
+edge-dhcp = { version = "0.8.0", optional = true }
+edge-nal = { version = "0.7.0", optional = true }
+edge-nal-embassy = { version = "0.9.0", optional = true }
+embedded-io-async = { version = "0.7", optional = true }
 
 [features]
-# Pair is on the default walkthrough image. Advertise only while the
-# pair card is showing. Exclusive sits (`mic` / `radio` / `charge` /
-# `sd`) must pass `--no-default-features` (xtask `build-fw` / `ci` do).
-default = ["pair"]
+# Pair + Wi-Fi survey / SoftAP cards. Advertise BLE only while the
+# pair card is showing. Survey and SoftAP stay idle until a tap.
+# Exclusive sits (`mic` / `radio` / `charge` / `sd`) must pass
+# `--no-default-features` (xtask `build-fw` / `ci` do).
+default = ["pair", "wifi"]
 # Enable MicRail + I2S PDM RX and print `mic rms=` / `peak=` lines.
 # Community 16 kHz / 16-bit / left recipe; unconfirmed on this unit.
 mic = []
@@ -91,12 +102,13 @@ spi20 = []
 # ReadOnly file read. No writes. Do not combine with `mic` or `radio`.
 sd = ["dep:embedded-sdmmc"]
 # Attended BQ25616 `/CE` pulse (≤ 2 s) when GPIO9 is high. Parks
-# after. Do not combine with `mic`, `radio`, `pair`, or `sd`. Default
+# after. Do not combine with `mic`, `radio`, `pair`, `wifi`, or `sd`. Default
 # image stays parked.
 charge = ["dep:bq27220"]
 # Concurrent Wi-Fi + BLE scan on the on-board antenna. Scan only: no
 # STA join, no SoftAP, no BLE connect. Does not print MAC / BSSID.
-# Independent of `mic`; do not CI both at once. Do not combine with `pair`.
+# Independent of `mic`; do not CI both at once. Do not combine with
+# `pair` or `wifi`.
 radio = [
   "dep:esp-radio",
   "dep:bt-hci",
@@ -107,6 +119,22 @@ radio = [
   "esp-radio/ble",
   "esp-radio/coex",
   "trouble-host/scan",
+]
+# Channel survey + WPA2 SoftAP / DHCP / JSON HTTP cards. Packs with
+# `pair`. Idle until a tap. No factory NVS. No neighbor SSID / MAC /
+# BSSID on UART. Do not combine with `mic`, `radio`, `charge`, or `sd`.
+wifi = [
+  "dep:esp-radio",
+  "dep:embassy-net",
+  "dep:edge-dhcp",
+  "dep:edge-nal",
+  "dep:edge-nal-embassy",
+  "dep:embedded-io-async",
+  "embassy-debug/wifi",
+  "esp-rtos/esp-radio",
+  "esp-radio/wifi",
+  "esp-radio/ble",
+  "esp-radio/coex",
 ]
 # BLE peripheral + DisplayOnly passkey card. Advertise `sticky-rs`.
 # RAM bonds only; no factory NVS; no eFuse MAC on UART. Walkthrough:

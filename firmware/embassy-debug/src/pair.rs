@@ -10,9 +10,9 @@
 //!
 //! In the MCU:
 //!
-//! - **BLE only.** `esp-radio` is `ble` without Wi-Fi / `coex`. Do not
-//!   combine with `mic`, `radio`, `charge`, or `sd` (compile_error
-//!   below).
+//! - **BLE peripheral.** Packs with `wifi` on the default image
+//!   (`coex`). Do not combine with `mic`, `radio`, `charge`, or `sd`
+//!   (compile_error below).
 //! - **DisplayOnly SMP.** The board shows a passkey; the phone types
 //!   it. Advertise only while [`embassy_debug::Scene::Pair`] is the
 //!   current card. Walking away stops advertising and drops a

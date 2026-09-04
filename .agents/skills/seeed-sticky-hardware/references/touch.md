@@ -165,12 +165,24 @@ USB-C down, keys on the right: `(0, 0)` → near USB, away from keys
 USB, next to keys `(0, 0)`. If display rotation changes, this
 transform must change with it.
 
-After mapping, taps are physical 800×480. Rotated pages convert physical →
-logical with the same rotation as drawing. 2026-08-30, default
-embassy-debug after that map: finger-pad taps near the ink corners
-(in one sample) printed first `p0=` `795,470`, `795,4`, `4,475`,
-`4,4`. Mid-axis slides before the fix had keys-side `y≈195`; after
-the fix those same keys-side pads sat at `y≈4`.
+After mapping, UART `p0=` is **glass** (`to_screen`, steps 3–4).
+Gray4 embassy-debug ink is the **pre-rotation canvas**
+(`page_to_framebuffer`, same space as `to_framebuffer` / steps
+1–2). IMU-page hit-test must invert `page_to_framebuffer` on
+`to_framebuffer`, not on `to_screen`. A first Wi-Fi-card sit
+(2026-09-04) printed `scene=wifi_survey` / `scene=wifi_ap` and
+START taps (`p0=679,189` while `imu=Portrait0`) with no
+`wifi_survey` / `wifi_ap` line: those glass coords mapped to the
+**top** of the portrait page. Undo the transmit 180°
+(`fx,fy = (799-sx, 479-sy)`) and the same tap is the START
+button (`page ≈ 189,679`). Landscape holds use the same canvas
+then `framebuffer_to_page` (`Landscape0` / `Landscape180`);
+prefer the raw GT911 sample through `to_framebuffer`, not an
+undo of UART `p0=`. 2026-08-30, default embassy-debug
+after the corner map: finger-pad taps near the ink corners (in
+one sample) printed first `p0=` `795,470`, `795,4`, `4,475`,
+`4,4`. Mid-axis slides before the 480×800 map had keys-side
+`y≈195`; after that map those same keys-side pads sat at `y≈4`.
 
 Polling rate, tap slop, and stuck-contact recovery are software policy, not
 hardware. Re-run the reset/address sequence if the controller stops ACKing.

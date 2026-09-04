@@ -4,12 +4,14 @@
 //! then [`sd::send_status`] at 10 MHz and 20 MHz. Root list and one
 //! `Mode::ReadOnly` read via `embedded-sdmmc`. No writes, no CID product
 //! serial, no file contents on UART.
-//! Do not combine with `mic` or `radio` (package envelope).
+//! Do not combine with `mic`, `radio`, or `wifi` (package envelope).
 
 #[cfg(feature = "mic")]
 compile_error!("do not combine sd with mic");
 #[cfg(feature = "radio")]
 compile_error!("do not combine sd with radio");
+#[cfg(feature = "wifi")]
+compile_error!("do not combine sd with wifi");
 
 use core::ops::ControlFlow;
 

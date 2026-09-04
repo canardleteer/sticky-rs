@@ -14,8 +14,11 @@ categories.workspace = true
 
 [features]
 default = []
-# Fifth scene and `pair` UART lines. Default embassy-debug-fw enables this.
+# Pair card and `pair` UART lines. Default embassy-debug-fw enables this.
 pair = []
+# Survey / SoftAP cards and `wifi_survey` / `wifi_ap` / `wifi_http` lines.
+# Default embassy-debug-fw enables this with `pair`.
+wifi = []
 
 [dev-dependencies]
 seeed-reterminal-sticky = { path = "../seeed-reterminal-sticky", version = "0.1.0" }

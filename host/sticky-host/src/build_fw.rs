@@ -41,8 +41,8 @@ pub struct BuildFwArgs {
     pub image: FirmwareImage,
     /// Cargo features on that package (`operator` on simple-debug).
     ///
-    /// Embassy-debug defaults to `pair`. Exclusive sits (`mic` /
-    /// `radio` / `charge` / `sd`) add `--no-default-features`.
+    /// Embassy-debug defaults to `pair` + `wifi`. Exclusive sits
+    /// (`mic` / `radio` / `charge` / `sd`) add `--no-default-features`.
     pub features: Vec<String>,
     /// `true` is `--profile release-fw` (the documented default).
     pub release: bool,
@@ -165,6 +165,9 @@ mod tests {
         assert!(embassy_debug_needs_no_default_features(&["sd".to_string()]));
         assert!(!embassy_debug_needs_no_default_features(&[
             "pair".to_string()
+        ]));
+        assert!(!embassy_debug_needs_no_default_features(&[
+            "wifi".to_string()
         ]));
         assert!(!embassy_debug_needs_no_default_features(&[
             "spi20".to_string()

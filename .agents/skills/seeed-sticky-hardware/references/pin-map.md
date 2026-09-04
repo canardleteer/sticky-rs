@@ -139,3 +139,19 @@ BlueZ **Connect** (not `Pair()`) typed a new UART `pair pin=` and
 completed SMP: `pair ok`, host `Paired` / `Connected`, pair card
 showed `Paired`. A concurrent BlueZ `Pair()` raced the image’s
 SMP Security Request (`0x0B`) and canceled.
+Default embassy-debug also paints idle-until-touch Wi-Fi survey
+and WPA2 SoftAP cards (`sticky-rs-AP` / `sticky26` at
+`192.168.4.1`). On a physical unit (2026-09-04): Page Down
+printed `scene=wifi_survey` then `scene=wifi_ap`; START taps
+printed `touch n=1` (`p0=679,189` on survey while
+`imu=Portrait0`). An image that hit-tested UART `to_screen`
+against gray4 `page_to_framebuffer` produced **no**
+`wifi_survey` / `wifi_ap` line (tap mapped to the top of the
+page). After the framebuffer hit-test fix, a host spare STA
+joined `sticky-rs-AP` / `sticky26` (2026-09-04): DHCP
+`192.168.4.50`, `GET /` JSON `device` / `scene=wifi_ap` /
+`wifi` counts (`clients=1`, `requests=1`). After STOP +
+replug + START: UART `wifi_ap … clients=1` then
+`wifi_http req=1 path=/`. Host disconnect produced no later
+`wifi_ap` decrement. Hit-test space:
+[touch.md](touch.md#coordinate-transform-on-a-physical-unit).

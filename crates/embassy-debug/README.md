@@ -36,6 +36,9 @@ embassy-debug: ce skip no-vbus
 embassy-debug: t=1204 pair pin=000042
 embassy-debug: t=1800 pair ok
 embassy-debug: t=2100 pair fail=ble_start
+embassy-debug: t=1204 wifi_survey count=5 ch1=1 ch6=2 ch11=1 other=1
+embassy-debug: t=1204 wifi_ap state=active ssid=sticky-rs-AP pass=sticky26 ip=192.168.4.1 clients=1
+embassy-debug: t=1204 wifi_http req=1 path=/
 embassy-debug: t=13 standby
 embassy-debug: t=15 resume
 embassy-debug: t=9 scene=sleeping
@@ -62,7 +65,9 @@ image (SSID / local name and RSSI; never a MAC or BSSID). The `pair`
 lines are printed by the default embassy-debug image while the pair
 card is showing (a six-digit passkey or `ok` / `fail=`; never a MAC).
 On a physical unit a host central typed the UART passkey and UART
-printed `pair ok`.
+printed `pair ok`. The `wifi_survey` / `wifi_ap` / `wifi_http` lines
+are printed by the default image’s Wi-Fi cards (counts and the fixed
+demo SSID/pass only; never a neighbor SSID, BSSID, or station MAC).
 The `sd`
 lines are printed only by `--features sd` (read-only identify and FAT
 list; never a CID product serial or file contents). The `ce` lines are

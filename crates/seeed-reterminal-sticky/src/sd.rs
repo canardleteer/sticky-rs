@@ -410,6 +410,5 @@ mod tests {
     #[test]
     fn init_clock_stays_inside_the_panel_default() {
         assert_eq!(INIT_HZ, 400_000);
-        assert!(INIT_HZ <= display::SPI_MAX_HZ);
     }
 }

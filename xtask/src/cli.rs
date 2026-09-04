@@ -358,7 +358,7 @@ impl Cli {
             return crate::ci::run(&repo);
         }
         refuse_if_legacy_backups_at_repo_root(&repo)?;
-        let layout = Layout::from_repo_root(repo);
+        let layout = Layout::from_repo_root(repo.clone());
         match self.command {
             Command::Ci => crate::ci::run(&repo),
             Command::DetectConnected(args) => {

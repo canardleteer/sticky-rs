@@ -17,7 +17,7 @@ const ELF_MAGIC: [u8; 4] = [0x7f, b'E', b'L', b'F'];
 /// `ESP_IMAGE_HEADER_MAGIC`). `validate_app_image` names this so a
 /// comment can cite it; it does not require the byte (empty and ELF
 /// are the refusals).
-const ESP_IMAGE_MAGIC: u8 = 0xE9;
+pub const ESP_IMAGE_MAGIC: u8 = 0xE9;
 
 /// `write_bin` of `image` at this unit's `app0` offset. Never erase, never
 /// the `espflash` `flash` subcommand, never a caller-chosen address.
@@ -118,7 +118,7 @@ mod tests {
             .copy_from_slice(&test_entry("nvs", 0x01, 0x02, 0x9000, 16));
         dump[PARTITION_TABLE_OFFSET + 32..PARTITION_TABLE_OFFSET + 64]
             .copy_from_slice(&test_entry("app0", 0x00, 0x10, APP0_MIN_OFFSET, APP0_SIZE));
-        dump[APP0_MIN_OFFSET as usize] = 0xE9;
+        dump[APP0_MIN_OFFSET as usize] = ESP_IMAGE_MAGIC;
         dump
     }
 
@@ -164,7 +164,7 @@ mod tests {
 
     #[test]
     fn validate_rejects_oversized() {
-        let bytes = vec![0xE9; APP0_SIZE as usize + 1];
+        let bytes = vec![ESP_IMAGE_MAGIC; APP0_SIZE as usize + 1];
         assert!(matches!(
             validate_app_image(&bytes, APP0_SIZE),
             Err(Error::ImageTooLarge { size, max }) if size == u64::from(APP0_SIZE) + 1 && max == APP0_SIZE
@@ -176,7 +176,7 @@ mod tests {
         let tmp = crate::backup::UnsealOnDrop::new();
         let layout = Layout::from_developer_data_root(tmp.path());
         let mock = RefCell::new(MockDevice::default());
-        let image = payload(tmp.path(), &[0xE9, 0x01]);
+        let image = payload(tmp.path(), &[ESP_IMAGE_MAGIC, 0x01]);
         let err = flash(&mock, &layout, "PORT", &image, false).unwrap_err();
         assert!(matches!(err, Error::FlashNotConfirmed));
     }
@@ -190,7 +190,7 @@ mod tests {
             board_info: board,
             ..MockDevice::default()
         });
-        let image = payload(tmp.path(), &[0xE9, 0x01]);
+        let image = payload(tmp.path(), &[ESP_IMAGE_MAGIC, 0x01]);
         let err = flash(&mock, &layout, "PORT", &image, true).unwrap_err();
         assert!(matches!(err, Error::MissingOriginal));
     }
@@ -213,7 +213,7 @@ mod tests {
             board_info: live,
             ..MockDevice::default()
         });
-        let image = payload(tmp.path(), &[0xE9, 0x01]);
+        let image = payload(tmp.path(), &[ESP_IMAGE_MAGIC, 0x01]);
         assert!(matches!(
             flash(&mock, &layout, "PORT", &image, true),
             Err(Error::MissingOriginal)
@@ -230,7 +230,7 @@ mod tests {
             board_info: board,
             ..MockDevice::default()
         });
-        let bytes = vec![0xE9, 0x03, 0x02, 0x01];
+        let bytes = vec![ESP_IMAGE_MAGIC, 0x03, 0x02, 0x01];
         let image = payload(tmp.path(), &bytes);
         flash(&mock, &layout, "PORT", &image, true).unwrap();
         let writes = &mock.borrow().writes;
@@ -282,7 +282,7 @@ mod tests {
             board_info: board,
             ..MockDevice::default()
         });
-        let image = payload(tmp.path(), &[0xE9, 0x01]);
+        let image = payload(tmp.path(), &[ESP_IMAGE_MAGIC, 0x01]);
         assert!(matches!(
             flash(&mock, &layout, "PORT", &image, true),
             Err(Error::UnknownPartition(label)) if label == "app0"
@@ -304,7 +304,7 @@ mod tests {
             flash(&mock, &layout, "PORT", &empty, true),
             Err(Error::ImageNotApp)
         ));
-        let huge = payload(tmp.path(), &vec![0xE9; APP0_SIZE as usize + 1]);
+        let huge = payload(tmp.path(), &vec![ESP_IMAGE_MAGIC; APP0_SIZE as usize + 1]);
         assert!(matches!(
             flash(&mock, &layout, "PORT", &huge, true),
             Err(Error::ImageTooLarge { size, max }) if size == u64::from(APP0_SIZE) + 1 && max == APP0_SIZE
@@ -334,7 +334,7 @@ mod tests {
             board_info: board_text,
             ..MockDevice::default()
         });
-        let image = payload(tmp.path(), &[0xE9, 0x01]);
+        let image = payload(tmp.path(), &[ESP_IMAGE_MAGIC, 0x01]);
         assert!(matches!(
             flash(&mock, &layout, &port, &image, true),
             Err(Error::IdentityMismatch { .. })
@@ -367,7 +367,7 @@ mod tests {
             board_info: board,
             ..MockDevice::default()
         });
-        let image = payload(tmp.path(), &[0xE9, 0x01]);
+        let image = payload(tmp.path(), &[ESP_IMAGE_MAGIC, 0x01]);
         assert!(matches!(
             flash(&mock, &layout, "PORT", &image, true),
             Err(Error::UnsafeAppOffset(offset)) if offset == unsafe_off
@@ -418,7 +418,7 @@ mod tests {
             board_info: board,
             ..MockDevice::default()
         });
-        let image = payload(tmp.path(), &[0xE9, 0x01]);
+        let image = payload(tmp.path(), &[ESP_IMAGE_MAGIC, 0x01]);
         assert!(matches!(
             flash_app(&mock, &layout, "PORT", &image, true, false, None),
             Err(Error::UnsafePartitionLayout { .. })
@@ -445,7 +445,7 @@ mod tests {
             board_info: board,
             ..MockDevice::default()
         });
-        let image = payload(tmp.path(), &[0xE9, 0x01]);
+        let image = payload(tmp.path(), &[ESP_IMAGE_MAGIC, 0x01]);
         flash_app(&mock, &layout, "PORT", &image, true, false, None).unwrap();
         assert_eq!(mock.borrow().writes.len(), 1);
         assert_eq!(mock.borrow().writes[0].0, APP0_MIN_OFFSET);
@@ -466,7 +466,7 @@ mod tests {
             board_info: board,
             ..MockDevice::default()
         });
-        let image = payload(tmp.path(), &[0xE9, 0x01]);
+        let image = payload(tmp.path(), &[ESP_IMAGE_MAGIC, 0x01]);
         flash_app(&mock, &layout, "PORT", &image, true, false, None).unwrap();
         assert_eq!(mock.borrow().writes.len(), 1);
     }

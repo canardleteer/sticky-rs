@@ -95,16 +95,29 @@ impl CdcListen {
             .detach_and_claim_interface(layout.comm)
             .wait()
             .map_err(map_usb_open)?;
-        let data = device
-            .detach_and_claim_interface(layout.data)
-            .wait()
-            .map_err(map_usb_open)?;
-        set_listen_coding(&comm, layout.comm)?;
-        let mut reader = data
+        let mut claimed = ClaimedIfaces {
+            device: &device,
+            comm: Some(comm),
+            data: None,
+            comm_num: layout.comm,
+            data_num: layout.data,
+            reattach: true,
+        };
+        let data = match device.detach_and_claim_interface(layout.data).wait() {
+            Ok(data) => data,
+            Err(error) => return Err(map_usb_open(error)),
+        };
+        claimed.data = Some(data);
+        set_listen_coding(claimed.comm.as_ref().expect("comm claimed"), layout.comm)?;
+        let mut reader = claimed
+            .data
+            .as_ref()
+            .expect("data claimed")
             .endpoint::<Bulk, In>(layout.bulk_in)
             .map_err(|error| Error::Device(format!("USB bulk-in: {error}")))?
             .reader(4096);
         reader.set_read_timeout(USB_TIMEOUT);
+        let (comm, data) = claimed.finish();
         log::info!(
             "CDC listen bus {} addr {} at 115200 (no ACM TTY, modem lines off)",
             key.busnum,
@@ -137,6 +150,46 @@ impl Drop for CdcListen {
         self.comm = None;
         reattach(&self.device, self.data_num, "data");
         reattach(&self.device, self.comm_num, "comm");
+    }
+}
+
+/// Reattach claimed CDC interfaces if [`CdcListen::open`] fails after the
+/// first `detach_and_claim_interface`. Success transfers ownership to
+/// [`CdcListen`], whose Drop reattaches.
+struct ClaimedIfaces<'a> {
+    device: &'a nusb::Device,
+    comm: Option<nusb::Interface>,
+    data: Option<nusb::Interface>,
+    comm_num: u8,
+    data_num: u8,
+    reattach: bool,
+}
+
+impl ClaimedIfaces<'_> {
+    fn finish(mut self) -> (nusb::Interface, nusb::Interface) {
+        self.reattach = false;
+        (
+            self.comm.take().expect("comm claimed"),
+            self.data.take().expect("data claimed"),
+        )
+    }
+}
+
+impl Drop for ClaimedIfaces<'_> {
+    fn drop(&mut self) {
+        if !self.reattach {
+            return;
+        }
+        let had_data = self.data.is_some();
+        let had_comm = self.comm.is_some();
+        self.data = None;
+        self.comm = None;
+        if had_data {
+            reattach(self.device, self.data_num, "data");
+        }
+        if had_comm {
+            reattach(self.device, self.comm_num, "comm");
+        }
     }
 }
 

@@ -8,6 +8,9 @@ use crate::original::{require_capture_backup, require_original_backup, Layout};
 use crate::Error;
 
 /// Restore the full 32 MiB image or one named partition.
+///
+/// `--part` refuses when `part-{label}.bin` is longer than that
+/// partition. A shorter file is allowed.
 pub fn restore<D: DeviceIo>(
     device: &D,
     layout: &Layout,
@@ -47,6 +50,12 @@ pub fn restore<D: DeviceIo>(
                 return Err(Error::UnknownPartition(label.into()));
             }
             let bytes = std::fs::metadata(&image)?.len();
+            if bytes > u64::from(part.size) {
+                return Err(Error::Import(format!(
+                    "part-{label}.bin is {bytes} bytes; partition {label} is {} bytes",
+                    part.size
+                )));
+            }
             eprintln!(
                 "restore: writing part-{label}.bin ({bytes} bytes) at {:#x}",
                 part.offset
@@ -131,6 +140,38 @@ mod tests {
         assert_eq!(writes.len(), 1);
         assert_eq!(writes[0].0, 0x9000);
         assert_eq!(writes[0].1[0], 0xEE);
+    }
+
+    #[test]
+    fn restore_part_refuses_when_file_is_longer_than_partition() {
+        let tmp = crate::backup::UnsealOnDrop::new();
+        let layout = Layout::from_developer_data_root(tmp.path());
+        let mac = test_mac();
+        let info = format!(
+            "Flash size: 32MB\nMAC address: {mac}\nSecure Boot: Disabled\nFlash Encryption: Disabled\n"
+        );
+        persist_original(
+            &layout,
+            "TESTFACTORY001",
+            &tiny_dump(),
+            &parse_board_info(&info).unwrap(),
+            "",
+            &info,
+            false,
+        )
+        .unwrap();
+        let dest = layout.original_dir("TESTFACTORY001");
+        crate::backup::unseal_tree(&dest).unwrap();
+        let part = dest.join("part-nvs.bin");
+        std::fs::write(&part, vec![0u8; 64]).unwrap();
+        crate::backup::seal_tree(&dest).unwrap();
+        let mock = RefCell::new(MockDevice {
+            board_info: info,
+            ..MockDevice::default()
+        });
+        let err = restore(&mock, &layout, "PORT", true, Some("nvs"), None).unwrap_err();
+        assert!(matches!(err, Error::Import(_)));
+        assert!(mock.borrow().writes.is_empty());
     }
 
     #[test]

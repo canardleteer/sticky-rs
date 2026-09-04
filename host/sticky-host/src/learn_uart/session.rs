@@ -233,6 +233,7 @@ pub fn run(layout: &Layout, args: LearnUartArgs) -> Result<(), Error> {
     write_report_file(&report, &canonical)?;
     say(&mut uart_log, format!("wrote YAML {}", canonical.display()))?;
     if let Some(extra) = args.report.as_ref() {
+        crate::output_path::warn_operator_output(layout, extra);
         if extra != &canonical {
             write_report_file(&report, extra)?;
         }

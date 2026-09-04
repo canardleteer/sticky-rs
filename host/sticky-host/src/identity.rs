@@ -107,6 +107,8 @@ pub fn unit_id(factory_serial: Option<&str>, mac: &str) -> Result<String, Error>
 /// Directory names: no slashes, no `..`, printable ASCII.
 pub fn validate_factory_serial(serial: &str) -> Result<(), Error> {
     if serial.is_empty()
+        || serial == "."
+        || serial == ".."
         || serial.contains('/')
         || serial.contains('\\')
         || serial.contains("..")
@@ -227,6 +229,14 @@ mod tests {
     fn rejects_path_serial() {
         assert!(matches!(
             validate_factory_serial("../evil"),
+            Err(Error::InvalidFactorySerial(_))
+        ));
+        assert!(matches!(
+            validate_factory_serial("."),
+            Err(Error::InvalidFactorySerial(_))
+        ));
+        assert!(matches!(
+            validate_factory_serial(".."),
             Err(Error::InvalidFactorySerial(_))
         ));
     }

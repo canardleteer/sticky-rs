@@ -132,19 +132,23 @@ pub struct SafetyNet {
 /// Load `MANIFEST.yaml`, or existing `MANIFEST.json`.
 pub fn load_manifest(dir: &Path) -> Result<Manifest, Error> {
     let yaml = dir.join("MANIFEST.yaml");
-    if yaml.is_file() {
+    let manifest: Manifest = if yaml.is_file() {
         let text = fs::read_to_string(yaml)?;
-        return noyalib::from_str(&text).map_err(|error| Error::Yaml(error.to_string()));
-    }
-    let json = dir.join("MANIFEST.json");
-    if json.is_file() {
-        let text = fs::read_to_string(json)?;
-        return Ok(serde_json::from_str(&text)?);
-    }
-    Err(Error::Import(format!(
-        "no MANIFEST.yaml or MANIFEST.json in {}",
-        dir.display()
-    )))
+        noyalib::from_str(&text).map_err(|error| Error::Yaml(error.to_string()))?
+    } else {
+        let json = dir.join("MANIFEST.json");
+        if json.is_file() {
+            let text = fs::read_to_string(json)?;
+            serde_json::from_str(&text)?
+        } else {
+            return Err(Error::Import(format!(
+                "no MANIFEST.yaml or MANIFEST.json in {}",
+                dir.display()
+            )));
+        }
+    };
+    crate::identity::validate_factory_serial(&manifest.factory_serial)?;
+    Ok(manifest)
 }
 
 fn is_usable_dir(path: &Path) -> bool {
@@ -531,6 +535,24 @@ mod tests {
             load_manifest(&dir).unwrap().factory_serial,
             "TESTFACTORY001"
         );
+    }
+
+    #[test]
+    fn load_manifest_rejects_dot_serial() {
+        let (_tmp, layout) = layout_tmp();
+        let dir = layout.originals_dir().join("dot-serial");
+        fs::create_dir_all(&dir).unwrap();
+        let mut manifest = stub_manifest(test_mac(), None);
+        manifest.factory_serial = ".".into();
+        fs::write(
+            dir.join("MANIFEST.yaml"),
+            noyalib::to_string(&manifest).unwrap(),
+        )
+        .unwrap();
+        assert!(matches!(
+            load_manifest(&dir),
+            Err(Error::InvalidFactorySerial(_))
+        ));
     }
 
     #[test]

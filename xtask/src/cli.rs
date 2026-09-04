@@ -29,7 +29,7 @@ Snapshots live under gitignored `developer-data/backups/`. Known factory \
 goes to write-once `original/<serial>/`. Anything else is a named capture. \
 `flash-app` writes factory `app0` only. Never erase.
 
-Host-only (no UART): `detect-connected` without `--probe`, `backup --import`, \
+Host-only (no UART): `detect-connected` without `--probe`, `backup-factory-firmware --import`, \
 `build-fw`, `ci`, `diff-learn-uart`, and `vet-idle-log`.
 
 Use `<COMMAND> --help` for flags.";
@@ -436,6 +436,7 @@ impl Cli {
             }
             Command::VetIdleLog(args) => run_vet_idle_log(args),
             Command::Monitor(args) => monitor(
+                &layout,
                 args.port,
                 &MonitorOptions {
                     for_secs: args.for_secs,

@@ -24,6 +24,7 @@ pub mod manifest;
 #[path = "monitor.rs"]
 pub mod monitor_impl;
 pub mod original;
+pub mod output_path;
 pub mod partition_layouts;
 pub mod partitions;
 #[path = "restore.rs"]
@@ -154,7 +155,14 @@ pub fn diff_learn_uart(
 
 /// Copy the CH343 UART to stdout (and optionally a file) until interrupted
 /// or a listen budget is exhausted.
-pub fn monitor(port: Option<String>, options: &MonitorOptions) -> Result<(), Error> {
+pub fn monitor(
+    layout: &Layout,
+    port: Option<String>,
+    options: &MonitorOptions,
+) -> Result<(), Error> {
+    if let Some(path) = &options.output {
+        output_path::warn_operator_output(layout, path);
+    }
     let port = detect::resolve_sticky_port(port)?;
     let _uart = uart_lock::try_acquire(&port, "monitor")?;
     monitor_impl::monitor(&port, options)

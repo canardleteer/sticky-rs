@@ -48,13 +48,30 @@ pub struct UartSession {
     _file: Option<File>,
 }
 
+/// Directory for advisory UART lock files.
+///
+/// Prefers `$XDG_RUNTIME_DIR/sticky-rs` when that variable is an absolute
+/// path (per-user, usually mode 0700). Otherwise `$TMPDIR/sticky-rs`
+/// (`std::env::temp_dir()`). Tests inject a directory via [`try_acquire_in`].
+pub fn default_lock_dir() -> PathBuf {
+    lock_dir_from(std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from))
+}
+
+fn lock_dir_from(xdg_runtime: Option<PathBuf>) -> PathBuf {
+    match xdg_runtime {
+        Some(path) if path.is_absolute() => path.join("sticky-rs"),
+        _ => std::env::temp_dir().join("sticky-rs"),
+    }
+}
+
 /// Acquire an exclusive UART session for `port`, or refuse without waiting.
 ///
 /// `command` is recorded so a contending xtask can say who holds the port.
 /// If [`UART_LOCK_ENV`] points at this port's lock and the holder is this
 /// process or an ancestor, joins that session (nested `cargo xtask` / wrapper).
+/// Lock files live in [`default_lock_dir`].
 pub fn try_acquire(port: &str, command: &str) -> Result<UartSession, Error> {
-    try_acquire_in(&std::env::temp_dir(), port, command)
+    try_acquire_in(&default_lock_dir(), port, command)
 }
 
 /// Testable [`try_acquire`] with an explicit lock directory.
@@ -283,6 +300,20 @@ mod tests {
             try_acquire_in(&lock_dir, a.to_str().unwrap(), "backup-factory-firmware").unwrap();
         let _second =
             try_acquire_in(&lock_dir, b.to_str().unwrap(), "backup-factory-firmware").unwrap();
+    }
+
+    #[test]
+    fn lock_dir_prefers_absolute_xdg_runtime() {
+        let xdg = PathBuf::from("/run/user/1000");
+        assert_eq!(
+            lock_dir_from(Some(xdg)),
+            PathBuf::from("/run/user/1000/sticky-rs")
+        );
+        assert_eq!(
+            lock_dir_from(Some(PathBuf::from("relative"))),
+            std::env::temp_dir().join("sticky-rs")
+        );
+        assert_eq!(lock_dir_from(None), std::env::temp_dir().join("sticky-rs"));
     }
 
     #[test]

@@ -239,7 +239,7 @@ pub fn run(layout: &Layout, args: LearnUartArgs) -> Result<(), Error> {
         }
     }
 
-    let restore_port = uart.path.clone();
+    let preferred_port = uart.path.clone();
     if args.restore_app0 {
         let restore = if io::stdin().is_terminal() {
             confirm_factory_restore(&mut uart_log)?
@@ -253,6 +253,7 @@ pub fn run(layout: &Layout, args: LearnUartArgs) -> Result<(), Error> {
                 "Writing factory software now. Put the board down. Do not unplug.",
             )?;
             thread::sleep(Duration::from_millis(500));
+            let restore_port = crate::detect::port_after_listen(&preferred_port)?;
             crate::restore_impl::restore(
                 &RealDevice,
                 layout,

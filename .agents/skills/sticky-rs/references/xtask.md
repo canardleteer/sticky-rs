@@ -19,7 +19,7 @@ live in
 | Command | UART? | How to use it |
 | --- | --- | --- |
 | `detect-connected` | no, unless `--probe` | USB inventory of Sticky CH343 (sysfs / by-id). `--all-devices` includes other USB-serial adapters. `--probe` opens the UART (DTR reset): stock `serial_number`, then board-info |
-| `backup-factory-firmware` | live dump yes; `--import` no | Classify then store. Known factory (`reterminal_template` 1.1.0 + `factory-32mb-v1`) → write-once `developer-data/backups/original/<factory-serial>/`. Otherwise `--name SLUG` → `developer-data/backups/captures/<unit-id>/<slug>/` (`unit-id` is factory serial or `mac-<hex>`). Persist seals the dest tree read-only. Uncertain stock: `--as-original` or `--name`. Alias `backup-firmware`. `--import DIR` is host-only: `flash-32mb.bin` (32 MiB), `board-info.txt` (`MAC address:` + 32 MB), serial from xtask `MANIFEST.yaml` / `MANIFEST.json` **or** `uart-sample.txt` / `serial-samples.txt`. Sibling dump manifests that are not the xtask schema are ignored. Import clears CH343 USB serial. Operator how-to: [firmware-snapshot-management.md](../../../../docs/firmware-snapshot-management.md) |
+| `backup-factory-firmware` | live dump yes; `--import` no | Classify then store. Known factory (`reterminal_template` 1.1.0 + `factory-32mb-v1`) → write-once `developer-data/backups/original/<factory-serial>/`. Otherwise `--name SLUG` → `developer-data/backups/captures/<unit-id>/<slug>/` (`unit-id` is factory serial or `mac-<hex>`). Persist seals the dest tree read-only. Uncertain stock: `--as-original` (under `original/`, not a capture slug) or `--name`. Alias `backup-firmware`. `--import DIR` is host-only: `flash-32mb.bin` (32 MiB), `board-info.txt` (`MAC address:` + 32 MB), serial from xtask `MANIFEST.yaml` / `MANIFEST.json` **or** `uart-sample.txt` / `serial-samples.txt`. Sibling dump manifests that are not the xtask schema are ignored. Import clears CH343 USB serial. `--import` refuses `--port` / `ESPFLASH_PORT`. Operator how-to: [firmware-snapshot-management.md](../../../../docs/firmware-snapshot-management.md) |
 | `confirm-factory-firmware` | yes | Compare live flash to the matching original, or `--capture SLUG`. Writes `developer-data/confirm-records/<serial>/divergence-<unix>.yaml`. Does not rewrite the sealed snapshot binaries |
 | `restore-factory-firmware` | yes | `write_bin_to_flash` of **that unit's** original, or `--capture SLUG`. Requires `--yes`. Full image at `0x0`, or `--part LABEL` (`nvs`, `app0`, …). `--part` refuses when `part-*.bin` is longer than that partition (a shorter file is allowed). Never a full-chip erase. Writes in 1 MiB windows (same size as backup `read-flash`); per-window device MD5 can skip a match; reconnects and retries a dropped window. Prints `write-bin window i/n` then chunk `%` (`init`/`update` are **chunk counts**, not bytes) |
 | `flash-app` | yes | `write_bin_to_flash` of `--image FILE` (a `save-image` payload, not an ELF) into factory `app0` only. Requires `--yes` and a matching original or unique capture. `--capture SLUG` picks a capture. Refuses an unknown/mismatched snapshot table unless `--allow-unknown-layout`. Never `espflash flash`, never a caller-chosen offset |
@@ -91,11 +91,13 @@ Prefer `--for` / `--lines` over `timeout`(1) or `kill -9`.
 | `--acm-tty` | Open `/dev/ttyACM*` instead of USB CDC. Pulses EN (`POWERON`) |
 
 `--for` and `--lines` may be combined; the first limit hit wins and the
-process exits `0`. With neither, listen until Ctrl-C. `--for 0` and
-`--quiet` without `--output` are rejected. Prefer a path under
-`developer-data/` (gitignored). A path outside that tree still
-writes, and xtask prints a warning. Do not commit UART captures
-(they can contain factory serials).
+process exits `0`. With neither, listen until Ctrl-C. A USB unplug
+after the reader is open (`UnexpectedEof`, `BrokenPipe`,
+`NotConnected`, `ConnectionReset`) is the same clean `0`, not a
+device error. `--for 0` and `--quiet` without `--output` are
+rejected. Prefer a path under `developer-data/` (gitignored). A path
+outside that tree still writes, and xtask prints a warning. Do not
+commit UART captures (they can contain factory serials).
 
 Typical desk check after a matching snapshot exists (human asked):
 
@@ -145,7 +147,10 @@ do not re-run Espressif CLIs for those fields unless a human asked.
 `sticky_host::try_acquire` is the **one** exclusive UART session for
 this board. It is a shared resource, not an implementation detail of backup
 or restore. Live `sticky-host` methods take it internally so a CLI cannot
-forget the lock.
+forget the lock. Lock files live in `$XDG_RUNTIME_DIR/sticky-rs` when
+that variable is an absolute path, otherwise `$TMPDIR/sticky-rs`
+(`std::env::temp_dir()`). Tests inject a directory; do not add a second
+lock file.
 
 Any new `cargo xtask` or `sticky-host` entry point that would open the CH343
 for a reset (DTR/RTS, EN/IO0, ROM stub, write-bin, read-flash, `--probe`) or

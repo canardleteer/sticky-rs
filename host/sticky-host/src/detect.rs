@@ -278,7 +278,7 @@ pub fn scan_from(
 
     let mut out: Vec<_> = by_tty.into_values().collect();
     out.extend(by_id_only);
-    out.sort_by_key(|a| a.preferred_port());
+    out.sort_by_cached_key(|a| a.preferred_port());
     Ok(out)
 }
 
@@ -460,6 +460,18 @@ fn pick_sticky_port(port: Option<String>, candidates: &[Candidate]) -> Result<St
         0 => Err(Error::MissingStickyUart),
         1 => sticky[0].preferred_port().ok_or(Error::MissingStickyUart),
         _ => Err(Error::AmbiguousStickyUart),
+    }
+}
+
+/// After a listen ends, keep `preferred` if that node is still there.
+///
+/// Otherwise pick the unique Sticky CH343 again. Dropping a CDC listen
+/// reattaches `cdc-acm`; the ACM path can move.
+pub fn port_after_listen(preferred: &str) -> Result<String, Error> {
+    if Path::new(preferred).exists() {
+        Ok(preferred.to_string())
+    } else {
+        resolve_sticky_port(None)
     }
 }
 
@@ -761,5 +773,16 @@ mod tests {
             require_sticky_ch343_from("ttyACM1", &[], Path::new("/no-sys")),
             Err(Error::UnclassifiedUsbPort)
         ));
+    }
+
+    #[test]
+    fn port_after_listen_keeps_a_path_that_still_exists() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ttyACM0");
+        std::fs::write(&path, b"").unwrap();
+        assert_eq!(
+            port_after_listen(path.to_str().unwrap()).unwrap(),
+            path.to_str().unwrap()
+        );
     }
 }

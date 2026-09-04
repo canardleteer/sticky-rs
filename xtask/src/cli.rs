@@ -148,10 +148,12 @@ pub struct BackupArgs {
     /// Host-only: copy an existing 32 MiB dump tree (YAML or JSON manifest).
     #[arg(long, value_name = "DIR")]
     pub import: Option<PathBuf>,
-    /// Named capture slug (`developer-data/backups/captures/<unit-id>/<slug>/`).
+    /// Capture slug under `developer-data/backups/captures/<unit-id>/<slug>/`.
+    /// Use this when the dump is not going into `original/`.
     #[arg(long)]
     pub name: Option<String>,
-    /// Store an uncertain-stock dump under `original/` (does not add to the catalog).
+    /// Uncertain-stock dump under `original/` (manifest fingerprint only; not
+    /// the in-repo catalog). Not a capture slug; use `--name` for those.
     #[arg(long)]
     pub as_original: bool,
 }
@@ -358,7 +360,7 @@ impl Cli {
         refuse_if_legacy_backups_at_repo_root(&repo)?;
         let layout = Layout::from_repo_root(repo);
         match self.command {
-            Command::Ci => unreachable!("ci returns before leftover-backup refuse"),
+            Command::Ci => crate::ci::run(&repo),
             Command::DetectConnected(args) => {
                 detect_connected(args.probe, args.port, args.all_devices)
             }
@@ -511,6 +513,7 @@ fn run_vet_idle_log(args: VetIdleLogArgs) -> Result<(), Error> {
 }
 
 fn run_backup(layout: &Layout, args: BackupArgs) -> Result<(), Error> {
+    refuse_import_with_port(args.import.is_some(), args.port.is_some())?;
     let request = BackupRequest {
         name: args.name,
         as_original: args.as_original,
@@ -560,6 +563,15 @@ fn repo_root() -> PathBuf {
         .parent()
         .expect("xtask lives in the workspace")
         .to_path_buf()
+}
+
+fn refuse_import_with_port(import: bool, port: bool) -> Result<(), Error> {
+    if import && port {
+        return Err(Error::Import(
+            "--port is unused with --import (host-only; unset ESPFLASH_PORT)".into(),
+        ));
+    }
+    Ok(())
 }
 
 fn merge_only_steps(positionals: Vec<String>, only: Vec<String>) -> Vec<String> {
@@ -629,6 +641,13 @@ mod tests {
             intro.split("\n\n").count() >= 3,
             "expected several about paragraphs, got:\n{intro}"
         );
+    }
+
+    #[test]
+    fn import_refuses_a_port() {
+        assert!(super::refuse_import_with_port(true, true).is_err());
+        assert!(super::refuse_import_with_port(true, false).is_ok());
+        assert!(super::refuse_import_with_port(false, true).is_ok());
     }
 
     #[test]

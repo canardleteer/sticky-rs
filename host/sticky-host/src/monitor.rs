@@ -40,7 +40,9 @@ pub struct MonitorOptions {
 /// (a default SIGINT would leave the TTY gone until the cable is
 /// replugged). The flock still drops with the process.
 /// [`MonitorOptions::for_secs`] or [`MonitorOptions::lines`] end with
-/// [`Ok`] instead.
+/// [`Ok`] instead. A USB unplug after the reader is open (`UnexpectedEof`,
+/// `BrokenPipe`, `NotConnected`, `ConnectionReset`) is the same clean
+/// end, not [`Error::Device`].
 pub fn monitor(port: &str, options: &MonitorOptions) -> Result<(), Error> {
     crate::detect::require_sticky_ch343(port)?;
     {
@@ -71,6 +73,7 @@ pub fn monitor(port: &str, options: &MonitorOptions) -> Result<(), Error> {
                 }
                 Err(error) if error.kind() == io::ErrorKind::TimedOut => {}
                 Err(error) if error.kind() == io::ErrorKind::Interrupted => break,
+                Err(error) if listen_read_is_clean_end(error.kind()) => break,
                 Err(error) => return Err(Error::Device(format!("UART read failed: {error}"))),
             }
         }
@@ -95,6 +98,16 @@ fn open_acm_tty(port: &str) -> Result<Box<dyn serialport::SerialPort>, Error> {
         .write_request_to_send(false)
         .map_err(|error| Error::Device(error.to_string()))?;
     Ok(serial)
+}
+
+fn listen_read_is_clean_end(kind: io::ErrorKind) -> bool {
+    matches!(
+        kind,
+        io::ErrorKind::UnexpectedEof
+            | io::ErrorKind::BrokenPipe
+            | io::ErrorKind::NotConnected
+            | io::ErrorKind::ConnectionReset
+    )
 }
 
 fn emit(
@@ -150,6 +163,23 @@ impl ListenBudget {
 #[cfg(test)]
 mod tests {
     use super::{ListenBudget, MONITOR_BAUD};
+
+    #[test]
+    fn usb_unplug_kinds_are_a_clean_end() {
+        use std::io::ErrorKind;
+        for kind in [
+            ErrorKind::UnexpectedEof,
+            ErrorKind::BrokenPipe,
+            ErrorKind::NotConnected,
+            ErrorKind::ConnectionReset,
+        ] {
+            assert!(super::listen_read_is_clean_end(kind));
+        }
+        assert!(!super::listen_read_is_clean_end(
+            ErrorKind::PermissionDenied
+        ));
+        assert!(!super::listen_read_is_clean_end(ErrorKind::TimedOut));
+    }
 
     #[test]
     fn baud_is_stock_uart0() {

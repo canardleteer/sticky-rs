@@ -248,17 +248,47 @@ fn strip_ansi(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut i = 0;
     while i < bytes.len() {
-        if bytes[i] == 0x1b && i + 1 < bytes.len() && bytes[i + 1] == b'[' {
-            i += 2;
-            while i < bytes.len() && !(bytes[i] >= b'@' && bytes[i] <= b'~') {
-                i += 1;
+        if bytes[i] == 0x1b && i + 1 < bytes.len() {
+            match bytes[i + 1] {
+                b'[' => {
+                    i += 2;
+                    while i < bytes.len() && !(bytes[i] >= b'@' && bytes[i] <= b'~') {
+                        i += 1;
+                    }
+                    if i < bytes.len() {
+                        i += 1;
+                    }
+                }
+                b']' => {
+                    i += 2;
+                    while i < bytes.len() {
+                        if bytes[i] == 0x07 {
+                            i += 1;
+                            break;
+                        }
+                        if bytes[i] == 0x1b && i + 1 < bytes.len() && bytes[i + 1] == b'\\' {
+                            i += 2;
+                            break;
+                        }
+                        i += 1;
+                    }
+                }
+                b'(' | b')' => {
+                    i += 2;
+                    if i < bytes.len() {
+                        i += 1;
+                    }
+                }
+                _ => i += 2,
             }
-            if i < bytes.len() {
-                i += 1;
+            continue;
+        }
+        match s[i..].chars().next() {
+            Some(ch) => {
+                out.push(ch);
+                i += ch.len_utf8();
             }
-        } else {
-            out.push(bytes[i] as char);
-            i += 1;
+            None => break,
         }
     }
     out
@@ -354,6 +384,28 @@ mod tests {
     fn ansi_prefix_is_stripped() {
         let line = "\x1b[32msimple-debug: t=1 vbus=1 gpio7=0 gpio40=1 sd_cd=1 soc=1 v=1 i=-12 imu=none\x1b[0m";
         assert!(matches!(parse_line(line), ParsedLine::Heartbeat(_)));
+    }
+
+    #[test]
+    fn strip_ansi_keeps_utf8_and_drops_osc() {
+        assert_eq!(
+            strip_ansi("\u{1b}]0;title\u{7}simple-debug: prompt café"),
+            "simple-debug: prompt café"
+        );
+        assert_eq!(
+            strip_ansi("\u{1b}]0;title\u{1b}\\simple-debug: btn 4 down"),
+            "simple-debug: btn 4 down"
+        );
+        assert_eq!(
+            strip_ansi("\u{1b}csimple-debug: prompt vbus"),
+            "simple-debug: prompt vbus"
+        );
+        assert!(matches!(
+            parse_line(
+                "\x1b[1msimple-debug: t=1 vbus=1 gpio7=0 gpio40=1 sd_cd=1 soc=1 v=1 i=0 imu=none"
+            ),
+            ParsedLine::Heartbeat(_)
+        ));
     }
 
     #[test]

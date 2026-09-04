@@ -13,6 +13,12 @@ pub const APP0_MIN_OFFSET: u32 = 0x90000;
 
 const ELF_MAGIC: [u8; 4] = [0x7f, b'E', b'L', b'F'];
 
+/// First byte of an Espressif application image header (`esptool` / IDF
+/// `ESP_IMAGE_HEADER_MAGIC`). `validate_app_image` names this so a
+/// comment can cite it; it does not require the byte (empty and ELF
+/// are the refusals).
+const ESP_IMAGE_MAGIC: u8 = 0xE9;
+
 /// `write_bin` of `image` at this unit's `app0` offset. Never erase, never
 /// the `espflash` `flash` subcommand, never a caller-chosen address.
 pub fn flash_app<D: DeviceIo>(
@@ -64,6 +70,8 @@ pub fn flash_app<D: DeviceIo>(
     device.write_bin(port, app0.offset, image)
 }
 
+/// Refuse an empty file or an ELF. A `save-image` payload usually
+/// starts with [`ESP_IMAGE_MAGIC`]; this check does not require it.
 fn validate_app_image(bytes: &[u8], app0_size: u32) -> Result<(), Error> {
     if bytes.is_empty() || bytes.starts_with(&ELF_MAGIC) {
         return Err(Error::ImageNotApp);

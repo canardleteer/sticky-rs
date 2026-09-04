@@ -71,7 +71,8 @@ Host-only. `cargo +esp` build (`--profile release-fw`, \
 `target/xtensa-esp32s3-none-elf/release-fw/`.
 
 IMAGE is `simple-debug` or `embassy-debug`. Features: `operator` \
-(simple-debug); `mic`, `radio`, `spi20`, `sd`, or `charge` (embassy-debug). \
+(simple-debug); `mic`, `radio`, `pair`, `spi20`, `sd`, or `charge` \
+(embassy-debug). \
 Needs the `esp` toolchain and `espflash` on PATH. Does not open a UART \
 and does not flash.";
 
@@ -316,7 +317,7 @@ impl From<FirmwareImageArg> for FirmwareImage {
 pub struct BuildFwCliArgs {
     /// `simple-debug` or `embassy-debug`.
     pub image: FirmwareImageArg,
-    /// Cargo features on that package (`operator` / `mic` / `radio` / `spi20` / `sd` / `charge`).
+    /// Cargo features on that package (`operator` / `mic` / `radio` / `pair` / `spi20` / `sd` / `charge`).
     #[arg(long)]
     pub features: Vec<String>,
     /// Build the debug profile instead of `--profile release-fw`.
@@ -847,6 +848,15 @@ mod tests {
         match cli.command {
             super::Command::BuildFw(args) => {
                 assert_eq!(args.features, ["charge"]);
+            }
+            other => panic!("expected BuildFw, got {other:?}"),
+        }
+
+        let cli = Cli::try_parse_from(["xtask", "build-fw", "embassy-debug", "--features", "pair"])
+            .expect("build-fw embassy-debug --features pair");
+        match cli.command {
+            super::Command::BuildFw(args) => {
+                assert_eq!(args.features, ["pair"]);
             }
             other => panic!("expected BuildFw, got {other:?}"),
         }

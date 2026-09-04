@@ -3,8 +3,8 @@
 //! The firmware owns buses, pins, and the Embassy tasks. This crate owns the
 //! **strings** it prints so the log contract can be tested on the host:
 //! timestamped button, touch, GT911 status, IMU, mic-energy, PCM-dump,
-//! radio-scan, read-only SD identify, and charge-sit lines, and no factory
-//! serial / USB serial / MAC / card product-serial fields.
+//! radio-scan, BLE pair-card, read-only SD identify, and charge-sit lines,
+//! and no factory serial / USB serial / MAC / card product-serial fields.
 
 #![no_std]
 #![forbid(unsafe_code)]
@@ -42,6 +42,14 @@ pub const TONE_DUMP_WINDOWS: u32 = 2;
 
 /// Wi-Fi / BLE scan period, in seconds (`--features radio` image).
 pub const RADIO_REPORT_SECS: u32 = 10;
+
+/// BLE advertise name on `--features pair` (`Complete Local Name`).
+#[cfg(feature = "pair")]
+pub const PAIR_ADV_NAME: &str = "sticky-rs";
+
+/// How long a fail card sits before the pair image returns to idle, in milliseconds.
+#[cfg(feature = "pair")]
+pub const PAIR_FAIL_HOLD_MS: u32 = 4000;
 
 /// How long `/CE` stays enabled on `--features charge`, in milliseconds.
 ///
@@ -133,11 +141,62 @@ pub enum Scene {
     Legend,
     /// Four boxes, one OTP gray level each.
     Tones,
+    /// BLE pair card (`--features pair` image).
+    #[cfg(feature = "pair")]
+    Pair,
+}
+
+/// Why a `--features pair` attempt did not finish.
+#[cfg(feature = "pair")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PairFailWhy {
+    /// BLE controller or host did not start.
+    BleStart,
+    /// Advertise session failed.
+    Advertise,
+    /// Peer or user cancelled (`PasskeyEntryFailed`).
+    Cancelled,
+    /// Pairing timed out.
+    Timeout,
+    /// SMP failed for another reason.
+    Pairing,
+    /// Peer lost its bond.
+    BondLost,
+    /// Unmapped host error.
+    Unknown,
+}
+
+#[cfg(feature = "pair")]
+impl PairFailWhy {
+    /// Token written after `pair fail=`.
+    #[inline]
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::BleStart => "ble_start",
+            Self::Advertise => "advertise",
+            Self::Cancelled => "cancelled",
+            Self::Timeout => "timeout",
+            Self::Pairing => "pairing",
+            Self::BondLost => "bond_lost",
+            Self::Unknown => "unknown",
+        }
+    }
 }
 
 impl Scene {
     /// Cycle order for Page Up / Page Down.
+    #[cfg(not(feature = "pair"))]
     pub const ALL: [Self; 4] = [Self::Splash, Self::Shapes, Self::Legend, Self::Tones];
+    /// Cycle order for Page Up / Page Down (`--features pair`).
+    #[cfg(feature = "pair")]
+    pub const ALL: [Self; 5] = [
+        Self::Splash,
+        Self::Shapes,
+        Self::Legend,
+        Self::Tones,
+        Self::Pair,
+    ];
 
     /// Token written after `scene=`.
     #[inline]
@@ -148,6 +207,8 @@ impl Scene {
             Self::Shapes => "shapes",
             Self::Legend => "legend",
             Self::Tones => "tones",
+            #[cfg(feature = "pair")]
+            Self::Pair => "pair",
         }
     }
 
@@ -160,6 +221,8 @@ impl Scene {
             Self::Shapes => 1,
             Self::Legend => 2,
             Self::Tones => 3,
+            #[cfg(feature = "pair")]
+            Self::Pair => 4,
         }
     }
 
@@ -172,6 +235,8 @@ impl Scene {
             1 => Some(Self::Shapes),
             2 => Some(Self::Legend),
             3 => Some(Self::Tones),
+            #[cfg(feature = "pair")]
+            4 => Some(Self::Pair),
             _ => None,
         }
     }
@@ -184,7 +249,12 @@ impl Scene {
             Self::Splash => Self::Shapes,
             Self::Shapes => Self::Legend,
             Self::Legend => Self::Tones,
+            #[cfg(not(feature = "pair"))]
             Self::Tones => Self::Splash,
+            #[cfg(feature = "pair")]
+            Self::Tones => Self::Pair,
+            #[cfg(feature = "pair")]
+            Self::Pair => Self::Splash,
         }
     }
 
@@ -193,10 +263,15 @@ impl Scene {
     #[must_use]
     pub const fn prev(self) -> Self {
         match self {
+            #[cfg(not(feature = "pair"))]
             Self::Splash => Self::Tones,
+            #[cfg(feature = "pair")]
+            Self::Splash => Self::Pair,
             Self::Shapes => Self::Splash,
             Self::Legend => Self::Shapes,
             Self::Tones => Self::Legend,
+            #[cfg(feature = "pair")]
+            Self::Pair => Self::Tones,
         }
     }
 }
@@ -400,6 +475,28 @@ pub enum Event {
         /// Milliseconds since boot.
         t_ms: u32,
     },
+    /// SMP passkey to show (`--features pair` image). Six digits, 0..=999999.
+    #[cfg(feature = "pair")]
+    PairPin {
+        /// Milliseconds since boot.
+        t_ms: u32,
+        /// Passkey from `PassKeyDisplay`.
+        pin: u32,
+    },
+    /// Pairing finished (`--features pair` image).
+    #[cfg(feature = "pair")]
+    PairOk {
+        /// Milliseconds since boot.
+        t_ms: u32,
+    },
+    /// Pairing did not finish (`--features pair` image).
+    #[cfg(feature = "pair")]
+    PairFail {
+        /// Milliseconds since boot.
+        t_ms: u32,
+        /// Short why token. Never a MAC.
+        why: PairFailWhy,
+    },
 }
 
 /// Writes `embassy-debug: latched` into `buf` without a trailing newline.
@@ -597,6 +694,18 @@ pub fn format_event<'a>(event: &Event, buf: &'a mut [u8]) -> Result<&'a str, For
         Event::Woke { t_ms } => write_into(buf, format_args!("{LOG_PREFIX}: t={t_ms} woke")),
         Event::Standby { t_ms } => write_into(buf, format_args!("{LOG_PREFIX}: t={t_ms} standby")),
         Event::Resumed { t_ms } => write_into(buf, format_args!("{LOG_PREFIX}: t={t_ms} resume")),
+        #[cfg(feature = "pair")]
+        Event::PairPin { t_ms, pin } => write_into(
+            buf,
+            format_args!("{LOG_PREFIX}: t={t_ms} pair pin={pin:06}"),
+        ),
+        #[cfg(feature = "pair")]
+        Event::PairOk { t_ms } => write_into(buf, format_args!("{LOG_PREFIX}: t={t_ms} pair ok")),
+        #[cfg(feature = "pair")]
+        Event::PairFail { t_ms, why } => write_into(
+            buf,
+            format_args!("{}: t={t_ms} pair fail={}", LOG_PREFIX, why.as_str()),
+        ),
     }
 }
 
@@ -1097,8 +1206,18 @@ mod tests {
     fn scene_wraps_in_both_directions() {
         assert_eq!(Scene::Splash.next(), Scene::Shapes);
         assert_eq!(Scene::Legend.next(), Scene::Tones);
+        #[cfg(not(feature = "pair"))]
         assert_eq!(Scene::Tones.next(), Scene::Splash);
+        #[cfg(not(feature = "pair"))]
         assert_eq!(Scene::Splash.prev(), Scene::Tones);
+        #[cfg(feature = "pair")]
+        assert_eq!(Scene::Tones.next(), Scene::Pair);
+        #[cfg(feature = "pair")]
+        assert_eq!(Scene::Pair.next(), Scene::Splash);
+        #[cfg(feature = "pair")]
+        assert_eq!(Scene::Splash.prev(), Scene::Pair);
+        #[cfg(feature = "pair")]
+        assert_eq!(Scene::Pair.prev(), Scene::Tones);
         assert_eq!(
             line(&Event::Scene {
                 t_ms: 9,
@@ -1247,5 +1366,52 @@ mod tests {
         let lower = text.to_ascii_lowercase();
         assert!(!lower.contains("serial"));
         assert!(!lower.contains("mac"));
+    }
+
+    #[cfg(feature = "pair")]
+    #[test]
+    fn pair_lines_match_the_agreed_shape() {
+        assert_eq!(PAIR_ADV_NAME, "sticky-rs");
+        assert_eq!(PAIR_FAIL_HOLD_MS, 4000);
+        assert_eq!(
+            line(&Event::PairPin {
+                t_ms: 1204,
+                pin: 42,
+            }),
+            "embassy-debug: t=1204 pair pin=000042"
+        );
+        assert_eq!(
+            line(&Event::PairOk { t_ms: 1204 }),
+            "embassy-debug: t=1204 pair ok"
+        );
+        assert_eq!(
+            line(&Event::PairFail {
+                t_ms: 1204,
+                why: PairFailWhy::BleStart,
+            }),
+            "embassy-debug: t=1204 pair fail=ble_start"
+        );
+        assert_eq!(
+            line(&Event::Scene {
+                t_ms: 9,
+                scene: Scene::Pair,
+            }),
+            "embassy-debug: t=9 scene=pair"
+        );
+        for why in [
+            PairFailWhy::BleStart,
+            PairFailWhy::Advertise,
+            PairFailWhy::Cancelled,
+            PairFailWhy::Timeout,
+            PairFailWhy::Pairing,
+            PairFailWhy::BondLost,
+            PairFailWhy::Unknown,
+        ] {
+            let text = line(&Event::PairFail { t_ms: 1, why });
+            let lower = text.to_ascii_lowercase();
+            assert!(!lower.contains("mac"));
+            assert!(!lower.contains("serial"));
+            assert!(text.contains("pair fail="));
+        }
     }
 }

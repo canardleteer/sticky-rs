@@ -23,6 +23,9 @@ On the unit:
   the drawings. `--features radio`: Wi-Fi and BLE scan together on the
   on-board antenna; keys still walk the drawings. Do not combine
   `mic` and `radio` in one image for a desk test.
+  `--features pair`: BLE advertise `sticky-rs` and a DisplayOnly
+  passkey card (Page Up / Page Down walk to that fifth page). Do
+  not combine `pair` with `mic`, `radio`, `charge`, or `sd`.
   `--features spi20` clocks the panel at 20 MHz (`spi=20000000`);
   default stays 10 MHz. `--features sd` runs a read-only card
   identify (`sd cd=`, `sd hz=` / `ack`); no writes. `--features
@@ -344,6 +347,102 @@ fail if Step 3 already printed both radios.
 This is a stack / RF-cal-after-`flash-app` check, not an NYC pin. Do
 not treat a successful scan as a license to write NVS or print a MAC.
 
+## Pair Test Instructions
+
+Default `embassy-debug` does not start BLE. This feature advertises
+as `sticky-rs` and shows a six-digit passkey only after a phone
+starts pairing. Bonds stay in RAM for this boot. The image does
+not write factory NVS and does not print a MAC. Snapshot first:
+[docs/getting-started.md](../../docs/getting-started.md).
+
+Do not combine with `mic`, `radio`, `charge`, or `sd`.
+
+To perform the test:
+
+### Step 1: Is the port free?
+
+Same as the microphone test. Only one `monitor` at a time. Ctrl-C an
+old listen. Do not `kill -9`.
+
+Then:
+
+```shell
+cargo xtask detect-connected
+```
+
+You should see a Sticky path. If you do not, and you already killed a
+listen the hard way, unplug the USB-C cable and plug it back in once.
+Run `detect-connected` again.
+
+### Step 2: Build, flash, and listen
+
+```shell
+. $HOME/export-esp.sh
+cargo xtask build-fw embassy-debug --features pair
+cargo xtask flash-app --image target/xtensa-esp32s3-none-elf/release-fw/embassy-debug.bin --yes
+cargo xtask monitor
+```
+
+The image is on the chip only after `flash-app` finishes. A successful
+build alone does not flash. If `flash-app` says no QinHeng CH343, go
+back to Step 1.
+
+Ctrl-C when you are done so the next `flash-app` can see the device.
+Do not `kill -9` that listen. If you already did, unplug and replug
+once (same as Step 1).
+
+### Step 3: Open the pair card
+
+You should still see `embassy-debug: latched` and the usual `btn` /
+`touch` / `imu=` lines. Default pages are still splash → shapes →
+legend → tones. Press Page Down until UART prints `scene=pair`.
+
+The glass should show `sticky-rs` and `Settings, Bluetooth, then
+sticky-rs`. There is no PIN yet.
+
+Right-edge keys still change the page. AI Voice is not a pair
+confirm.
+
+### Step 4: Pair from the phone
+
+On the phone, open Settings, then Bluetooth, then tap `sticky-rs`.
+
+When the board asks for a passkey, UART should print
+`pair pin=` plus six digits, and the glass should show those
+digits. Type that code on the phone.
+
+You should then see either:
+
+```text
+embassy-debug: t=1800 pair ok
+```
+
+and `Paired` on the glass, or:
+
+```text
+embassy-debug: t=2100 pair fail=cancelled
+```
+
+and `Pair failed` plus a short why (`cancelled`, `timeout`,
+`pairing`, `bond_lost`, `advertise`, `ble_start`, or `unknown`).
+A fail card sits a few seconds, then the how-to comes back.
+
+If BLE never starts, you should see `pair fail=ble_start` (or
+`advertise`) and no PIN. That is a fail for this sit.
+
+### Step 5: Observe and report
+
+- **Idle first**: the pair card starts as a how-to, not a fake PIN.
+- **PIN only after the phone starts pairing**: `pair pin=` matches
+  the six digits on the glass.
+- **Outcome**: `pair ok` and `Paired`, or `pair fail=` plus a why
+  token. No MAC on UART.
+- **Fail**: hang, panic, a PIN before you tap the phone, or a
+  `pair` line that includes a MAC.
+
+This image exists; pairing is **not measured** on a physical unit
+until someone records that sit.
+
 ## Charge Test Instructions
 
 Default `embassy-debug` parks `/CE` and never enables charging. This
@@ -352,7 +451,7 @@ feature is an attended sit for
 print parked STAT / VBUS / gauge current, enable `/CE` for two
 seconds only when GPIO9 is high, print STAT and `i=`, then park
 again. Every boot of this image repeats that pulse. Do not leave it
-as a daily driver. Do not combine with `mic`, `radio`, or `sd`.
+as a daily driver. Do not combine with `mic`, `radio`, `pair`, or `sd`.
 
 FreeInk is the SDK wiring: GPIO40 STAT low = charging, GPIO39
 undriven at idle. Bunny enables charge at boot; this image does

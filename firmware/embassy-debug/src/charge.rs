@@ -19,6 +19,8 @@ compile_error!("do not combine charge with mic");
 compile_error!("do not combine charge with radio");
 #[cfg(all(feature = "charge", feature = "sd"))]
 compile_error!("do not combine charge with sd");
+#[cfg(all(feature = "charge", feature = "pair"))]
+compile_error!("do not combine charge with pair");
 
 use bq25616::{ChargeStatus, Charger, ExternalPower, Level};
 use bq27220::Bq27220;

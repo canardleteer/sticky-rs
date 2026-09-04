@@ -130,3 +130,5 @@ well over a hundred advertisements and a few unique local names
 (plus `name=?` when the ad had no name). Printed SSID RSSI ran from
 the high −40s to the mid −90s. Scan only: no STA join, no BLE
 connect, no MAC or BSSID on UART. Not an NYC pin.
+embassy-debug `--features pair` exists (advertise `sticky-rs`,
+DisplayOnly passkey, RAM bonds). Pairing is **not measured**.

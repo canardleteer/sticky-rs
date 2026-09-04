@@ -52,7 +52,7 @@ use esp_hal::i2c::master::{Config as I2cConfig, I2c};
 use esp_hal::ledc::channel::{self, ChannelIFace};
 use esp_hal::ledc::timer::{self, TimerIFace};
 use esp_hal::ledc::{LSGlobalClkSource, Ledc, LowSpeed};
-#[cfg(feature = "radio")]
+#[cfg(any(feature = "radio", feature = "pair"))]
 use esp_hal::ram;
 use esp_hal::rtc_cntl::sleep::LowPower;
 use esp_hal::time::Rate;
@@ -395,10 +395,10 @@ fn spawn_tasks(spawner: &Spawner, parts: SpawnParts, start: Scene, rotation: Pag
 #[esp_hal::main]
 async fn main(spawner: Spawner) {
     let peripherals = esp_hal::init(esp_hal::Config::default());
-    #[cfg(not(feature = "radio"))]
+    #[cfg(not(any(feature = "radio", feature = "pair")))]
     esp_alloc::heap_allocator!(size: 8 * 1024);
     // Same class of heap as the esp-hal embassy_coex example.
-    #[cfg(feature = "radio")]
+    #[cfg(any(feature = "radio", feature = "pair"))]
     {
         esp_alloc::heap_allocator!(#[ram(reclaimed)] size: 64 * 1024);
         esp_alloc::heap_allocator!(size: 64 * 1024);
@@ -564,6 +564,9 @@ async fn main(spawner: Spawner) {
 
     #[cfg(feature = "radio")]
     spawner.spawn(crate::radio::radio_task(peripherals.WIFI, peripherals.BT).expect("radio task"));
+
+    #[cfg(feature = "pair")]
+    spawner.spawn(crate::pair::pair_task(peripherals.BT).expect("pair task"));
 
     crate::sleep::PANEL_PARKED.wait().await;
     crate::sleep::WAKE_ARMED.wait().await;
@@ -970,6 +973,8 @@ mod charge;
 mod display;
 #[cfg(feature = "mic")]
 mod mic;
+#[cfg(feature = "pair")]
+mod pair;
 #[cfg(feature = "radio")]
 mod radio;
 #[cfg(feature = "sd")]

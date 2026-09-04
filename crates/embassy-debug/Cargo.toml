@@ -12,6 +12,11 @@ authors.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[features]
+default = []
+# Fifth scene and `pair` UART lines. Enabled by embassy-debug-fw `--features pair`.
+pair = []
+
 [dev-dependencies]
 seeed-reterminal-sticky = { path = "../seeed-reterminal-sticky", version = "0.1.0" }
 

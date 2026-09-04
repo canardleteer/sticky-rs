@@ -4,8 +4,8 @@ Host-tested UART log contract for the Sticky Embassy image in
 `firmware/embassy-debug`.
 
 This crate owns the line format: timestamped button, touch, IMU,
-mic-energy, AI Voice PCM-dump, and radio-scan lines, and no identifier
-fields.
+mic-energy, AI Voice PCM-dump, radio-scan, and BLE pair-card lines, and
+no identifier fields.
 
 ```text
 embassy-debug: latched
@@ -33,6 +33,9 @@ embassy-debug: ce parked gpio40=1 vbus=1 i=0
 embassy-debug: ce on gpio40=0 i=-12
 embassy-debug: ce off gpio40=1 i=4
 embassy-debug: ce skip no-vbus
+embassy-debug: t=1204 pair pin=000042
+embassy-debug: t=1800 pair ok
+embassy-debug: t=2100 pair fail=ble_start
 ```
 
 [`IdleListen`] vets an unattended `monitor` capture (boot dance, idle
@@ -49,7 +52,9 @@ and `pcm` lines are printed only by the `--features mic` image. AI Voice
 dumps two windows and does not play the buzzer
 ([`PCM_DUMP_NO_TONE_HZ`] is `hz=0`).
 The `wifi` and `ble` lines are printed only by the `--features radio`
-image (SSID / local name and RSSI; never a MAC or BSSID). The `sd`
+image (SSID / local name and RSSI; never a MAC or BSSID). The `pair`
+lines are printed only by the `--features pair` image (a six-digit
+passkey or `ok` / `fail=`; never a MAC). The `sd`
 lines are printed only by `--features sd` (read-only identify and FAT
 list; never a CID product serial or file contents). The `ce` lines are
 printed only by `--features charge` (a ≤ 2 s `/CE` pulse when VBUS is

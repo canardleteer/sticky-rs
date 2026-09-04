@@ -10,6 +10,9 @@ use crate::{emit, now_ms};
 
 // Embassy time + UART scene token.
 use embassy_debug::{Event, Scene, STANDBY_LOOK_MS};
+#[cfg(feature = "pair")]
+use embassy_futures::select::{select, select4, Either, Either4};
+#[cfg(not(feature = "pair"))]
 use embassy_futures::select::{select4, Either4};
 use embassy_time::{with_timeout, Delay, Duration, Instant, Timer};
 use embedded_hal::delay::DelayNs;
@@ -143,14 +146,35 @@ pub async fn display_task(
     refresh(&mut driver, draw, tx, scene, rotation, &mut kind).await;
 
     loop {
-        match select4(
+        #[cfg(feature = "pair")]
+        let e4 = match select(
+            select4(
+                crate::SCENE.wait(),
+                crate::PAGE_ROTATION.wait(),
+                crate::sleep::SLEEP_REQUEST.wait(),
+                crate::STANDBY_REQUEST.wait(),
+            ),
+            crate::pair::PAIR_VIEW.wait(),
+        )
+        .await
+        {
+            Either::First(e4) => e4,
+            Either::Second(()) => {
+                if scene == Scene::Pair {
+                    refresh(&mut driver, draw, tx, scene, rotation, &mut kind).await;
+                }
+                continue;
+            }
+        };
+        #[cfg(not(feature = "pair"))]
+        let e4 = select4(
             crate::SCENE.wait(),
             crate::PAGE_ROTATION.wait(),
             crate::sleep::SLEEP_REQUEST.wait(),
             crate::STANDBY_REQUEST.wait(),
         )
-        .await
-        {
+        .await;
+        match e4 {
             Either4::First(next) => {
                 scene = next;
                 refresh(&mut driver, draw, tx, scene, rotation, &mut kind).await;
@@ -185,6 +209,8 @@ pub async fn display_task(
 fn scene_kind(scene: Scene) -> RefreshKind {
     match scene {
         Scene::Splash | Scene::Legend | Scene::Tones => RefreshKind::Gray4,
+        #[cfg(feature = "pair")]
+        Scene::Pair => RefreshKind::Gray4,
         Scene::Shapes => RefreshKind::Full,
     }
 }
@@ -500,6 +526,8 @@ where
         Scene::Splash => draw_splash(bw, red, rotation),
         Scene::Legend => draw_legend(bw, red),
         Scene::Tones => draw_tones(bw, red),
+        #[cfg(feature = "pair")]
+        Scene::Pair => draw_pair(bw, red),
         Scene::Shapes => {}
     }
 
@@ -523,6 +551,94 @@ fn draw_scene(scene: Scene, buf: &mut [u8]) {
             fill_rect(buf, 80, 560, 280, 160);
         }
         Scene::Splash | Scene::Legend | Scene::Tones => {}
+        #[cfg(feature = "pair")]
+        Scene::Pair => {}
+    }
+}
+
+/// BLE pair card: how-to, passkey, success, or fail + why.
+#[cfg(feature = "pair")]
+fn draw_pair(bw: &mut [u8], red: &mut [u8]) {
+    use crate::pair::{current_view, PairView};
+    use embassy_debug::PAIR_ADV_NAME;
+
+    const TITLE_FAT: u16 = 2;
+    const BODY_FAT: u16 = 1;
+    const PIN_FAT: u16 = 3;
+
+    clear_gray(bw, red, gray::WHITE, PageRotation::Portrait0);
+    let style = MonoTextStyle::new(&FONT_10X20, BinaryColor::On);
+    let cx = i32::from(display::PAGE_WIDTH) / 2;
+    match current_view() {
+        PairView::Idle => {
+            let _ =
+                Text::with_alignment(PAIR_ADV_NAME, Point::new(cx, 280), style, Alignment::Center)
+                    .draw(&mut GrayInk::new(
+                        bw,
+                        red,
+                        TITLE_FAT,
+                        PageRotation::Portrait0,
+                    ));
+            let _ = Text::with_alignment(
+                "Settings, Bluetooth,",
+                Point::new(cx, 360),
+                style,
+                Alignment::Center,
+            )
+            .draw(&mut GrayInk::new(
+                bw,
+                red,
+                BODY_FAT,
+                PageRotation::Portrait0,
+            ));
+            let _ = Text::with_alignment(
+                "then sticky-rs",
+                Point::new(cx, 400),
+                style,
+                Alignment::Center,
+            )
+            .draw(&mut GrayInk::new(
+                bw,
+                red,
+                BODY_FAT,
+                PageRotation::Portrait0,
+            ));
+        }
+        PairView::Pin(pin) => {
+            let mut digits = [0u8; 6];
+            let mut n = pin % 1_000_000;
+            for i in (0..6).rev() {
+                digits[i] = b'0' + (n % 10) as u8;
+                n /= 10;
+            }
+            let text = core::str::from_utf8(&digits).unwrap_or("000000");
+            let _ = Text::with_alignment(text, Point::new(cx, 380), style, Alignment::Center)
+                .draw(&mut GrayInk::new(bw, red, PIN_FAT, PageRotation::Portrait0));
+        }
+        PairView::Ok => {
+            let _ =
+                Text::with_alignment("Paired", Point::new(cx, 380), style, Alignment::Center).draw(
+                    &mut GrayInk::new(bw, red, TITLE_FAT, PageRotation::Portrait0),
+                );
+        }
+        PairView::Fail(why) => {
+            let _ =
+                Text::with_alignment("Pair failed", Point::new(cx, 340), style, Alignment::Center)
+                    .draw(&mut GrayInk::new(
+                        bw,
+                        red,
+                        TITLE_FAT,
+                        PageRotation::Portrait0,
+                    ));
+            let _ =
+                Text::with_alignment(why.as_str(), Point::new(cx, 400), style, Alignment::Center)
+                    .draw(&mut GrayInk::new(
+                        bw,
+                        red,
+                        BODY_FAT,
+                        PageRotation::Portrait0,
+                    ));
+        }
     }
 }
 

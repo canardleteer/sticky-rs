@@ -13,8 +13,8 @@ Live-ask, never-erase, and flash I/O: root
 - Park BQ25616 `/CE` disabled. Default image does not enable
   charging. `--features charge` is an attended ≤ 2 s `/CE` pulse
   when GPIO9 is high, then park. Do not combine with `mic`,
-  `radio`, or `sd`. Do not flash that feature unless the operator
-  is present.
+  `radio`, `pair`, or `sd`. Do not flash that feature unless the
+  operator is present.
 - GPIO7 is input-only (IMU INT1 and gauge GPOUT share it). Do not
   drive it.
 - MicroSD: CS idle-high on the default image. `--features sd` is
@@ -51,6 +51,11 @@ Live-ask, never-erase, and flash I/O: root
   and `ble n=` in one listen). Scan only; no NVS writes; no MAC /
   BSSID. How-to:
   [README.md](README.md#radio-test-instructions).
+- Pair: default image leaves BLE off. `--features pair` advertises
+  `sticky-rs` (DisplayOnly passkey). RAM bonds this boot only; no
+  factory NVS; no MAC on UART. Do not combine with `mic`, `radio`,
+  `charge`, or `sd`. Pairing is not measured on a physical unit.
+  How-to: [README.md](README.md#pair-test-instructions).
 - Panel standby sit: hold Page Up 2 s.
   `UpdateSequence::STANDBY` then `MasterActivation`, look 2 s.
   Stock `RESUME` (`0xC0`) and `ENABLE_CLOCK` (`0x80`) left BUSY
@@ -80,8 +85,9 @@ cargo xtask monitor
 ```
 
 Right-edge keys change the page (`scene=…`): splash (Ferris +
-`sticky-rs`) → shapes → legend → tones. This is not the `learn-uart`
-operator format.
+`sticky-rs`) → shapes → legend → tones. `--features pair` adds
+`scene=pair` after tones. This is not the `learn-uart` operator
+format.
 
 Host-tested lines live in `crates/embassy-debug`:
 

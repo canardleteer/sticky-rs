@@ -30,6 +30,7 @@ pub fn run(repo_root: &Path) -> Result<(), Error> {
     fw_clippy(repo_root, "embassy-debug-fw", None)?;
     fw_clippy(repo_root, "embassy-debug-fw", Some("mic"))?;
     fw_clippy(repo_root, "embassy-debug-fw", Some("radio"))?;
+    fw_clippy(repo_root, "embassy-debug-fw", Some("pair"))?;
     fw_clippy(repo_root, "embassy-debug-fw", Some("spi20"))?;
     fw_clippy(repo_root, "embassy-debug-fw", Some("sd"))?;
     fw_clippy(repo_root, "embassy-debug-fw", Some("charge"))?;

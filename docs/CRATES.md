@@ -44,7 +44,7 @@ in the lockfile).
 | [`bq25616`](../crates/bq25616) | A GPIO-only charger has no I2C driver to adopt; the value is making active-low `/CE` impossible to get wrong (`Drop` parks, VBUS interlock, `hold_disabled`). |
 | [`seeed-reterminal-sticky`](../crates/seeed-reterminal-sticky) | No board crate exists for this product. |
 | [`simple-debug`](../crates/simple-debug) | UART heartbeat, GPIO edges, and [`IdleListen`](../crates/simple-debug/src/idle.rs) for unattended `vet-idle-log`. Host-tested because the Xtensa image cannot run `cargo test` on the host compiler. |
-| [`embassy-debug`](../crates/embassy-debug) | Timestamped button / touch / IMU / mic / radio / read-only SD identify / charge-sit lines and [`IdleListen`](../crates/embassy-debug/src/idle.rs) for unattended `vet-idle-log`. Host-tested because the Xtensa image cannot run `cargo test` on the host compiler. |
+| [`embassy-debug`](../crates/embassy-debug) | Timestamped button / touch / IMU / mic / radio / BLE pair-card / read-only SD identify / charge-sit lines and [`IdleListen`](../crates/embassy-debug/src/idle.rs) for unattended `vet-idle-log`. Host-tested because the Xtensa image cannot run `cargo test` on the host compiler. |
 
 ## Infrastructure
 
@@ -66,6 +66,8 @@ ESP-IDF 2nd-stage bootloader and `espflash save-image` accept the payload.
 Do not `--merge`. `esp-alloc` is present because `lsm6ds3tr` 0.2.2 pulls
 `alloc`. `embassy-debug-fw --features radio` also takes `esp-radio` from
 that tag plus `trouble-host` / `bt-hci` for concurrent scan.
+`--features pair` takes the same radio crates for BLE peripheral +
+DisplayOnly passkey (no Wi-Fi, no `coex`).
 `sticky-host` serializes learn-uart YAML with
 [`noyalib`](https://crates.io/crates/noyalib) 0.0.28 (serde, no `unsafe` in
 sticky-host). Operator prompts use [`anstyle`](https://crates.io/crates/anstyle)

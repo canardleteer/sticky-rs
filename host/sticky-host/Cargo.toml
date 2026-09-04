@@ -29,7 +29,7 @@ nusb = "0.2.7"
 ctrlc = "3.4.7"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
-noyalib = "0.0.28"
+noyalib = "0.0.30"
 simple-debug = { path = "../../crates/simple-debug", version = "0.1.0" }
 # Enumeration needs libudev; we only open ESPFLASH_PORT. Same as espflash.
 serialport = { version = "4.7.2", default-features = false }

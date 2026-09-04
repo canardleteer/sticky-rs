@@ -69,7 +69,7 @@ that tag plus `trouble-host` / `bt-hci` for concurrent scan.
 `--features pair` takes the same radio crates for BLE peripheral +
 DisplayOnly passkey (no Wi-Fi, no `coex`).
 `sticky-host` serializes learn-uart YAML with
-[`noyalib`](https://crates.io/crates/noyalib) 0.0.28 (serde, no `unsafe` in
+[`noyalib`](https://crates.io/crates/noyalib) 0.0.30 (serde, no `unsafe` in
 sticky-host). Operator prompts use [`anstyle`](https://crates.io/crates/anstyle)
 1.0.14 and [`anstream`](https://crates.io/crates/anstream) 1.0.0 (`anstream`
 honors TTY, `NO_COLOR`, and `CLICOLOR`).

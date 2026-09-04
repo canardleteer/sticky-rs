@@ -69,6 +69,9 @@ pub const CHARGE_PULSE_MS: u32 = 2000;
 /// milliseconds. On a physical unit, STAT after disable was still low without this.
 pub const CHARGE_SETTLE_MS: u32 = 200;
 
+/// Compile-time: pulse must outlive settle (unsigned underflow if not).
+const _: u32 = CHARGE_PULSE_MS - CHARGE_SETTLE_MS;
+
 /// Max SSID or BLE local-name characters after sanitize.
 pub const RADIO_LABEL_MAX: usize = 24;
 
@@ -1141,7 +1144,6 @@ mod tests {
             format_ce_skip(&mut buf).unwrap(),
             "embassy-debug: ce skip no-vbus"
         );
-        assert!(CHARGE_PULSE_MS > CHARGE_SETTLE_MS);
         assert_eq!(CHARGE_PULSE_MS, 2000);
         assert_eq!(CHARGE_SETTLE_MS, 200);
     }

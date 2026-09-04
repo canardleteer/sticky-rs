@@ -245,24 +245,43 @@ pub fn format_sht_none(buf: &mut [u8]) -> Result<&str, FormatError> {
     write_into(buf, format_args!("{LOG_PREFIX}: sht none"))
 }
 
-/// Writes a PCF8563 time line. `year` is the chip's 0–99 field. `vl` is
-/// the seconds-register VL bit (NXP: 1 = integrity not guaranteed).
-pub fn format_rtc(
-    year: u8,
-    month: u8,
-    day: u8,
-    hours: u8,
-    minutes: u8,
-    seconds: u8,
-    vl: bool,
-    buf: &mut [u8],
-) -> Result<&str, FormatError> {
+/// Calendar fields from a PCF8563 VL_seconds read (`0x02`…`0x08`).
+///
+/// `year` is the chip's 0–99 field. `vl` is the seconds-register VL
+/// bit (NXP: 1 = integrity not guaranteed).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RtcFields {
+    /// Year in the century (0–99).
+    pub year: u8,
+    /// Month (1–12).
+    pub month: u8,
+    /// Day of month (1–31).
+    pub day: u8,
+    /// Hours (0–23).
+    pub hours: u8,
+    /// Minutes (0–59).
+    pub minutes: u8,
+    /// Seconds (0–59), VL bit stripped.
+    pub seconds: u8,
+    /// Seconds-register VL bit.
+    pub vl: bool,
+}
+
+/// Writes a PCF8563 time line. The UART shape is
+/// `simple-debug: rtc y=… mo=… d=… h=… mi=… s=… vl=…`.
+pub fn format_rtc(fields: RtcFields, buf: &mut [u8]) -> Result<&str, FormatError> {
     write_into(
         buf,
         format_args!(
-            "{}: rtc y={year} mo={month} d={day} h={hours} mi={minutes} s={seconds} vl={}",
+            "{}: rtc y={} mo={} d={} h={} mi={} s={} vl={}",
             LOG_PREFIX,
-            u8::from(vl),
+            fields.year,
+            fields.month,
+            fields.day,
+            fields.hours,
+            fields.minutes,
+            fields.seconds,
+            u8::from(fields.vl),
         ),
     )
 }
@@ -566,7 +585,19 @@ mod tests {
         assert_eq!(format_sht_none(&mut buf).unwrap(), "simple-debug: sht none");
         let mut buf = [0u8; RTC_CAPACITY];
         assert_eq!(
-            format_rtc(26, 8, 30, 15, 14, 0, false, &mut buf).unwrap(),
+            format_rtc(
+                RtcFields {
+                    year: 26,
+                    month: 8,
+                    day: 30,
+                    hours: 15,
+                    minutes: 14,
+                    seconds: 0,
+                    vl: false,
+                },
+                &mut buf,
+            )
+            .unwrap(),
             "simple-debug: rtc y=26 mo=8 d=30 h=15 mi=14 s=0 vl=0"
         );
         assert_eq!(format_rtc_none(&mut buf).unwrap(), "simple-debug: rtc none");

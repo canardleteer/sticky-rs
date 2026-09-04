@@ -56,7 +56,7 @@ use seeed_reterminal_sticky::{addresses, display, imu, Latch, I2C_FREQUENCY_HZ};
 // Host-tested UART line format.
 use simple_debug::{
     collect_edges, format_edge, format_git, format_gt911_id, format_heartbeat, format_rtc,
-    format_rtc_none, format_sht, format_sht_none, Edge, GpioLevels, ImuPose, Snapshot,
+    format_rtc_none, format_sht, format_sht_none, Edge, GpioLevels, ImuPose, RtcFields, Snapshot,
     EDGE_CAPACITY, GIT_CAPACITY, GT911_ID_CAPACITY, HEARTBEAT_CAPACITY, LOG_PREFIX, RTC_CAPACITY,
     SHT_CAPACITY,
 };
@@ -580,13 +580,15 @@ fn print_rtc_line(sensor_i2c: &RefCell<I2c<'static, Blocking>>) {
     let mut buf = [0u8; RTC_CAPACITY];
     let line = match i2c.write_read(addresses::PCF8563, &[0x02], &mut raw) {
         Ok(()) => format_rtc(
-            bcd_digit(raw[6]),
-            bcd_digit(raw[5] & 0x1f),
-            bcd_digit(raw[3] & 0x3f),
-            bcd_digit(raw[2] & 0x3f),
-            bcd_digit(raw[1] & 0x7f),
-            bcd_digit(raw[0] & 0x7f),
-            raw[0] & 0x80 != 0,
+            RtcFields {
+                year: bcd_digit(raw[6]),
+                month: bcd_digit(raw[5] & 0x1f),
+                day: bcd_digit(raw[3] & 0x3f),
+                hours: bcd_digit(raw[2] & 0x3f),
+                minutes: bcd_digit(raw[1] & 0x7f),
+                seconds: bcd_digit(raw[0] & 0x7f),
+                vl: raw[0] & 0x80 != 0,
+            },
             &mut buf,
         ),
         Err(_) => format_rtc_none(&mut buf),

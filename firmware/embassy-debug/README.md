@@ -397,8 +397,9 @@ You should still see `embassy-debug: latched` and the usual `btn` /
 `touch` / `imu=` lines. Default pages are still splash → shapes →
 legend → tones. Press Page Down until UART prints `scene=pair`.
 
-The glass should show `sticky-rs` and `Settings, Bluetooth, then
-sticky-rs`. There is no PIN yet.
+The glass should show a large `sticky-rs`, then `Settings,`,
+`Bluetooth,`, and `then sticky-rs`. There is no PIN yet. The
+six-digit PIN, when it appears, is the same large size.
 
 Right-edge keys still change the page. AI Voice is not a pair
 confirm.

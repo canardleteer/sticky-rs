@@ -557,52 +557,38 @@ fn draw_scene(scene: Scene, buf: &mut [u8]) {
 }
 
 /// BLE pair card: how-to, passkey, success, or fail + why.
+///
+/// [`GrayInk`] `fat` only thickens strokes. Pair text is laid out in a
+/// page/`SCALE` space so `FONT_10X20` is actually three times larger.
 #[cfg(feature = "pair")]
 fn draw_pair(bw: &mut [u8], red: &mut [u8]) {
     use crate::pair::{current_view, PairView};
     use embassy_debug::PAIR_ADV_NAME;
 
-    const TITLE_FAT: u16 = 2;
-    const BODY_FAT: u16 = 1;
-    const PIN_FAT: u16 = 3;
+    const SCALE: u16 = 3;
 
     clear_gray(bw, red, gray::WHITE, PageRotation::Portrait0);
     let style = MonoTextStyle::new(&FONT_10X20, BinaryColor::On);
-    let cx = i32::from(display::PAGE_WIDTH) / 2;
+    let cx = i32::from(display::PAGE_WIDTH) / (2 * i32::from(SCALE));
+    let mut ink = ScaleInk::new(bw, red, SCALE, PageRotation::Portrait0);
     match current_view() {
         PairView::Idle => {
             let _ =
-                Text::with_alignment(PAIR_ADV_NAME, Point::new(cx, 280), style, Alignment::Center)
-                    .draw(&mut GrayInk::new(
-                        bw,
-                        red,
-                        TITLE_FAT,
-                        PageRotation::Portrait0,
-                    ));
-            let _ = Text::with_alignment(
-                "Settings, Bluetooth,",
-                Point::new(cx, 360),
-                style,
-                Alignment::Center,
-            )
-            .draw(&mut GrayInk::new(
-                bw,
-                red,
-                BODY_FAT,
-                PageRotation::Portrait0,
-            ));
+                Text::with_alignment(PAIR_ADV_NAME, Point::new(cx, 70), style, Alignment::Center)
+                    .draw(&mut ink);
+            let _ =
+                Text::with_alignment("Settings,", Point::new(cx, 110), style, Alignment::Center)
+                    .draw(&mut ink);
+            let _ =
+                Text::with_alignment("Bluetooth,", Point::new(cx, 140), style, Alignment::Center)
+                    .draw(&mut ink);
             let _ = Text::with_alignment(
                 "then sticky-rs",
-                Point::new(cx, 400),
+                Point::new(cx, 170),
                 style,
                 Alignment::Center,
             )
-            .draw(&mut GrayInk::new(
-                bw,
-                red,
-                BODY_FAT,
-                PageRotation::Portrait0,
-            ));
+            .draw(&mut ink);
         }
         PairView::Pin(pin) => {
             let mut digits = [0u8; 6];
@@ -612,32 +598,20 @@ fn draw_pair(bw: &mut [u8], red: &mut [u8]) {
                 n /= 10;
             }
             let text = core::str::from_utf8(&digits).unwrap_or("000000");
-            let _ = Text::with_alignment(text, Point::new(cx, 380), style, Alignment::Center)
-                .draw(&mut GrayInk::new(bw, red, PIN_FAT, PageRotation::Portrait0));
+            let _ = Text::with_alignment(text, Point::new(cx, 130), style, Alignment::Center)
+                .draw(&mut ink);
         }
         PairView::Ok => {
-            let _ =
-                Text::with_alignment("Paired", Point::new(cx, 380), style, Alignment::Center).draw(
-                    &mut GrayInk::new(bw, red, TITLE_FAT, PageRotation::Portrait0),
-                );
+            let _ = Text::with_alignment("Paired", Point::new(cx, 130), style, Alignment::Center)
+                .draw(&mut ink);
         }
         PairView::Fail(why) => {
             let _ =
-                Text::with_alignment("Pair failed", Point::new(cx, 340), style, Alignment::Center)
-                    .draw(&mut GrayInk::new(
-                        bw,
-                        red,
-                        TITLE_FAT,
-                        PageRotation::Portrait0,
-                    ));
+                Text::with_alignment("Pair failed", Point::new(cx, 110), style, Alignment::Center)
+                    .draw(&mut ink);
             let _ =
-                Text::with_alignment(why.as_str(), Point::new(cx, 400), style, Alignment::Center)
-                    .draw(&mut GrayInk::new(
-                        bw,
-                        red,
-                        BODY_FAT,
-                        PageRotation::Portrait0,
-                    ));
+                Text::with_alignment(why.as_str(), Point::new(cx, 150), style, Alignment::Center)
+                    .draw(&mut ink);
         }
     }
 }
@@ -975,6 +949,83 @@ impl DrawTarget for GrayInk<'_> {
             };
             for dy in 0..self.fat {
                 for dx in 0..self.fat {
+                    set_gray_page(
+                        self.bw,
+                        self.red,
+                        x0.saturating_add(dx),
+                        y0.saturating_add(dy),
+                        gray::BLACK,
+                        self.rotation,
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Pair-card ink: each source pixel becomes a `scale`×`scale` block.
+///
+/// [`OriginDimensions`] is the page divided by `scale`, so `Text` layout
+/// stays in that smaller space and the glyphs come out `scale` times larger.
+#[cfg(feature = "pair")]
+struct ScaleInk<'a> {
+    bw: &'a mut [u8],
+    red: &'a mut [u8],
+    scale: u16,
+    rotation: PageRotation,
+}
+
+#[cfg(feature = "pair")]
+impl<'a> ScaleInk<'a> {
+    fn new(bw: &'a mut [u8], red: &'a mut [u8], scale: u16, rotation: PageRotation) -> Self {
+        Self {
+            bw,
+            red,
+            scale: scale.max(1),
+            rotation,
+        }
+    }
+}
+
+#[cfg(feature = "pair")]
+impl OriginDimensions for ScaleInk<'_> {
+    fn size(&self) -> Size {
+        let (w, h) = self.rotation.page_size();
+        Size::new(
+            u32::from(w) / u32::from(self.scale),
+            u32::from(h) / u32::from(self.scale),
+        )
+    }
+}
+
+#[cfg(feature = "pair")]
+impl DrawTarget for ScaleInk<'_> {
+    type Color = BinaryColor;
+    type Error = core::convert::Infallible;
+
+    fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
+    where
+        I: IntoIterator<Item = Pixel<Self::Color>>,
+    {
+        let scale = i32::from(self.scale);
+        for Pixel(point, color) in pixels {
+            if color != BinaryColor::On {
+                continue;
+            }
+            let x0 = point.x.saturating_mul(scale);
+            let y0 = point.y.saturating_mul(scale);
+            if x0 < 0 || y0 < 0 {
+                continue;
+            }
+            let Ok(x0) = u16::try_from(x0) else {
+                continue;
+            };
+            let Ok(y0) = u16::try_from(y0) else {
+                continue;
+            };
+            for dy in 0..self.scale {
+                for dx in 0..self.scale {
                     set_gray_page(
                         self.bw,
                         self.red,

@@ -118,6 +118,7 @@ pair = [
   "trouble-host/peripheral",
   "trouble-host/gatt",
   "trouble-host/security",
+  "trouble-host/legacy-pairing",
   "trouble-host/derive",
   # 0.7 only defines GAP_SERVICE_ATTRIBUTE_COUNT with security+central.
   "trouble-host/central",

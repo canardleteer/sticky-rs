@@ -131,4 +131,7 @@ well over a hundred advertisements and a few unique local names
 the high −40s to the mid −90s. Scan only: no STA join, no BLE
 connect, no MAC or BSSID on UART. Not an NYC pin.
 embassy-debug `--features pair` exists (advertise `sticky-rs`,
-DisplayOnly passkey, RAM bonds). Pairing is **not measured**.
+DisplayOnly passkey, RAM bonds). On a physical unit: UART printed
+`scene=pair`, then `pair pin=` (six digits), then `pair fail=pairing`.
+Advertisement and passkey display worked. Pairing success is **not
+measured**.

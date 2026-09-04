@@ -219,7 +219,10 @@ host-tested lines and `IdleListen` in `crates/embassy-debug`).
 bonds this boot). UART tokens are `pair pin=`, `pair ok`, and
 `pair fail=` — never a MAC or eFuse. Pairing success is **not
 measured**. `trouble-host` 0.7 still needs the `central` feature so
-`GAP_SERVICE_ATTRIBUTE_COUNT` exists.
+`GAP_SERVICE_ATTRIBUTE_COUNT` exists. Offer a phone sit first; a
+host `bluetoothctl` self-diagnostic is allowed only when the human
+asked for that live sit
+([embassy-debug AGENTS.md](../../../../firmware/embassy-debug/AGENTS.md#bluetooth-pairing-verification-workflow)).
 
 ## Datasheet catalog vs crates
 

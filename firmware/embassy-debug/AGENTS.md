@@ -104,6 +104,38 @@ Host-tested lines live in `crates/embassy-debug`:
 cargo test -p embassy-debug --locked
 ```
 
+## Bluetooth pairing verification workflow
+
+When testing `--features pair`, two verification pathways are
+supported. Always offer the human the option to test with their
+own devices. Pairing success is **not measured** on a physical
+unit until someone records that sit. Do not print or store a MAC.
+
+1. **Manual external device pairing.** The human walks Page Down
+   to `scene=pair`, searches for `sticky-rs` from their phone or
+   other central, starts pairing, reads the six-digit passkey on
+   the glass, types it on the phone, and watches for `Paired` or
+   `Pair failed`. UART should print `pair pin=` then `pair ok` or
+   `pair fail=`. Human how-to:
+   [README.md](README.md#pair-test-instructions).
+2. **Host-agent self-diagnostic pairing (faster for agents).** If
+   the host has an available, unblocked Bluetooth controller
+   (BlueZ `bluetoothctl`) **and** the human explicitly asked for
+   this sit, the agent may:
+   - Listen with `cargo xtask monitor` (not `--acm-tty`) so Drop
+     reattaches `cdc-acm`.
+   - Scan and discover the advertise name `sticky-rs`. Do not
+     read or print the eFuse MAC.
+   - Initiate pairing to provoke the DisplayOnly passkey.
+   - Extract the six digits from UART (`pair pin=`).
+   - Submit that PIN to `bluetoothctl` and look for `pair ok`
+     (or `pair fail=` plus a why token).
+   - Ask the human to confirm the same PIN and `Paired` /
+     `Pair failed` banner on the glass.
+
+Bonds are RAM this boot only. Do not write factory NVS. Do not
+combine `pair` with `mic`, `radio`, `charge`, or `sd`.
+
 ## Firmware examples as tutorial code
 
 Firmware under `embassy-debug/` serves as an educational reference

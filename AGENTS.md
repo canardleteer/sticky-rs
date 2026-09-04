@@ -75,6 +75,26 @@ sealed snapshots, `developer-data/uart-inspection-records/` for learn-uart,
 `developer-data/confirm-records/` for confirm reports). Do not use a leftover
 repo-root `backups/`.
 
+## Bluetooth testing options
+
+When testing Bluetooth pairing on `embassy-debug-fw --features pair`,
+always offer the human the option to test with their own personal
+devices (for example a smartphone). If the host environment has an
+available, unblocked Bluetooth controller (for example via BlueZ
+`bluetoothctl`), agents may also offer an automated host
+self-diagnostic when the human **explicitly asked** for that sit
+in that message: listen with `cargo xtask monitor` (not
+`--acm-tty`), extract the generated PIN from the UART stream
+(`pair pin=`), submit it to complete authentication, and ask the
+human to visually confirm that the identical PIN was rendered on
+the e-paper panel. UART tokens stay `pair pin=`, `pair ok`, and
+`pair fail=` — never a MAC. This host-driven pathway enables
+fast agent self-diagnostics while preserving manual testing
+flexibility. Step-by-step:
+[firmware/embassy-debug/AGENTS.md](firmware/embassy-debug/AGENTS.md#bluetooth-pairing-verification-workflow).
+Do not run `bluetoothctl` (or any other host BLE central) against
+the unit unless that live ask is present.
+
 ## Keep skills updated
 
 Project-local skills must stay aligned with the tree. When you change a

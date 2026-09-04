@@ -12,9 +12,10 @@ Live-ask, never-erase, and flash I/O: root
 - Latch GPIO45 then GPIO46 before logs or buses.
 - Park BQ25616 `/CE` disabled. Default image does not enable
   charging. `--features charge` is an attended ≤ 2 s `/CE` pulse
-  when GPIO9 is high, then park. Do not combine with `mic`,
-  `radio`, `pair`, or `sd`. Do not flash that feature unless the
-  operator is present.
+  when GPIO9 is high after a cold boot or a 1 s Page Down resume
+  hold, then park. A wake that re-sleeps does not pulse `/CE`.
+  Do not combine with `mic`, `radio`, `pair`, or `sd`. Do not
+  flash that feature unless the operator is present.
 - GPIO7 is input-only (IMU INT1 and gauge GPOUT share it). Do not
   drive it.
 - MicroSD: CS idle-high on the default image. `--features sd` is
@@ -49,7 +50,9 @@ Live-ask, never-erase, and flash I/O: root
 - Radio: default image leaves Wi-Fi and BLE off. `--features radio`
   scans both at once on the on-board antenna (on a physical unit: `wifi n=`
   and `ble n=` in one listen). Scan only; no NVS writes; no MAC /
-  BSSID. How-to:
+  BSSID. Active scan still transmits probe / scan requests. The
+  radios stay up until reset; this image does not deinit them
+  before deep sleep. How-to:
   [README.md](README.md#radio-test-instructions).
 - Pair: default image leaves BLE off. `--features pair` advertises
   `sticky-rs` (DisplayOnly passkey). RAM bonds this boot only; no
@@ -64,12 +67,14 @@ Live-ask, never-erase, and flash I/O: root
   high. Not MCU deep sleep. Not RAM-keep resume.
 - Deep sleep: hold Page Down 4 s. The image paints a sleep card, sends
   SSD1677 `DeepSleepMode` / `DeepSleep::Enter`, cuts `EPD_EN`, keeps
-  the latch high, and wakes on GPIO6 `ext1` ANY_LOW. Hold Page Down
-  1 s after wake to restore the same card. Early release re-sleeps
-  without painting. Recessed Reset or a USB unplug/replug is a
-  POWERON (splash). GPIO4 is still the stock/docs wake pin; this
-  image uses GPIO6 because the gesture is Page Down. Do not
-  `Latch::release`. Sit with `cargo xtask monitor` **without**
+  the latch high, and wakes on GPIO6 `ext1` ANY_LOW. A failed sleep
+  card stays awake (`EPD_EN` on). A failed `DeepSleepMode` write
+  holds `EPD_EN` high (does not cut the rail) and then MCU-sleeps.
+  Hold Page Down 1 s after wake to restore the same card. Early
+  release re-sleeps without painting. Recessed Reset or a USB
+  unplug/replug is a POWERON (splash). GPIO4 is still the stock/docs
+  wake pin; this image uses GPIO6 because the gesture is Page Down.
+  Do not `Latch::release`. Sit with `cargo xtask monitor` **without**
   `--acm-tty` (`--acm-tty` pulses EN and is a POWERON). No writes
   below `0x90000`. No Cargo `runner`.
 

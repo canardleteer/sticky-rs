@@ -2,9 +2,11 @@
 //!
 //! Parks first, prints STAT and VBUS, enables only when GPIO9 is high,
 //! waits [`embassy_debug::CHARGE_PULSE_MS`], parks, settles, and
-//! [`bq25616::Charger::hold_disabled`] if STAT is still low. Gauge
-//! `Current()` is a one-shot on the sensor bus before the IMU task owns
-//! it. On a physical unit (USB): `gpio40=1→0→1`; `i=` was `0` at 200 ms and
+//! [`bq25616::Charger::hold_disabled`] if STAT is still low. The
+//! firmware calls this after a cold boot or a 1 s Page Down resume
+//! hold, not on a wake that re-sleeps. Gauge `Current()` is a
+//! one-shot on the sensor bus before the IMU task owns it. On a
+//! physical unit (USB): `gpio40=1→0→1`; `i=` was `0` at 200 ms and
 //! `5702` at 2 s (not a 555 mA proof). Do not combine with `mic`,
 //! `radio`, or `sd`.
 //!

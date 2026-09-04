@@ -45,7 +45,7 @@ const REFRESH_TIMEOUT: Duration = Duration::from_secs(15);
 /// After clock-off, BUSY can stay high. Do not sit on it for a full refresh.
 const RESUME_POLL: Duration = Duration::from_millis(2000);
 
-/// 240×160 packed 2bpp Ferris; provenance in `assets/SOURCE.md`.
+/// 360×240 packed 2bpp Ferris; provenance in `assets/SOURCE.md`.
 const FERRIS: &[u8] = include_bytes!("../assets/ferris.g4");
 const FERRIS_W: u16 = 360;
 const FERRIS_H: u16 = 240;
@@ -190,9 +190,12 @@ pub async fn display_task(
             }
             Either4::Third(()) => {
                 crate::sleep::persist(scene, rotation);
-                if paint_sleep_card(&mut driver, draw, tx, &mut kind).await {
-                    park_panel(driver, rail);
+                if !paint_sleep_card(&mut driver, draw, tx, &mut kind).await {
+                    println!("embassy-debug: sleep card failed");
+                    crate::sleep::cancel_sleep_request();
+                    continue;
                 }
+                park_panel(driver, rail);
                 crate::sleep::PANEL_PARKED.signal(());
                 loop {
                     embassy_time::Timer::after(embassy_time::Duration::from_secs(3_600)).await;
@@ -437,6 +440,9 @@ fn park_panel<SPI, DC, RST, BUSY>(
 {
     let Ok(asleep) = driver.sleep() else {
         println!("embassy-debug: epd sleep failed");
+        let mut pin = rail.release();
+        crate::sleep::hold_output(&mut pin);
+        core::mem::forget(pin);
         return;
     };
     let _ = asleep.release();

@@ -34,6 +34,9 @@ pub const BUZZER_TONE_HZ: u32 = 1000;
 /// How long that GPIO48 tone stays on, in milliseconds.
 pub const BUZZER_TONE_MS: u32 = 400;
 
+/// Short key / glass chirp on GPIO48, in milliseconds.
+pub const BUZZER_CHIRP_MS: u32 = 80;
+
 /// `mic pcm hz=` when AI Voice dumps PCM and the buzzer stays off.
 pub const PCM_DUMP_NO_TONE_HZ: u32 = 0;
 
@@ -1172,6 +1175,7 @@ mod tests {
         assert_eq!(PCM_ROW_SAMPLES, 16);
         assert_eq!(BUZZER_TONE_HZ, 1000);
         assert_eq!(BUZZER_TONE_MS, 400);
+        assert_eq!(BUZZER_CHIRP_MS, 80);
         assert_eq!(PCM_DUMP_NO_TONE_HZ, 0);
         assert_eq!(TONE_DUMP_WINDOWS, 2);
     }

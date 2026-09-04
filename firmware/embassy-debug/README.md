@@ -29,7 +29,9 @@ On the unit:
   `--features spi20` clocks the panel at 20 MHz (`spi=20000000`);
   default stays 10 MHz. `--features sd` runs a read-only card
   identify (`sd cd=`, `sd hz=` / `ack`); no writes. `--features
-  charge` pulses `/CE` for ≤ 2 s when USB is present, then parks.
+  charge` pulses `/CE` for ≤ 2 s when USB is present after a cold
+  boot or a 1 s Page Down resume hold, then parks. A wake that
+  re-sleeps does not pulse `/CE`.
   Do not combine `spi20` / `sd` / `charge` with `mic` or `radio`.
   Do not combine `charge` with `sd`.
 - Tilt the card for `imu=…`. A short beep answers a key-down. Tap the
@@ -266,7 +268,9 @@ period, and a through-hole ~36–40-sample period, not slot / polarity
 Default `embassy-debug` does not start the radio. This feature scans
 Wi-Fi and BLE **at the same time** on the on-board antenna (schematic
 ANT1). Scan only: it does not join an AP, start a SoftAP, or connect
-BLE. It does not print a MAC or BSSID. Snapshot first:
+BLE. It does not print a MAC or BSSID. Active scan still transmits
+Wi-Fi probe requests and BLE scan requests. The radios stay up until
+reset; this image does not deinit them before deep sleep. Snapshot first:
 [docs/getting-started.md](../../docs/getting-started.md).
 
 Use this image **without** `--features mic` so GPIO19/20 stay unused.
@@ -451,8 +455,9 @@ feature is an attended sit for
 [`nyc-charge-stat`](../../.agents/skills/seeed-sticky-hardware/resources/not-yet-confirmed.md#nyc-charge-stat):
 print parked STAT / VBUS / gauge current, enable `/CE` for two
 seconds only when GPIO9 is high, print STAT and `i=`, then park
-again. Every boot of this image repeats that pulse. Do not leave it
-as a daily driver. Do not combine with `mic`, `radio`, `pair`, or `sd`.
+again. A cold boot or a 1 s Page Down resume hold repeats that
+pulse. A wake that re-sleeps does not. Do not leave it as a daily
+driver. Do not combine with `mic`, `radio`, `pair`, or `sd`.
 
 FreeInk is the SDK wiring: GPIO40 STAT low = charging, GPIO39
 undriven at idle. Bunny enables charge at boot; this image does

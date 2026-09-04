@@ -245,7 +245,7 @@ fn main() -> ! {
     #[cfg(feature = "operator")]
     println!("{LOG_PREFIX}: operator (gpio poll 20ms, gt911 contacts)");
 
-    let _ = (charger, mic_rail);
+    let _parked = (charger, mic_rail);
     // RST stays driven high and INT stays input for the whole run.
     let _keep_touch_rst = &touch_rst;
 

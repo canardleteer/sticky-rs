@@ -9,7 +9,9 @@
 //!
 //! In the MCU: latch power, park the charger and unused rails, bring up
 //! the two I2C buses and the panel OTP path. `--features charge` may
-//! pulse `/CE` for two seconds when VBUS is present, then parks again.
+//! pulse `/CE` for two seconds when VBUS is present after a cold boot
+//! or a 1 s Page Down resume hold, then parks again. A wake that
+//! re-sleeps does not pulse `/CE`.
 //! No invented LUT.
 //!
 //! # Before flashing anything
@@ -30,9 +32,9 @@ use bq25616::Charger;
 use embassy_debug::TONE_DUMP_WINDOWS;
 use embassy_debug::{
     classify_sleep_hold, classify_standby_hold, format_event, format_git, format_latched, Event,
-    ImuPose, ResumeHold, Scene, SleepHold, StandbyHold, TouchPoint, GIT_CAPACITY, IMU_REPORT_SECS,
-    LATCHED_CAPACITY, LINE_CAPACITY, LOG_PREFIX, MAX_TOUCH_POINTS, PAGE_DOWN_SLEEP_MS,
-    PAGE_UP_STANDBY_MS,
+    ImuPose, ResumeHold, Scene, SleepHold, StandbyHold, TouchPoint, BUZZER_CHIRP_MS,
+    BUZZER_TONE_HZ, GIT_CAPACITY, IMU_REPORT_SECS, LATCHED_CAPACITY, LINE_CAPACITY, LOG_PREFIX,
+    MAX_TOUCH_POINTS, PAGE_DOWN_SLEEP_MS, PAGE_UP_STANDBY_MS,
 };
 
 // Embassy runtime: tasks, channels, time.
@@ -448,17 +450,6 @@ async fn main(spawner: Spawner) {
     .with_sda(peripherals.GPIO1)
     .with_scl(peripherals.GPIO0);
 
-    #[cfg(feature = "charge")]
-    {
-        parked.charger = crate::charge::run(
-            parked.charger,
-            peripherals.GPIO9,
-            peripherals.GPIO40,
-            &mut sensor_i2c,
-            &mut delay,
-        );
-    }
-
     let resume = crate::sleep::resume_snap();
     let mut page_down = crate::sleep::page_down_input(peripherals.GPIO6);
     let (start_scene, start_rotation) = if let Some(snap) = resume {
@@ -472,6 +463,15 @@ async fn main(spawner: Spawner) {
             ResumeHold::Ready => (snap.scene, snap.rotation),
             ResumeHold::Abort | ResumeHold::Waiting => {
                 crate::sleep::park_epd_en_low(peripherals.GPIO47);
+                #[cfg(feature = "mic")]
+                {
+                    let disabled = mic_rail
+                        .disable()
+                        .expect("driving the mic rail cannot fail");
+                    let mut pin = disabled.release();
+                    crate::sleep::hold_output(&mut pin);
+                    core::mem::forget(pin);
+                }
                 hold_parked(parked);
                 crate::sleep::hold_latch(latch);
                 crate::sleep::arm_page_down_and_sleep(&mut page_down, lpwr);
@@ -480,6 +480,17 @@ async fn main(spawner: Spawner) {
     } else {
         (Scene::Splash, PageRotation::Portrait0)
     };
+
+    #[cfg(feature = "charge")]
+    {
+        parked.charger = crate::charge::run(
+            parked.charger,
+            peripherals.GPIO9,
+            peripherals.GPIO40,
+            &mut sensor_i2c,
+            &mut delay,
+        );
+    }
 
     let touch_i2c = I2c::new(
         peripherals.I2C1,
@@ -910,15 +921,18 @@ async fn buzzer_task(
     let mut ledc = Ledc::new(ledc);
     ledc.set_global_slow_clock(LSGlobalClkSource::APBClk);
     let mut lstimer0 = ledc.timer::<LowSpeed>(timer::Number::Timer0);
+    let mut pin = Output::new(pin, Level::Low, OutputConfig::default());
     if lstimer0
         .configure(timer::config::Config {
             duty: timer::config::Duty::Duty8Bit,
             clock_source: timer::LSClockSource::APBClk,
-            frequency: Rate::from_khz(1),
+            frequency: Rate::from_hz(BUZZER_TONE_HZ),
         })
         .is_err()
     {
         println!("{LOG_PREFIX}: buzzer timer failed");
+        crate::sleep::hold_output(&mut pin);
+        core::mem::forget(pin);
         loop {
             BEEPS.receive().await;
         }
@@ -961,7 +975,7 @@ async fn buzzer_task(
         let _ = channel0.set_duty(50);
         match kind {
             Beep::Chirp => {
-                Timer::after(Duration::from_millis(80)).await;
+                Timer::after(Duration::from_millis(u64::from(BUZZER_CHIRP_MS))).await;
             }
         }
         let _ = channel0.set_duty(0);

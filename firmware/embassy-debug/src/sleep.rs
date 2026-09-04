@@ -45,6 +45,11 @@ pub(crate) fn is_requested() -> bool {
     SLEEPING.load(Ordering::Acquire)
 }
 
+/// Sleep card failed; stay awake so a later hold can try again.
+pub(crate) fn cancel_sleep_request() {
+    SLEEPING.store(false, Ordering::Release);
+}
+
 const SNAP_MAGIC: u32 = 0x534C5031;
 
 #[esp_hal::ram(unstable(rtc_fast, persistent))]

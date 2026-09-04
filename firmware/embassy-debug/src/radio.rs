@@ -2,6 +2,8 @@
 //!
 //! Scan only. No STA join, no SoftAP, no BLE connect or advertise.
 //! SSID / local name and RSSI only — never a MAC or BSSID.
+//! Active scan still transmits Wi-Fi probe requests and BLE scan
+//! requests. This task does not deinit the radio before deep sleep.
 
 use crate::{emit, now_ms};
 

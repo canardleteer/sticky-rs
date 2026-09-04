@@ -78,6 +78,10 @@ pulses EN / `POWERON`). Baud is 115200. Needs write access on the usbfs
 node (`/dev/bus/usb/…`); a udev rule for `1a86:55d3` in group `dialout`
 is enough. `--acm-tty` is the old TTY path (embassy will reboot).
 Ctrl-C reattaches `cdc-acm` so the next live command can see the TTY.
+`CdcListen::open` must also reattach if the first interface claim
+succeeds and the listen then fails (`ClaimedIfaces`; Drop is the
+success path only). After Drop, the ACM TTY path can move; the next
+live command re-resolves and must not assume the pre-listen path.
 Prefer `--for` / `--lines` over `timeout`(1) or `kill -9`.
 
 | Flag | What it does |

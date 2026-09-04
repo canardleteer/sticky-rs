@@ -111,6 +111,9 @@ requirement.
 
 Send the SSD1677 deep-sleep command **while EPD_EN is still high**, then drop
 EPD_EN. The last image stays on the panel with the analog rail off.
+In-repo `embassy-debug` holds `EPD_EN` high if that write fails, then
+MCU-sleeps (firmware intent; not a measured rail current). Cutting the
+rail without a successful panel sleep drops controller RAM.
 
 Sleep current: [nyc-sleep-current](../resources/not-yet-confirmed.md#nyc-sleep-current).
 

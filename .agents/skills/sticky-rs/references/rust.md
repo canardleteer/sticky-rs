@@ -161,6 +161,11 @@ GPIO0.
 
 Sleep: GPIO hold + `Ext1WakeupSource` on GPIO4 ANY_LOW. Rails in
 [power-and-sleep.md](../../seeed-sticky-hardware/references/power-and-sleep.md).
+embassy-debug: a failed sleep-card paint stays awake (`EPD_EN` on; do
+not signal parked). A failed `DeepSleepMode` write holds `EPD_EN`
+high and then MCU-sleeps. This image does not deinit Wi-Fi/BLE
+before `sleep_deep`; active scan still transmits. Firmware evidence
+of intent, not an electrical measurement.
 
 Shared SPI: `embedded-hal-bus` or `embassy-embedded-hal` — one mutex, two
 `SpiDevice`s.
@@ -210,6 +215,11 @@ heartbeat of raw levels; host-tested line format in `crates/simple-debug`)
 and `firmware/embassy-debug` (Embassy log task, buttons, GT911 INT-low
 `touch n=5`, IMU every 5 s, `gt911 st=` every 10 s, buzzer, panel;
 host-tested lines and `IdleListen` in `crates/embassy-debug`).
+`--features pair` advertises `sticky-rs` (DisplayOnly passkey, RAM
+bonds this boot). UART tokens are `pair pin=`, `pair ok`, and
+`pair fail=` — never a MAC or eFuse. Pairing success is **not
+measured**. `trouble-host` 0.7 still needs the `central` feature so
+`GAP_SERVICE_ATTRIBUTE_COUNT` exists.
 
 ## Datasheet catalog vs crates
 
@@ -247,8 +257,8 @@ In this repository, prefer the workspace crates and the verdicts in
 | LSM6DS3TR-C | `lsm6ds3tr` | Mutex the shared sensor I2C. Do not drive GPIO7 |
 | BQ27220 | `bq27220` (this repo) | Not `bq27xxx` (wrong family: CEDV vs Impedance Track). Reads by default; gate data-memory writes |
 | BQ25616 | `bq25616` (this repo) | GPIO39 low; GPIO9 digital. No I2C |
-| Buzzer | LEDC (`esp-hal` or IDF LEDC) | GPIO48 |
+| Buzzer | LEDC (`esp-hal` or IDF LEDC) | GPIO48 starts low. Chirp vs long tone are `BUZZER_CHIRP_MS` (80) vs `BUZZER_TONE_MS` (400) |
 | MicroSD | `embedded-sdmmc` | Init ≤ 400 kHz. CS arbitration is the application’s job |
 | PDM mic | I2S PDM RX | GPIO38 enable. GPIO19/20 are USB-Serial-JTAG pads: disable the USB pad after deep-sleep wake before attaching PDM. Working ESPHome recipe (16 kHz, left) in [sensors.md](../../seeed-sticky-hardware/references/sensors.md#pdm-microphone); not a crate |
-| Wi-Fi / BLE | `esp-radio` or `esp-idf-svc` | |
+| Wi-Fi / BLE | `esp-radio` or `esp-idf-svc` | `--features pair`: DisplayOnly, advertise `sticky-rs`, RAM bonds, UART `pair pin=` / `pair ok` / `pair fail=` (never a MAC). `trouble-host` 0.7 needs `central` for `GAP_SERVICE_ATTRIBUTE_COUNT`. Radios stay up until reset |
 | Graphics | `embedded-graphics` | Host simulator without a physical panel |

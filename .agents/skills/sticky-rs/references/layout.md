@@ -8,7 +8,7 @@
 | `host/` | Default-members. Host libraries and future host CLIs (not `xtask`) |
 | `host/sticky-host/` | Host library (`publish = true`, not crates.io yet). Detect, factory backup / confirm / restore, `build-fw`, `flash-app`, learn-uart, monitor. Callers pass `Layout`; live methods take the UART lock |
 | `xtask/` | Clap front-end at the repo root (`cargo xtask`). Maps flags to `sticky-host`; `repo_root()` is the parent of this package |
-| `developer-data/` | Gitignored private / personalized files. Sealed dumps under `developer-data/backups/` (`original/<serial>/`, `captures/<unit-id>/<slug>/`). Learn-uart YAML under `uart-inspection-records/<serial>/`. Confirm reports under `confirm-records/<serial>/`. Not in git. Leftover repo-root `backups/` is also ignored; do not use it |
+| `developer-data/` | Gitignored private / personalized files. Sealed dumps under `developer-data/backups/` (`original/<serial>/`, `captures/<unit-id>/<slug>/`). Learn-uart YAML under `uart-inspection-records/<serial>/`. Confirm reports under `confirm-records/<serial>/`. Private scratch notes stay here too. Not in git. Leftover repo-root `backups/` is also ignored; do not use it |
 | `firmware/*` | Workspace members, not default-members. ELFs in workspace `target/`. [Firmware examples as tutorial code](../../../../firmware/AGENTS.md#firmware-examples-as-tutorial-code) |
 | `docs/` | [SAFETY.md](../../../../docs/SAFETY.md) (symlink into the hardware skill), [getting-started.md](../../../../docs/getting-started.md), [firmware-snapshot-management.md](../../../../docs/firmware-snapshot-management.md), [API-RULES.md](../../../../docs/API-RULES.md), [CRATES.md](../../../../docs/CRATES.md), [ssd1677.md](../../../../docs/ssd1677.md), [DATASHEETS.md](../../../../docs/DATASHEETS.md) (symlink into the hardware skill) |
 | `rust-analyzer.toml` | Excludes `simple-debug-fw` and `embassy-debug-fw` from host check |
@@ -69,11 +69,20 @@ transforms — belong in `seeed-reterminal-sticky`. Keep that split.
   is checked with `rumdl check` (config
   [`.rumdl.toml`](../../../../.rumdl.toml)). Do not run rumdl on vendor
   PDF extracts under the hardware skill `resources/datasheets/md/`.
+  A rustc newer than MSRV can fail that clippy on default-members
+  (`too_many_arguments`, `assertions_on_constants`). Keep the trio
+  green; do not pin an older clippy. Workspace MSRV 1.85 treats
+  `const { assert!(…) }` items as experimental — use a named
+  `const _: u32 = A - B` underflow (or pack arguments) instead.
 - One workspace lockfile is committed. Pass `--locked` and keep the claimed
   MSRV. After changing `host/sticky-host/Cargo.toml`, `xtask/Cargo.toml`,
   `firmware/*/Cargo.toml`, or workspace members, refresh it with
   `cargo generate-lockfile`.
 - Use [Conventional Commits](https://www.conventionalcommits.org/).
+  Tracked git text (commits, rustdoc, README, skills, `AGENTS.md`,
+  branch names) describes the why. Do not name private review
+  scratch, review-phase labels, or finding codes. Gitignored notes
+  under `developer-data/` may.
 - Silicon discovery and device I/O use `cargo xtask`. Do not add a parallel
   `esptool` / `espflash` CLI recipe when xtask already answers. Host-only
   `cargo xtask build-fw` wraps `cargo +esp` and `espflash save-image` (no

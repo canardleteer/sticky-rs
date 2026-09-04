@@ -67,7 +67,9 @@ Do not `--merge`. `esp-alloc` is present because `lsm6ds3tr` 0.2.2 pulls
 `alloc`. `embassy-debug-fw --features radio` also takes `esp-radio` from
 that tag plus `trouble-host` / `bt-hci` for concurrent scan.
 `--features pair` takes the same radio crates for BLE peripheral +
-DisplayOnly passkey (no Wi-Fi, no `coex`).
+DisplayOnly passkey (no Wi-Fi, no `coex`). `trouble-host` 0.7 still
+needs the `central` feature so `GAP_SERVICE_ATTRIBUTE_COUNT` exists
+(`security` + `derive` alone is not enough).
 `sticky-host` serializes learn-uart YAML with
 [`noyalib`](https://crates.io/crates/noyalib) 0.0.30 (serde, no `unsafe` in
 sticky-host). Operator prompts use [`anstyle`](https://crates.io/crates/anstyle)

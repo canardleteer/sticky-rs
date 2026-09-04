@@ -142,6 +142,14 @@ and the README list.
   `firmware/*/Cargo.toml`, or workspace members, refresh it with
   `cargo generate-lockfile`.
 - Use [Conventional Commits](https://www.conventionalcommits.org/).
+  Tracked git text (commits, rustdoc, README, skills, this file,
+  branch names) describes the why. Do not name private review
+  scratch, review-phase labels, or finding codes. Gitignored notes
+  under `developer-data/` may.
+- A rustc newer than MSRV can fail the host trio clippy on
+  default-members. Keep `cargo clippy --locked --all-targets -- -D
+  warnings` green; do not pin an older clippy. Workspace MSRV 1.85
+  treats `const { assert!(…) }` items as experimental.
 - Measurement-backlog items in the hardware skill stay open until someone
   measures them. Firmware evidence proves intent and sequencing, never
   electrical fact.

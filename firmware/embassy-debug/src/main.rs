@@ -576,6 +576,7 @@ async fn main(spawner: Spawner) {
     #[cfg(feature = "radio")]
     spawner.spawn(crate::radio::radio_task(peripherals.WIFI, peripherals.BT).expect("radio task"));
 
+    // BLE only (no Wi-Fi). Advertise `sticky-rs`; PIN after PassKeyDisplay.
     #[cfg(feature = "pair")]
     spawner.spawn(crate::pair::pair_task(peripherals.BT).expect("pair task"));
 

@@ -106,8 +106,11 @@ radio = [
   "trouble-host/scan",
 ]
 # BLE peripheral + DisplayOnly passkey card. Advertise `sticky-rs`.
-# RAM bonds only; no factory NVS. Do not combine with `mic`, `radio`,
-# `charge`, or `sd`.
+# RAM bonds only; no factory NVS; no eFuse MAC on UART. Walkthrough:
+# src/pair.rs. Do not combine with `mic`, `radio`, `charge`, or `sd`.
+# `legacy-pairing` is the passkey path. `central` is required so
+# trouble-host 0.7 defines GAP_SERVICE_ATTRIBUTE_COUNT (security +
+# derive alone is not enough).
 pair = [
   "dep:esp-radio",
   "dep:bt-hci",

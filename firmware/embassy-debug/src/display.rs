@@ -160,6 +160,8 @@ pub async fn display_task(
         {
             Either::First(e4) => e4,
             Either::Second(()) => {
+                // PIN / ok / fail arrived. Repaint only if the operator
+                // is already on the pair card so a key-walk stays put.
                 if scene == Scene::Pair {
                     refresh(&mut driver, draw, tx, scene, rotation, &mut kind).await;
                 }
@@ -564,13 +566,19 @@ fn draw_scene(scene: Scene, buf: &mut [u8]) {
 
 /// BLE pair card: how-to, passkey, success, or fail + why.
 ///
+/// On the unit: idle is `sticky-rs` then the Settings path, not a
+/// fake PIN. The six digits appear only after UART `pair pin=`.
+///
 /// [`GrayInk`] `fat` only thickens strokes. Pair text is laid out in a
-/// page/`SCALE` space so `FONT_10X20` is actually three times larger.
+/// page/`SCALE` space so `FONT_10X20` is actually three times larger
+/// (30×60). Idle wraps to four lines so those glyphs fit the 480-wide
+/// portrait page.
 #[cfg(feature = "pair")]
 fn draw_pair(bw: &mut [u8], red: &mut [u8]) {
     use crate::pair::{current_view, PairView};
     use embassy_debug::PAIR_ADV_NAME;
 
+    /// Source pixels per destination pixel (`FONT_10X20` → 30×60).
     const SCALE: u16 = 3;
 
     clear_gray(bw, red, gray::WHITE, PageRotation::Portrait0);
@@ -597,6 +605,7 @@ fn draw_pair(bw: &mut [u8], red: &mut [u8]) {
             .draw(&mut ink);
         }
         PairView::Pin(pin) => {
+            // Same zero-padded six digits as `pair pin={pin:06}` on UART.
             let mut digits = [0u8; 6];
             let mut n = pin % 1_000_000;
             for i in (0..6).rev() {

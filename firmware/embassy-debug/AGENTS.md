@@ -4,7 +4,8 @@ Embassy event-logger image. Workspace member, **not** a default-member:
 host `cargo test` must not compile this package. The panel is always on.
 
 Live-ask, never-erase, and flash I/O: root
-[AGENTS.md](../../AGENTS.md). How-to:
+[AGENTS.md](../../AGENTS.md). Parent contract:
+[firmware/AGENTS.md](../AGENTS.md). How-to:
 [docs/getting-started.md](../../docs/getting-started.md).
 
 ## Envelope
@@ -58,6 +59,7 @@ Live-ask, never-erase, and flash I/O: root
   `sticky-rs` (DisplayOnly passkey). RAM bonds this boot only; no
   factory NVS; no MAC on UART. Do not combine with `mic`, `radio`,
   `charge`, or `sd`. Pairing is not measured on a physical unit.
+  Walkthrough (rustdoc on private items too): [src/pair.rs](src/pair.rs).
   How-to: [README.md](README.md#pair-test-instructions).
 - Panel standby sit: hold Page Up 2 s.
   `UpdateSequence::STANDBY` then `MasterActivation`, look 2 s.
@@ -99,6 +101,21 @@ Host-tested lines live in `crates/embassy-debug`:
 ```shell
 cargo test -p embassy-debug --locked
 ```
+
+## Firmware examples as tutorial code
+
+Firmware under `embassy-debug/` serves as an educational reference
+and walkthrough for async Embassy on ESP32-S3. Every function,
+method, struct, enum, and constant (public or private) must have
+comprehensive rustdoc explaining what it does, hardware nets/buses
+involved, expectations, and error handling. Include abundant in-line
+comments explaining hardware register sequencing, GPIO electrical
+configurations (pull-ups, input modes), bus arbitration, Embassy task
+scheduling, stack buffer usage, and reset/wake-up cycles. Ground
+descriptions in authoritative terminology from *The Embedded Rust Book*,
+*The Rust on ESP Book*, and *The Embassy Book*.
+
+The pair walkthrough is [src/pair.rs](src/pair.rs) (`--features pair`).
 
 ## Agent Documentation Standards
 

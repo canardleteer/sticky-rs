@@ -4,7 +4,8 @@ Blocking `esp-hal` proof-of-life image. Workspace member, **not** a
 default-member: host `cargo test` must not compile this package.
 
 Live-ask, never-erase, and flash I/O: root
-[AGENTS.md](../../AGENTS.md). How-to:
+[AGENTS.md](../../AGENTS.md). Parent contract:
+[firmware/AGENTS.md](../AGENTS.md). How-to:
 [docs/getting-started.md](../../docs/getting-started.md).
 
 ## Envelope
@@ -42,6 +43,21 @@ Host-tested lines live in `crates/simple-debug`:
 ```shell
 cargo test -p simple-debug --locked
 ```
+
+## Firmware examples as tutorial code
+
+Firmware under `simple-debug/` serves as an educational reference
+and walkthrough for bare-metal blocking `esp-hal`. Every function,
+method, struct, enum, and constant (public or private) must have
+comprehensive rustdoc explaining what it does, hardware nets/buses
+involved, expectations, and error handling. Include abundant in-line
+comments explaining hardware register sequencing, GPIO electrical
+configurations (pull-ups, input modes), stack buffer usage, and
+reset cycles. Ground descriptions in authoritative terminology from
+*The Embedded Rust Book* and *The Rust on ESP Book*.
+
+This image has no BLE pair path. Pairing lives on
+`embassy-debug --features pair`.
 
 ## Agent Documentation Standards
 

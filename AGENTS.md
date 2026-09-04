@@ -89,6 +89,7 @@ conflicts in the hardware skill instead of flattening them.
 | Live-ask set | this file **and** the sticky-rs skill |
 | Agent rules that belong to one directory | that directory’s `AGENTS.md` (nearest file wins on conflict) |
 | How-to voice | this file (working-rules how-to bullet) |
+| Firmware examples as tutorial code | [firmware/AGENTS.md](firmware/AGENTS.md#firmware-examples-as-tutorial-code) (and each package `AGENTS.md`) **and** this file if it restates the bar |
 
 Do not treat `cargo xtask --help` as a substitute for the sticky-rs catalog
 and the README list.
@@ -151,6 +152,16 @@ and the README list.
   backlog ids in this file and the skills. A backlog item may close a
   how-to as a note, not as the voice of the steps. Do not write those
   pages as agent notes.
+- Firmware under `firmware/` (`simple-debug-fw` and
+  `embassy-debug-fw`) must serve as educational reference code.
+  Every function, method, struct, enum, and constant (public or
+  private) must have comprehensive rustdoc (nets/buses, expectations,
+  error handling) and abundant in-line comments (register sequencing,
+  GPIO electrical configuration, bus arbitration, Embassy scheduling,
+  stack buffers, reset/wake). Ground descriptions in *The Embedded
+  Rust Book*, *The Rust on ESP Book*, and *The Embassy Book*. The
+  always-on copy is
+  [firmware/AGENTS.md](firmware/AGENTS.md#firmware-examples-as-tutorial-code).
 
 ## Agent Documentation Standards
 

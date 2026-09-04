@@ -356,7 +356,9 @@ not treat a successful scan as a license to write NVS or print a MAC.
 Default `embassy-debug` does not start BLE. This feature advertises
 as `sticky-rs` and shows a six-digit passkey only after a phone
 starts pairing. Bonds stay in RAM for this boot. The image does
-not write factory NVS and does not print a MAC. Snapshot first:
+not write factory NVS and does not print a MAC. The MCU walkthrough
+is [src/pair.rs](src/pair.rs) (rustdoc on the private helpers too).
+Snapshot first:
 [docs/getting-started.md](../../docs/getting-started.md).
 
 Do not combine with `mic`, `radio`, `charge`, or `sd`.

@@ -47,10 +47,16 @@ pub const TONE_DUMP_WINDOWS: u32 = 2;
 pub const RADIO_REPORT_SECS: u32 = 10;
 
 /// BLE advertise name on `--features pair` (`Complete Local Name`).
+///
+/// Nine ASCII bytes so it fits a 31-byte adv payload with flags.
+/// UART and the idle pair card print the same string. Not a MAC.
 #[cfg(feature = "pair")]
 pub const PAIR_ADV_NAME: &str = "sticky-rs";
 
 /// How long a fail card sits before the pair image returns to idle, in milliseconds.
+///
+/// Long enough to read `pair fail=` / the glass why, short enough that
+/// a second phone tap does not need a reset.
 #[cfg(feature = "pair")]
 pub const PAIR_FAIL_HOLD_MS: u32 = 4000;
 
@@ -145,23 +151,30 @@ pub enum Scene {
     /// Four boxes, one OTP gray level each.
     Tones,
     /// BLE pair card (`--features pair` image).
+    ///
+    /// Walk splash → shapes → legend → tones → here. Idle is a how-to;
+    /// the PIN appears only after `PassKeyDisplay`.
     #[cfg(feature = "pair")]
     Pair,
 }
 
 /// Why a `--features pair` attempt did not finish.
+///
+/// UART is `pair fail=` plus [`Self::as_str`]. Tokens only — never a
+/// MAC, IRK, or host `Debug` string. The glass shows the same token
+/// under `Pair failed`.
 #[cfg(feature = "pair")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PairFailWhy {
     /// BLE controller or host did not start.
     BleStart,
-    /// Advertise session failed.
+    /// Advertise session failed (payload, enable, or accept).
     Advertise,
     /// Peer or user cancelled (`PasskeyEntryFailed`).
     Cancelled,
     /// Pairing timed out.
     Timeout,
-    /// SMP failed for another reason.
+    /// SMP failed for another security reason (wrong code, unsupported IO, …).
     Pairing,
     /// Peer lost its bond.
     BondLost,
@@ -479,6 +492,8 @@ pub enum Event {
         t_ms: u32,
     },
     /// SMP passkey to show (`--features pair` image). Six digits, 0..=999999.
+    ///
+    /// Emitted only after `PassKeyDisplay`. Line: `pair pin=000042`.
     #[cfg(feature = "pair")]
     PairPin {
         /// Milliseconds since boot.
@@ -487,12 +502,16 @@ pub enum Event {
         pin: u32,
     },
     /// Pairing finished (`--features pair` image).
+    ///
+    /// Line: `pair ok`. Glass: `Paired`.
     #[cfg(feature = "pair")]
     PairOk {
         /// Milliseconds since boot.
         t_ms: u32,
     },
     /// Pairing did not finish (`--features pair` image).
+    ///
+    /// Line: `pair fail=<token>` from [`PairFailWhy::as_str`]. Never a MAC.
     #[cfg(feature = "pair")]
     PairFail {
         /// Milliseconds since boot.

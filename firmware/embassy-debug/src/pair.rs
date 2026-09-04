@@ -1,8 +1,32 @@
 //! BLE peripheral + DisplayOnly passkey (`--features pair` only).
 //!
-//! Advertise [`embassy_debug::PAIR_ADV_NAME`]. RAM bonds this boot only —
-//! no factory NVS. Never print a MAC. The security CSPRNG is seeded from
-//! controller `LeRand` when the host runner starts (not the crate zero seed).
+//! # Architecture and pairing contract
+//!
+//! This task is a walkthrough of a **peripheral** that can pair, not a
+//! phone stack. On the unit: Settings → Bluetooth → `sticky-rs`, then
+//! a six-digit PIN on the glass only after the phone starts pairing.
+//! UART prints `pair pin=`, then `pair ok` or `pair fail=<why>`.
+//! Never a MAC.
+//!
+//! In the MCU:
+//!
+//! - **BLE only.** `esp-radio` is `ble` without Wi-Fi / `coex`. Do not
+//!   combine with `mic`, `radio`, `charge`, or `sd` (compile_error
+//!   below).
+//! - **DisplayOnly SMP.** The board shows a passkey; the phone types
+//!   it. Keys still walk pages. AI Voice is not a confirm.
+//! - **RAM bonds this boot.** `HostResources` holds them. Do not write
+//!   factory NVS (RF cal and identity live there).
+//! - **Fixed random address.** Do not read or print the eFuse MAC.
+//!   `runner.run()` seeds the security CSPRNG from controller `LeRand`
+//!   (not the crate’s zero seed).
+//! - **Custom GATT service** with one encrypted-read byte so Settings
+//!   pairing has something to bond against. The UUIDs are local, not
+//!   Bluetooth SIG assigned.
+//!
+//! Host-tested tokens live in [`embassy_debug::Event`]
+//! (`PairPin` / `PairOk` / `PairFail`). How-to:
+//! [README.md](../README.md#pair-test-instructions).
 
 #[cfg(all(feature = "pair", feature = "mic"))]
 compile_error!("do not combine pair with mic");
@@ -32,21 +56,31 @@ use trouble_host::prelude::*;
 const LOG: &str = "embassy-debug";
 
 /// What the pair card should paint.
+///
+/// Idle is a how-to, not a fake PIN. [`Self::Pin`] exists only after
+/// `PassKeyDisplay`. The display task reads this via [`current_view`]
+/// when [`PAIR_VIEW`] wakes it.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum PairView {
     /// Advertise name + how-to. No PIN yet.
     Idle,
-    /// SMP passkey (0..=999999).
+    /// SMP passkey (0..=999999). Same six digits as `pair pin=` on UART.
     Pin(u32),
-    /// Pairing finished.
+    /// Pairing finished (`pair ok` / glass `Paired`).
     Ok,
-    /// Pairing did not finish.
+    /// Pairing did not finish (`pair fail=` + [`PairFailWhy::as_str`]).
     Fail(PairFailWhy),
 }
 
 /// Wake the display when [`current_view`] changes.
+///
+/// The display loop only repaints when the current scene is already
+/// `Scene::Pair`, so a PIN arriving while the operator is on splash
+/// does not steal the glass.
 pub static PAIR_VIEW: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 
+/// Last pair-card contents. Critical-section mutex: the BLE task writes,
+/// the display task reads on the same core.
 static CURRENT: Mutex<CriticalSectionRawMutex, RefCell<PairView>> =
     Mutex::new(RefCell::new(PairView::Idle));
 
@@ -56,6 +90,8 @@ pub fn current_view() -> PairView {
     CURRENT.lock(|cell| *cell.borrow())
 }
 
+/// One connection. `attribute_table_size` is enough for GAP + this
+/// service; raise it if another characteristic is added.
 #[gatt_server(
     connections_max = 1,
     mutex_type = CriticalSectionRawMutex,
@@ -65,6 +101,10 @@ struct Server {
     pair: PairService,
 }
 
+/// Local 128-bit service so Settings pairing has a GATT target.
+///
+/// These UUIDs are not SIG 16-bit assignments. The `token` read is
+/// `permissions(encrypted)` so a bonded link is required after SMP.
 #[gatt_service(uuid = "6b1d0001-5c8a-4f0e-9c3a-2e7b1a0d4f11")]
 struct PairService {
     #[characteristic(
@@ -77,12 +117,18 @@ struct PairService {
 }
 
 /// Bring up BLE advertise and drive the pair card.
+///
+/// On the unit: UART `pair advertise sticky-rs; no NVS; no MAC`, then
+/// the how-to card. In the MCU: controller → trouble-host runner +
+/// peripheral accept loop. The runner must stay polled or `LeRand`
+/// never seeds SMP.
 #[embassy_executor::task]
 pub async fn pair_task(bluetooth: BT<'static>) {
     let Ok(connector) = BleConnector::new(bluetooth, Default::default()) else {
         fail_and_hold(PairFailWhy::BleStart).await;
         return;
     };
+    // 10 is the HCI event slot count on the external controller wrapper.
     let ble_controller: ExternalController<_, 10> = ExternalController::new(connector);
 
     // Fixed random address so we do not read or print the eFuse MAC.
@@ -111,6 +157,8 @@ pub async fn pair_task(bluetooth: BT<'static>) {
         loop {
             if let Err(why) = advertise_once(&mut peripheral, &server).await {
                 fail_and_hold(why).await;
+                // How-to comes back so a second phone tap is possible
+                // without resetting the chip.
                 show(PairView::Idle);
             }
         }
@@ -119,6 +167,11 @@ pub async fn pair_task(bluetooth: BT<'static>) {
     let _ = embassy_futures::join::join(runner.run(), pair_loop).await;
 }
 
+/// One advertise → accept → SMP session.
+///
+/// Connectable + scannable undirected, general discoverable, BR/EDR
+/// not supported. Empty scan response: the complete local name is
+/// already in the adv payload ([`PAIR_ADV_NAME`], 9 bytes).
 async fn advertise_once<C>(
     peripheral: &mut Peripheral<'_, C, DefaultPacketPool>,
     server: &Server<'_>,
@@ -156,6 +209,8 @@ where
         .accept()
         .await
         .map_err(|_| PairFailWhy::Advertise)?;
+    // Bondable + request_security starts DisplayOnly passkey as soon
+    // as the phone wants to pair. The PIN is not shown before that.
     let _ = conn.set_bondable(true);
     let _ = conn.request_security();
     let gatt = conn
@@ -165,6 +220,11 @@ where
     drive_connection(&gatt).await
 }
 
+/// GATT + SMP events on one accepted connection.
+///
+/// A clean disconnect returns to idle advertise (not a fail card).
+/// DisplayOnly never needs `PassKeyConfirm` / `PassKeyInput` / OOB;
+/// those arms stay empty on purpose.
 async fn drive_connection<P: PacketPool>(
     gatt: &GattConnection<'_, '_, P>,
 ) -> Result<(), PairFailWhy> {
@@ -199,6 +259,11 @@ async fn drive_connection<P: PacketPool>(
     }
 }
 
+/// Map a trouble-host error to a UART `pair fail=` token.
+///
+/// `PasskeyEntryFailed` is a user cancel or a wrong code on the phone.
+/// Other `Security(_)` reasons collapse to `pairing` so we never print
+/// a stack string or a MAC.
 fn map_host_error(err: trouble_host::Error) -> PairFailWhy {
     match err {
         trouble_host::Error::Timeout => PairFailWhy::Timeout,
@@ -210,6 +275,10 @@ fn map_host_error(err: trouble_host::Error) -> PairFailWhy {
     }
 }
 
+/// Publish a card + matching UART event, then wake the display.
+///
+/// Idle has no event line (advertise already printed once at start).
+/// PIN / ok / fail go through [`emit`] so `log_task` owns the format.
 fn show(view: PairView) {
     match view {
         PairView::Idle => {}
@@ -227,6 +296,7 @@ fn show(view: PairView) {
     PAIR_VIEW.signal(());
 }
 
+/// Fail card, then sit [`PAIR_FAIL_HOLD_MS`] so the why is readable.
 async fn fail_and_hold(why: PairFailWhy) {
     show(PairView::Fail(why));
     Timer::after(Duration::from_millis(u64::from(PAIR_FAIL_HOLD_MS))).await;

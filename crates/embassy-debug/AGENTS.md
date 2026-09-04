@@ -6,7 +6,8 @@ embassy-debug-fw` on host rustc.
 
 Flash, `monitor`, restore, and live-ask:
 [firmware AGENTS.md](../../firmware/embassy-debug/AGENTS.md) and the
-root [AGENTS.md](../../AGENTS.md).
+root [AGENTS.md](../../AGENTS.md). Xtensa twin comment bar:
+[Firmware examples as tutorial code](../../firmware/AGENTS.md#firmware-examples-as-tutorial-code).
 
 ```shell
 cargo test -p embassy-debug --locked

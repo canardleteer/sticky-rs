@@ -198,6 +198,10 @@ Firmware, not host tools:
 7. GT911 from [touch.md](../../seeed-sticky-hardware/references/touch.md).
 8. 32 MB partition table; octal PSRAM; then SD arbitration.
 
+Firmware sources under `firmware/` are educational reference code.
+Rustdoc and in-line comments (including on private items) follow
+[Firmware examples as tutorial code](../../../../firmware/AGENTS.md#firmware-examples-as-tutorial-code).
+
 Load a custom image only after a factory original exists, with
 `cargo xtask flash-app --image FILE --yes` (factory `app0` at `0x90000`).
 `cargo xtask build-fw` produces the flash-app payload. In-repo images:

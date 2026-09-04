@@ -64,7 +64,7 @@ A device may be attached for unrelated reasons; ignore it.
 | `host/sticky-host/` | Host library (`publish = true`, not crates.io yet). Live methods take the UART lock; callers pass `Layout` |
 | `xtask/` | Clap front-end at the repo root (`cargo xtask`, `publish = false`) |
 | `developer-data/` | Gitignored private / personalized files. Sealed per-unit originals under `developer-data/backups/`; learn-uart YAML under `uart-inspection-records/<serial>/`; confirm reports under `confirm-records/<serial>/`. Not in git |
-| `firmware/*` | Xtensa images. Workspace members, not default-members. `build-fw` looks them up by package name |
+| `firmware/*` | Xtensa images. Workspace members, not default-members. `build-fw` looks them up by package name. [Firmware examples as tutorial code](../../../firmware/AGENTS.md#firmware-examples-as-tutorial-code) |
 
 Chip drivers (`bq25616`, `bq27220`, `ssd1677-gray4`) stay MCU-agnostic.
 Board pins, latch, rails, and transforms belong in

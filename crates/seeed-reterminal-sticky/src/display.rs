@@ -93,10 +93,10 @@ pub const fn page_to_framebuffer(px: u16, py: u16, rotation: PageRotation) -> Op
 /// not [`crate::touch::to_screen`] (that already undoes the panel 180°
 /// transmit). Gray4 `set_gray` then writes `(WIDTH-1-x, HEIGHT-1-y)`.
 /// Portrait [`page_to_framebuffer`] already includes a 180-ish map, so
-/// this inverse matches ink. [`PageRotation::Landscape0`] is
-/// mirror-X only; the ink the operator sees is the OTP `set_gray`
-/// 180° of that canvas ([`gray4_touch_framebuffer`]). Do not OR
-/// both canvases: that toggles the empty opposite side.
+/// this inverse matches ink. Landscape holds are not a full 180°
+/// in [`page_to_framebuffer`]; the ink the operator sees is the OTP
+/// `set_gray` 180° of that canvas ([`gray4_touch_framebuffer`]). Do
+/// not OR both canvases: that toggles the empty opposite side.
 #[must_use]
 pub const fn framebuffer_to_page(fx: u16, fy: u16, rotation: PageRotation) -> Option<(u16, u16)> {
     if fx >= WIDTH || fy >= HEIGHT {
@@ -131,12 +131,13 @@ pub const fn screen_to_framebuffer(sx: u16, sy: u16) -> Option<(u16, u16)> {
 
 /// Canvas to invert for a gray4 page hit-test.
 ///
-/// Pass [`crate::touch::to_framebuffer`]. Portrait holds and
-/// [`PageRotation::Landscape180`] invert that canvas as-is.
-/// [`PageRotation::Landscape0`] is mirror-X only in
-/// [`page_to_framebuffer`], so the visible START is the OTP
-/// `set_gray` 180° of the tap. Do not OR both: a 2026-09-04
-/// `wifi_ap` sit toggled from the empty opposite side.
+/// Pass [`crate::touch::to_framebuffer`]. Portrait holds invert that
+/// canvas as-is. Both landscape holds are not a full 180° in
+/// [`page_to_framebuffer`] (L0 mirror-X, L180 flip-Y), so the ink the
+/// operator sees is the OTP `set_gray` 180° of that canvas. Do not OR
+/// both: a 2026-09-04 `wifi_ap` sit toggled from the empty opposite
+/// side. A 2026-09-05 USB-C-left sit fired SoftAP from the USB-C-right
+/// strip until L180 used this same OTP 180°.
 #[must_use]
 pub const fn gray4_touch_framebuffer(
     fx: u16,
@@ -147,8 +148,8 @@ pub const fn gray4_touch_framebuffer(
         return None;
     }
     Some(match rotation {
-        PageRotation::Landscape0 => (WIDTH - 1 - fx, HEIGHT - 1 - fy),
-        _ => (fx, fy),
+        PageRotation::Landscape0 | PageRotation::Landscape180 => (WIDTH - 1 - fx, HEIGHT - 1 - fy),
+        PageRotation::Portrait0 | PageRotation::Portrait180 => (fx, fy),
     })
 }
 
@@ -203,6 +204,10 @@ pub enum RefreshKind {
     Full,
     /// Black/white partial / DU: no software reset, [`border::VCOM`],
     /// [`UpdateSequence::DISPLAY_MODE_2_WITH_TEMP`].
+    ///
+    /// Master Activation still refreshes the **whole panel** from a
+    /// comparison frame ([`FULL_WINDOW`]). A RAM window only scopes the
+    /// write. Do not use this mode on a gray4 page.
     Partial,
     /// Four-gray OTP: no software reset, [`border::FOLLOW_LUT0`],
     /// [`SEEED_GRAY4_TEMPERATURE`], [`UpdateSequence::SEEED_GRAY4`].
@@ -508,47 +513,41 @@ mod tests {
         framebuffer_to_page(hx, hy, rotation).expect("page")
     }
 
-    /// Landscape0 visible START is the OTP 180°; the canvas path is the
-    /// empty opposite side. Landscape180 is the reverse. Do not OR.
+    /// Both landscape holds: visible START is the OTP 180°; the canvas
+    /// path is the empty opposite side (USB-C-right strip when held
+    /// USB-C left). Do not OR. Portrait must not take that 180°.
     #[test]
     fn landscape_wifi_hit_is_only_the_visible_button() {
         let slop = 20;
+        for rotation in [PageRotation::Landscape0, PageRotation::Landscape180] {
+            let (x, y, w, h) = wifi_action_rect(rotation);
+            let cx = x + w / 2;
+            let cy = y + h / 2;
+            let (fx, fy) = page_to_framebuffer(cx, cy, rotation).expect("canvas");
+            let sx = WIDTH - 1 - fx;
+            let sy = HEIGHT - 1 - fy;
+
+            let (vpx, vpy) = gray4_wifi_page(sx, sy, rotation);
+            assert!(
+                in_wifi_action(vpx, vpy, rotation, slop),
+                "{rotation:?} visible (otp 180) ({vpx},{vpy}) must hit"
+            );
+            let (opx, opy) = gray4_wifi_page(fx, fy, rotation);
+            assert!(
+                !in_wifi_action(opx, opy, rotation, slop),
+                "{rotation:?} opposite / canvas ({opx},{opy}) must miss"
+            );
+        }
+
         let (x, y, w, h) = wifi_action_rect(PageRotation::Landscape0);
-        let cx = x + w / 2;
-        let cy = y + h / 2;
-        let (fx, fy) = page_to_framebuffer(cx, cy, PageRotation::Landscape0).expect("L0");
+        let (fx, fy) =
+            page_to_framebuffer(x + w / 2, y + h / 2, PageRotation::Landscape0).expect("L0");
         let sx = WIDTH - 1 - fx;
         let sy = HEIGHT - 1 - fy;
-
-        let (vpx, vpy) = gray4_wifi_page(sx, sy, PageRotation::Landscape0);
-        assert!(
-            in_wifi_action(vpx, vpy, PageRotation::Landscape0, slop),
-            "L0 visible (otp 180) ({vpx},{vpy}) must hit"
-        );
-        let (opx, opy) = gray4_wifi_page(fx, fy, PageRotation::Landscape0);
-        assert!(
-            !in_wifi_action(opx, opy, PageRotation::Landscape0, slop),
-            "L0 opposite / canvas ({opx},{opy}) must miss"
-        );
-
-        let (fx1, fy1) = page_to_framebuffer(cx, cy, PageRotation::Landscape180).expect("L180");
-        let sx1 = WIDTH - 1 - fx1;
-        let sy1 = HEIGHT - 1 - fy1;
-        let (vpx, vpy) = gray4_wifi_page(fx1, fy1, PageRotation::Landscape180);
-        assert!(
-            in_wifi_action(vpx, vpy, PageRotation::Landscape180, slop),
-            "L180 canvas ({vpx},{vpy}) must hit"
-        );
-        let (opx, opy) = gray4_wifi_page(sx1, sy1, PageRotation::Landscape180);
-        assert!(
-            !in_wifi_action(opx, opy, PageRotation::Landscape180, slop),
-            "L180 opposite / otp 180 ({opx},{opy}) must miss"
-        );
-
         let (px0, py0) = gray4_wifi_page(sx, sy, PageRotation::Portrait0);
         assert!(
             !in_wifi_action(px0, py0, PageRotation::Portrait0, 10),
-            "portrait must not treat L0 otp 180 as START ({px0},{py0})"
+            "portrait must not treat landscape otp 180 as START ({px0},{py0})"
         );
     }
 

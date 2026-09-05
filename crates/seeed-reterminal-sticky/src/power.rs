@@ -21,8 +21,19 @@
 use embedded_hal::delay::DelayNs;
 use embedded_hal::digital::OutputPin;
 
-/// Settle time after driving the latch high, before touching anything else.
+/// GPIO settle after driving the latch high, used by [`Latch::acquire`].
+///
+/// Official `board_init` waits [`LATCH_PERIPHERAL_SETTLE_MS`] (100 ms)
+/// before talking to peripherals. This path stays 10 ms (observed
+/// bring-up that already works). The 100 ms figure is vendor intent
+/// until someone measures the latch deadline.
 const LATCH_SETTLE_MS: u32 = 10;
+
+/// Official dashboard `board_init` wait after latch high, in milliseconds.
+///
+/// Vendor intent, not measured on a unit in this tree. [`Latch::acquire`]
+/// uses 10 ms. Do not pulse GPIO46 while waiting.
+pub const LATCH_PERIPHERAL_SETTLE_MS: u32 = 100;
 
 /// Proof that the power latch is held.
 ///
@@ -102,6 +113,13 @@ mod tests {
     use embedded_hal_mock::eh1::digital::{Mock, State, Transaction};
 
     use super::*;
+
+    #[test]
+    fn official_peripheral_settle_is_named_and_unused_by_acquire() {
+        assert_eq!(LATCH_PERIPHERAL_SETTLE_MS, 100);
+        assert_eq!(LATCH_SETTLE_MS, 10);
+        assert_ne!(LATCH_SETTLE_MS, LATCH_PERIPHERAL_SETTLE_MS);
+    }
 
     #[test]
     fn acquire_drives_hold_before_lock_and_then_settles() {

@@ -112,10 +112,13 @@ phone or PC. Survey and SoftAP are mutually exclusive: starting
 one stops the other. Walking away does **not** auto-stop the
 radio; deep sleep and latch power-off do. On a physical unit
 (2026-09-04) the walk printed `scene=wifi_survey` /
-`scene=wifi_ap`; START must hit-test `to_framebuffer` (not UART
+`scene=wifi_ap`; START must hit-test `View::from_hold` then
+`map_touch_framebuffer` on `to_framebuffer` (not UART
 `p0=` / `to_screen`) or the radio never starts. Landscape0 uses
-only the OTP `set_gray` 180° of that canvas; Landscape180 and
-portrait invert the tap canvas. Do not OR both (empty opposite
+only the OTP `set_gray` 180° of that canvas; Landscape180 uses
+the same OTP 180° (USB-C left; 2026-09-05 visible START hit,
+ghost miss). Portrait inverts the tap canvas.
+Do not OR both (empty opposite
 side toggled on a 2026-09-04 `wifi_ap` sit). SoftAP join /
 `GET /` JSON is **host-verified** (2026-09-04): spare STA joined
 `sticky-rs-AP` / `sticky26`, DHCP `192.168.4.50`,

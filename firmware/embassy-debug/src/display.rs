@@ -3,7 +3,8 @@
 //! Splash, shapes, legend, tones, pair, Wi-Fi survey / SoftAP, and the
 //! Ferris off-screen compose in page space (480×800 portrait or
 //! 800×480 landscape) then map through
-//! [`seeed_reterminal_sticky::display::page_to_framebuffer`]. FaceUp /
+//! [`View::from_hold`](seeed_reterminal_sticky::view::View::from_hold)
+//! (this image opts into enclosure holds). FaceUp /
 //! FaceDown keep the last in-plane page. Waveforms stay in the panel
 //! OTP — this file never writes a `0x32` LUT. Pixel work lives in
 //! [`crate::draw`].
@@ -797,7 +798,7 @@ fn park_panel<SPI, DC, RST, BUSY>(
 /// (second plane cleared).
 ///
 /// `rotation` selects the page axes; [`draw_shapes`] maps through
-/// [`seeed_reterminal_sticky::display::page_to_framebuffer`]. Do not
+/// [`View::from_hold`](seeed_reterminal_sticky::view::View::from_hold). Do not
 /// `mirror_x_plane` here: that reverse_bits each byte along panel X,
 /// which is up/down on the USB-down page and flips 8-pixel-tall bands.
 fn write_mono_scene<SPI, DC, RST, BUSY, DELAY>(

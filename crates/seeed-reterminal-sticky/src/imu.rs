@@ -16,6 +16,18 @@ pub const DOMINANT_AXIS_THRESHOLD_G: f32 = 0.70;
 pub const DOMINANT_AXIS_THRESHOLD_LSB: i32 =
     (DOMINANT_AXIS_THRESHOLD_G / SENSITIVITY_G_PER_LSB) as i32;
 
+/// Official pages-demo poll period, in milliseconds.
+///
+/// Vendor intent, not a silicon fact. embassy-debug polls at 250 ms and
+/// keeps the last in-plane hold.
+pub const ORIENTATION_POLL_MS: u64 = 100;
+
+/// Official pages-demo matching-sample count before a hold change.
+///
+/// Vendor intent. This crate’s [`classify`] is one sample; debounce is
+/// firmware policy.
+pub const ORIENTATION_STABLE_SAMPLES: u8 = 5;
+
 /// Enclosure orientation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Orientation {
@@ -89,6 +101,12 @@ mod tests {
 
     /// One g in raw LSB at +/-2 g.
     const ONE_G: i16 = 16_384;
+
+    #[test]
+    fn official_orientation_debounce_is_named_policy() {
+        assert_eq!(ORIENTATION_POLL_MS, 100);
+        assert_eq!(ORIENTATION_STABLE_SAMPLES, 5);
+    }
 
     #[test]
     fn threshold_matches_the_calibrated_figure() {

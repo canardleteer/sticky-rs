@@ -73,22 +73,30 @@ ESPHome `mirror_x` only:
 
 IMU-driven UI rotation is a logical-canvas concern: keep the physical
 framebuffer mapping fixed, then rotate drawing/touch into page axes.
-embassy-debug composes splash, shapes, legend, tones, pair, Wi-Fi
-survey / SoftAP, and the sleep card in that page (480×800 or
-800×480) and maps through `page_to_framebuffer`. FaceUp / FaceDown
+The board crate’s `view::View` is that map and implements
+`panel-view`’s `PanelView` trait. **`View::native` is the
+zero-cost default** (800×480 panel RAM; `map_draw` /
+`map_touch_framebuffer` are identity). The four `PageRotation` holds
+are opt-in remaps. Native is not official `begin(800, 480)` /
+Landscape0 (USB-C right) — that hold is the most expensive gray4
+hit-test. embassy-debug composes splash, shapes, legend, tones, pair,
+Wi-Fi survey / SoftAP, and the sleep card in the IMU page (480×800 or
+800×480) and maps through `View::from_hold`. FaceUp / FaceDown
 keep the last in-plane page. Gray4 `set_gray` writes
 `(W-1-x, H-1-y)` of the canvas. Portrait
 `page_to_framebuffer` already includes a 180-ish map, so
 `framebuffer_to_page` on `to_framebuffer` matches ink. Landscape
 is mirror-X only (LTR Latin); ink is that OTP 180.
-`gray4_touch_framebuffer` applies the 180° on Landscape0
-only. Do not OR both canvases. Do not hit-test UART `p0=` /
+`gray4_touch_framebuffer` applies the 180° on both landscape
+holds. Do not OR both canvases. Do not hit-test UART `p0=` /
 `to_screen`.
 [touch.md](touch.md#coordinate-transform-on-a-physical-unit).
 That page-walk is firmware intent. The sit below measured splash
 only. Portrait Wi-Fi START (glass vs canvas) and the landscape
 OTP-180 sit (`page=362,53` / `p0=362,426`, then opposite-side
-toggle on the OR image, 2026-09-04) are the touch sits.
+toggle on the OR image, 2026-09-04) and the 2026-09-05 USB-C-left
+SoftAP sit (`page=339,402 hit=1` / `p0=339,77`; ghost
+`page=341,70 hit=0`) are the touch sits.
 
 2026-08-30, embassy-debug splash, glass facing the operator:
 

@@ -1,0 +1,16 @@
+[package]
+name = "panel-view"
+version = "0.1.0"
+description = "Board-agnostic logical canvas and touch map for e-paper UIs (Sticky, later PaperMono)"
+readme = "README.md"
+publish = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+keywords = ["embedded", "no-std", "graphics"]
+categories.workspace = true
+
+[lints]
+workspace = true

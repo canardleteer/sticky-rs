@@ -95,8 +95,9 @@ Live-ask, never-erase, and flash I/O: root
   missed after that: gray4 `set_gray` writes
   `(W-1-x, H-1-y)` and landscape `page_to_framebuffer` is
   mirror-X only, so ink is the OTP 180 of the canvas.
-  Landscape0 uses only that complement; Landscape180 and
-  portrait invert the tap canvas. Do not OR both: the OR
+  Landscape0 uses only that complement; Landscape180 uses
+  the same OTP 180° (USB-C left). Portrait inverts the tap
+  canvas. Do not OR both: the OR
   image toggled the empty opposite side (operator, same
   sit). Confirmed on a physical unit (2026-09-04): FaceUp
   with the last landscape page, `wifi tap page=362,53
@@ -245,9 +246,9 @@ On a physical unit (2026-09-04) the walk printed
 UART `to_screen` as if it were the gray4 canvas produced **no**
 radio line (`p0=679,189` while `imu=Portrait0` mapped to the
 top of the portrait page). Hit-test must use `to_framebuffer`
-then `framebuffer_to_page`. Landscape0 uses only the OTP
-`set_gray` 180° of that canvas; Landscape180 inverts the
-tap canvas. Do not OR both. After
+then `framebuffer_to_page`. Both landscape holds use only the
+OTP `set_gray` 180° of that canvas (USB-C left sat 2026-09-05:
+visible START missed until L180 matched L0). Do not OR both. After
 the portrait fix, a host spare STA
 joined `sticky-rs-AP` / `sticky26`: DHCP `192.168.4.50`,
 `GET /` JSON `device` / `scene=wifi_ap` /
@@ -263,15 +264,19 @@ or PC. A host STA check is allowed only when the human
 **explicitly asked** for that sit.
 
 1. **Channel survey.** Human walks to `scene=wifi_survey` and taps
-   `[ START SURVEY ]` (portrait or landscape; Landscape0 uses
-   only the OTP 180° canvas). UART prints `wifi tap page=… hit=1`
+   `[ START SURVEY ]` (portrait or landscape; both landscape
+   holds use only the OTP 180° canvas). UART prints `wifi tap page=… hit=1`
    then `wifi_survey count=… ch1=… ch6=… ch11=… other=…`.
    START and the result each run a **full OTP gray4** (whole
    panel). Extra hits while scanning toggle stop/start and
-   queue more waveforms. On a physical unit (2026-09-04)
-   Landscape180: opposite `page=435,53 hit=0`; ink
-   `page=452,399 hit=1`; then `wifi_survey count=16` /
-   `count=18`. Glass shows
+   queue more waveforms.    On a physical unit (2026-09-04)
+   Landscape180 tap-canvas image: opposite `page=435,53 hit=0`;
+   canvas `page=452,399 hit=1`; then `wifi_survey count=16` /
+   `count=18`. 2026-09-05 USB-C left, OTP-180 image: visible
+   `page=302,408 hit=1` / `p0=302,71` then `count=21`; SoftAP
+   visible START `page=339,402 hit=1` / `p0=339,77` then
+   `state=active`; ghost `page=341,70 hit=0` / `p0=341,409`.
+   Glass shows
    occupancy and the strongest APs. Starting survey tears down an
    active SoftAP.
 2. **SoftAP + JSON HTTP.** Human walks to `scene=wifi_ap` and taps
@@ -307,12 +312,13 @@ or PC. A host STA check is allowed only when the human
 
 Keys still walk pages. AI Voice is not a start/stop. Touch
 START/STOP uses composed page coords
-([`draw::wifi_action_hit`](src/draw.rs) on raw
+([`draw::wifi_action_hit`](src/draw.rs) through
+[`PanelView`](../../crates/panel-view/src/lib.rs) on
+[`View::from_hold`](../../crates/seeed-reterminal-sticky/src/view.rs)
+then `map_touch_framebuffer` from raw
 [`to_framebuffer`](../../crates/seeed-reterminal-sticky/src/touch.rs)
-[`gray4_touch_framebuffer`](../../crates/seeed-reterminal-sticky/src/display.rs)
-then
-[`framebuffer_to_page`](../../crates/seeed-reterminal-sticky/src/display.rs)
-(Landscape0: OTP 180° only). UART prints `wifi tap page=… hit=`;
+(Landscape0: OTP 180° only). This image opts into enclosure
+holds; crate default is Native. UART prints `wifi tap page=… hit=`;
 `p0=` stays `to_screen`).
 Human how-to:
 [README.md](README.md#wifi-test-instructions).

@@ -9,7 +9,9 @@
 //! SSD1677 RAM planes. [`crate::display`] owns ExclusiveDevice, BUSY, and
 //! the OTP sequences. No `0x32` LUT.
 //!
-//! Draw in page space, then [`page_to_framebuffer`](seeed_reterminal_sticky::display::page_to_framebuffer):
+//! Draw in page space, then
+//! [`View::from_hold`](seeed_reterminal_sticky::view::View::from_hold)
+//! (this image opts into enclosure holds; the crate default is Native):
 //!
 //! - Portrait holds: 480×800 ([`display::PAGE_WIDTH`] × [`display::PAGE_HEIGHT`]).
 //! - Landscape holds: 800×480 ([`display::WIDTH`] × [`display::HEIGHT`]).
@@ -33,7 +35,30 @@ use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::prelude::*;
 use embedded_graphics::text::{Alignment, Text};
 use seeed_reterminal_sticky::display::{self, PageRotation};
+use seeed_reterminal_sticky::view::View;
+use seeed_reterminal_sticky::PanelView;
 use ssd1677_gray4::planes::{gray, write_mono, PlaneMapping};
+
+/// Enclosure-relative canvas for the current IMU hold.
+///
+/// embassy-debug opts into [`View::from_hold`]. The crate default
+/// ([`View::native`]) is the zero-cost panel RAM identity and is not
+/// used here. Draw and hit-test go through [`PanelView`] so a later
+/// PaperMono implementor can share UI.
+fn hold_view(rotation: PageRotation) -> View {
+    View::from_hold(rotation)
+}
+
+/// Logical pixel → panel RAM via [`PanelView::map_draw`].
+fn map_draw<V: PanelView>(view: &V, x: u16, y: u16) -> Option<(u16, u16)> {
+    view.map_draw(x, y)
+}
+
+/// Framebuffer tap → logical page via [`PanelView::map_touch_framebuffer`].
+#[cfg(feature = "wifi")]
+fn map_touch<V: PanelView>(view: &V, fx: u16, fy: u16) -> Option<(u16, u16)> {
+    view.map_touch_framebuffer(fx, fy)
+}
 
 /// Packed 1-bit plane: `0xff` is white paper (no ink).
 const WHITE: u8 = 0xff;
@@ -1190,16 +1215,15 @@ fn wifi_page_in_action(px: u16, py: u16, rotation: PageRotation) -> bool {
 ///
 /// Pass [`seeed_reterminal_sticky::touch::to_framebuffer`] (raw GT911),
 /// not UART `p0=` / [`seeed_reterminal_sticky::touch::to_screen`].
-/// [`gray4_touch_framebuffer`] then [`framebuffer_to_page`]:
-/// [`PageRotation::Landscape0`] uses only the OTP [`set_gray`] 180°;
-/// other in-plane holds invert the tap canvas. Do not OR both
-/// (empty opposite side toggled on a 2026-09-04 `wifi_ap` sit).
+/// [`hold_view`] then [`PanelView::map_touch_framebuffer`]:
+/// both landscape holds use only the OTP [`set_gray`] 180°;
+/// portrait invert the tap canvas. Do not OR both
+/// (empty opposite side toggled on a 2026-09-04 `wifi_ap` sit;
+/// USB-C-left fired the USB-C-right strip on 2026-09-05 until
+/// Landscape180 used the same OTP 180°).
 #[cfg(feature = "wifi")]
 pub(crate) fn wifi_action_hit(fx: u16, fy: u16, rotation: PageRotation) -> bool {
-    let Some((hx, hy)) = display::gray4_touch_framebuffer(fx, fy, rotation) else {
-        return false;
-    };
-    let Some((px, py)) = display::framebuffer_to_page(hx, hy, rotation) else {
+    let Some((px, py)) = map_touch(&hold_view(rotation), fx, fy) else {
         return false;
     };
     wifi_page_in_action(px, py, rotation)
@@ -1268,7 +1292,7 @@ fn set_gray_page(
     tone: u8,
     rotation: PageRotation,
 ) {
-    let Some((x, y)) = display::page_to_framebuffer(px, py, rotation) else {
+    let Some((x, y)) = map_draw(&hold_view(rotation), px, py) else {
         return;
     };
     set_gray(bw, red, x, y, tone);
@@ -1317,7 +1341,7 @@ fn stroke_rect_mono(buf: &mut [u8], x: u16, y: u16, w: u16, h: u16, rotation: Pa
 
 /// Page pixel → pre-rotation 800×480 1-bit plane (no 180° here).
 fn set_black_page(buf: &mut [u8], px: u16, py: u16, rotation: PageRotation) {
-    let Some((x, y)) = display::page_to_framebuffer(px, py, rotation) else {
+    let Some((x, y)) = map_draw(&hold_view(rotation), px, py) else {
         return;
     };
     set_black(buf, x, y);
@@ -1410,7 +1434,7 @@ impl DrawTarget for GrayInk<'_> {
 struct MonoInk<'a> {
     /// Packed 1-bit plane (`0xff` white).
     buf: &'a mut [u8],
-    /// In-plane hold for [`page_to_framebuffer`](display::page_to_framebuffer).
+    /// In-plane hold for [`View::map_draw`](seeed_reterminal_sticky::view::View::map_draw).
     rotation: PageRotation,
 }
 

@@ -1,8 +1,8 @@
 //! Board support for the **Seeed Studio reTerminal Sticky**.
 //!
 //! This crate holds what is true about the *board*: pin numbers, the power
-//! latch, rail settle times, panel geometry, the touch transform, and the
-//! enclosure's orientation mapping. Chip register knowledge lives in the
+//! latch, rail settle times, panel geometry, the touch transform, the
+//! [`view`] canvas, and the enclosure's orientation mapping. Chip register knowledge lives in the
 //! device driver crates, and MCU knowledge lives in the firmware — so this
 //! crate depends on `embedded-hal` 1.0 only and is fully host-testable.
 //!
@@ -61,9 +61,11 @@ pub mod power;
 pub mod rails;
 pub mod sd;
 pub mod touch;
+pub mod view;
 
 pub use crate::power::{Latch, Latched};
 pub use crate::rails::{EpdRail, MicRail, PanelParked, SdRail, TouchRail};
+pub use panel_view::PanelView;
 
 /// Why [`pins::AMBIGUOUS_INTERRUPT`] (GPIO7) is input-only here.
 ///

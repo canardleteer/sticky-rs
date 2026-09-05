@@ -84,7 +84,8 @@ use seeed_reterminal_sticky::touch::{
     ADDR_SELECT_RESET_RELEASE_MS, I2C_MAX_HZ as TOUCH_I2C_HZ, POINT_RECORD_LEN, POINT_X_OFFSET,
     POINT_Y_OFFSET, PRODUCT_ID_LEN, STATUS_HEARTBEAT, STATUS_POLL_MS,
 };
-use seeed_reterminal_sticky::{imu, Latch, I2C_FREQUENCY_HZ};
+use seeed_reterminal_sticky::view::View;
+use seeed_reterminal_sticky::{imu, Latch, PanelView, I2C_FREQUENCY_HZ};
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
@@ -969,21 +970,15 @@ async fn touch_task(
                             let rotation = crate::wifi::ui_rotation();
                             if let Some((fx, fy)) = fb0 {
                                 let hit = crate::draw::wifi_action_hit(fx, fy, rotation);
-                                if let Some((hx, hy)) =
-                                    seeed_reterminal_sticky::display::gray4_touch_framebuffer(
-                                        fx, fy, rotation,
-                                    )
-                                {
-                                    if let Some((px, py)) =
-                                        seeed_reterminal_sticky::display::framebuffer_to_page(
-                                            hx, hy, rotation,
-                                        )
-                                    {
-                                        println!(
-                                            "{LOG_PREFIX}: wifi tap page={px},{py} hit={}",
-                                            u8::from(hit)
-                                        );
-                                    }
+                                if let Some((px, py)) = PanelView::map_touch_framebuffer(
+                                    &View::from_hold(rotation),
+                                    fx,
+                                    fy,
+                                ) {
+                                    println!(
+                                        "{LOG_PREFIX}: wifi tap page={px},{py} hit={}",
+                                        u8::from(hit)
+                                    );
                                 }
                                 if hit {
                                     match scene {
@@ -1047,7 +1042,7 @@ async fn imu_task(i2c: I2c<'static, Blocking>, start_rotation: PageRotation) {
         if let Ok(xyz) = imu_dev.read_accel_raw() {
             let classified = imu::classify(xyz.x, xyz.y, xyz.z);
             if let Some(rotation) = classified.and_then(imu::Orientation::page_rotation) {
-                if last_rotation != Some(rotation) {
+                if View::hold_changed(last_rotation, Some(rotation)) {
                     last_rotation = Some(rotation);
                     crate::PAGE_ROTATION.signal(rotation);
                 }

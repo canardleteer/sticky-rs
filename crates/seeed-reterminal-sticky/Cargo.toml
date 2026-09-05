@@ -14,6 +14,7 @@ categories.workspace = true
 
 [dependencies]
 embedded-hal.workspace = true
+panel-view = { path = "../panel-view", version = "0.1.0" }
 ssd1677-gray4 = { path = "../ssd1677-gray4", version = "0.1.0", default-features = false }
 
 [dev-dependencies]

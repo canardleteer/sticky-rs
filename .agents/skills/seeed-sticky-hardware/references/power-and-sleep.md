@@ -15,6 +15,10 @@ On every boot, including deep-sleep wake:
    ESP32-S3 GPIO/RTC holds (those pins were held high across sleep).
 2. Drive both high as ordinary outputs.
 3. Wait ~**100 ms** before talking to powered peripherals.
+   Official `board_init` uses that figure
+   (`LATCH_PERIPHERAL_SETTLE_MS`). Crate `Latch::acquire` still
+   settles **10 ms** (observed bring-up). Not measured as a
+   deadline: [nyc-latch-deadline](../resources/not-yet-confirmed.md#nyc-latch-deadline).
 
 GPIO46 is a strapping pin (boot mode with GPIO0). GPIO45 is a strapping pin
 (VDD_SPI voltage). Both default to **weak pull-down** at reset (v2.2 Table

@@ -16,8 +16,10 @@
 | `.agents/skills/sticky-rs/` | This skill |
 
 Chip drivers (`bq25616`, `bq27220`, `ssd1677-gray4`) are MCU-agnostic and
-carry no `esp-hal` dependency. Board specifics — pins, latch, rails,
-transforms — belong in `seeed-reterminal-sticky`. Keep that split.
+carry no `esp-hal` dependency. `panel-view` is the board-agnostic
+logical-canvas trait (draw + touch + landmarks + hold). Board specifics —
+pins, latch, rails, transforms — belong in `seeed-reterminal-sticky`
+(`View` implements `PanelView`). Keep that split.
 
 ## Working rules (this repository)
 

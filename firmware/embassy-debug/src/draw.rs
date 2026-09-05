@@ -45,7 +45,7 @@ const FERRIS_W: u16 = 360;
 /// Ferris height in page pixels.
 const FERRIS_H: u16 = 240;
 
-const _: () = assert!(FERRIS_W % 4 == 0);
+const _: () = assert!(FERRIS_W.is_multiple_of(4));
 
 /// Recursion depth for the geometric-calibration Koch snowflake.
 const KOCH_DEPTH: u32 = 3;
@@ -173,16 +173,16 @@ pub(crate) fn draw_legend(bw: &mut [u8], red: &mut [u8], rotation: PageRotation)
     let (page_w, page_h) = rotation.page_size();
     let cx = i32::from(page_w / 2);
     let style = MonoTextStyle::new(&FONT_10X20, BinaryColor::On);
-    let mut ink = GrayInk::new(bw, red, 1, rotation);
-
-    let _ = Text::with_alignment(
-        "HARDWARE LEGEND",
-        Point::new(cx, 36),
-        style,
-        Alignment::Center,
-    )
-    .draw(&mut ink);
-    drop(ink);
+    {
+        let mut ink = GrayInk::new(bw, red, 1, rotation);
+        let _ = Text::with_alignment(
+            "HARDWARE LEGEND",
+            Point::new(cx, 36),
+            style,
+            Alignment::Center,
+        )
+        .draw(&mut ink);
+    }
     fill_rect_gray(
         bw,
         red,
@@ -194,23 +194,24 @@ pub(crate) fn draw_legend(bw: &mut [u8], red: &mut [u8], rotation: PageRotation)
         rotation,
     );
 
-    let mut ink = GrayInk::new(bw, red, 1, rotation);
-    if is_portrait(rotation) {
-        let mut y = 88;
-        for (key, value) in ITEMS {
-            let _ = Text::new(key, Point::new(30, y), style).draw(&mut ink);
-            let _ = Text::new(value, Point::new(30, y + 24), style).draw(&mut ink);
-            y += 72;
-        }
-    } else {
-        let mut y = 80;
-        for (key, value) in ITEMS {
-            let _ = Text::new(key, Point::new(24, y), style).draw(&mut ink);
-            let _ = Text::new(value, Point::new(220, y), style).draw(&mut ink);
-            y += 36;
+    {
+        let mut ink = GrayInk::new(bw, red, 1, rotation);
+        if is_portrait(rotation) {
+            let mut y = 88;
+            for (key, value) in ITEMS {
+                let _ = Text::new(key, Point::new(30, y), style).draw(&mut ink);
+                let _ = Text::new(value, Point::new(30, y + 24), style).draw(&mut ink);
+                y += 72;
+            }
+        } else {
+            let mut y = 80;
+            for (key, value) in ITEMS {
+                let _ = Text::new(key, Point::new(24, y), style).draw(&mut ink);
+                let _ = Text::new(value, Point::new(220, y), style).draw(&mut ink);
+                y += 36;
+            }
         }
     }
-    drop(ink);
 
     let rule_y = if is_portrait(rotation) {
         page_h.saturating_sub(80)
@@ -581,7 +582,7 @@ pub(crate) fn draw_pair(bw: &mut [u8], red: &mut [u8], rotation: PageRotation) {
             let row = i32::try_from(i / 2).unwrap_or(0);
             let x = i32::from(layout.step_x) + col * 380;
             let y = layout.step_y0 + row * 32;
-            let _ = Text::new(*step, Point::new(x, y), style).draw(&mut ink);
+            let _ = Text::new(step, Point::new(x, y), style).draw(&mut ink);
         }
     }
 

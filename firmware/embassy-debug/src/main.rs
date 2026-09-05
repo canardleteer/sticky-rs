@@ -21,6 +21,9 @@
 
 #![no_std]
 #![no_main]
+// esp-hal GPIO types have no Drop. `forget` keeps the pad claimed
+// for the process lifetime (latch, parked rails, touch, buzzer).
+#![allow(clippy::forget_non_drop)]
 
 use core::sync::atomic::{AtomicU32, Ordering};
 
@@ -906,6 +909,7 @@ async fn touch_task(
             if bits.buffer_ready() {
                 let n = core::cmp::min(bits.touch_count() as usize, MAX_TOUCH_POINTS);
                 let mut mapped = [TouchPoint::default(); MAX_TOUCH_POINTS];
+                #[cfg(feature = "wifi")]
                 let mut fb0 = None;
                 if n > 0 {
                     let mut raw = [0u8; MAX_TOUCH_POINTS * POINT_RECORD_LEN];
@@ -933,6 +937,7 @@ async fn touch_task(
                                 x: x as u16,
                                 y: y as u16,
                             };
+                            #[cfg(feature = "wifi")]
                             if i == 0 {
                                 // Pre-rotation canvas for START/STOP. Do
                                 // not hit-test UART `p0=` (`to_screen`).

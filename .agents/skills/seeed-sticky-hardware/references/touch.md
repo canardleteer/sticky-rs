@@ -176,9 +176,18 @@ START taps (`p0=679,189` while `imu=Portrait0`) with no
 **top** of the portrait page. Undo the transmit 180°
 (`fx,fy = (799-sx, 479-sy)`) and the same tap is the START
 button (`page ≈ 189,679`). Landscape holds use the same canvas
-then `framebuffer_to_page` (`Landscape0` / `Landscape180`);
-prefer the raw GT911 sample through `to_framebuffer`, not an
-undo of UART `p0=`. 2026-08-30, default embassy-debug
+then `framebuffer_to_page`, **and** the OTP `set_gray` 180° of
+that canvas (`(W-1-fx, H-1-fy)`). Landscape
+`page_to_framebuffer` is mirror-X only (LTR Latin, 2026-08-30);
+gray4 then writes 180°, so a tap on the visible START maps to
+the complement of the page strip. Landscape0 hit-test uses
+only that OTP 180° canvas; Landscape180 inverts the tap
+canvas. Do not OR both: a 2026-09-04 `wifi_ap` sit toggled
+the empty opposite side. Do not apply the Landscape0 180°
+on portrait: that is the `p0=679,189` miss. Prefer the raw
+GT911 sample through
+`to_framebuffer`, not an undo of UART `p0=`. 2026-08-30,
+default embassy-debug
 after the corner map: finger-pad taps near the ink corners (in
 one sample) printed first `p0=` `795,470`, `795,4`, `4,475`,
 `4,4`. Mid-axis slides before the 480×800 map had keys-side

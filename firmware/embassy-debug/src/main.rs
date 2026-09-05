@@ -934,8 +934,10 @@ async fn touch_task(
                                 y: y as u16,
                             };
                             if i == 0 {
-                                // Pre-rotation canvas for START/STOP. Works
-                                // for landscape holds; do not hit-test `p0=`.
+                                // Pre-rotation canvas for START/STOP. Do
+                                // not hit-test UART `p0=` (`to_screen`).
+                                // Landscape0 uses only the OTP `set_gray`
+                                // 180° of this canvas.
                                 let (fx, fy) = seeed_reterminal_sticky::touch::to_framebuffer(
                                     u32::from(cx),
                                     u32::from(cy),
@@ -961,7 +963,24 @@ async fn touch_task(
                         if let Some(scene) = crate::wifi::ui_scene() {
                             let rotation = crate::wifi::ui_rotation();
                             if let Some((fx, fy)) = fb0 {
-                                if crate::draw::wifi_action_hit(fx, fy, rotation) {
+                                let hit = crate::draw::wifi_action_hit(fx, fy, rotation);
+                                if let Some((hx, hy)) =
+                                    seeed_reterminal_sticky::display::gray4_touch_framebuffer(
+                                        fx, fy, rotation,
+                                    )
+                                {
+                                    if let Some((px, py)) =
+                                        seeed_reterminal_sticky::display::framebuffer_to_page(
+                                            hx, hy, rotation,
+                                        )
+                                    {
+                                        println!(
+                                            "{LOG_PREFIX}: wifi tap page={px},{py} hit={}",
+                                            u8::from(hit)
+                                        );
+                                    }
+                                }
+                                if hit {
                                     match scene {
                                         Scene::WifiSurvey => {
                                             let cmd = match crate::wifi::wifi_mode() {

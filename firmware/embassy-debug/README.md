@@ -527,10 +527,17 @@ You should still see `embassy-debug: latched` and the usual `btn` /
 
 The glass should show `WIFI SURVEY` and `[ START SURVEY ]`. Tilt
 the card: this page stays upright like splash. Right-edge keys
-still change the page. AI Voice is not a start/stop.
+still change the page. AI Voice is not a start/stop. In
+landscape, tap the ink you see. Landscape0 hit-test uses only
+that 180° canvas; the empty opposite side must miss.
 
-Tap `[ START SURVEY ]`. UART should print a counts line, for
-example:
+Tap `[ START SURVEY ]`. The whole panel runs an OTP four-gray
+refresh (START, then again when the counts land). That flash
+is the waveform, not a dirty rectangle. Extra taps while it
+is scanning start and stop the survey again.
+
+UART should print `wifi tap page=` with `hit=1`, then a
+counts line, for example:
 
 ```text
 embassy-debug: t=1204 wifi_survey count=5 ch1=1 ch6=2 ch11=1 other=1

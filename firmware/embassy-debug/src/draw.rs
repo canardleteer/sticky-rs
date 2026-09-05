@@ -1173,16 +1173,9 @@ fn wifi_action_slop(rotation: PageRotation) -> u16 {
     }
 }
 
-/// True when a **pre-rotation framebuffer** tap lands in the START/STOP button.
-///
-/// Pass [`seeed_reterminal_sticky::touch::to_framebuffer`] (raw GT911),
-/// not UART `p0=` / [`seeed_reterminal_sticky::touch::to_screen`].
-/// [`framebuffer_to_page`] handles all four in-plane holds.
+/// True when a tap in **page** pixels lands in the START/STOP strip.
 #[cfg(feature = "wifi")]
-pub(crate) fn wifi_action_hit(fx: u16, fy: u16, rotation: PageRotation) -> bool {
-    let Some((px, py)) = display::framebuffer_to_page(fx, fy, rotation) else {
-        return false;
-    };
+fn wifi_page_in_action(px: u16, py: u16, rotation: PageRotation) -> bool {
     let (x, y, w, h) = wifi_action_rect(rotation);
     let slop = wifi_action_slop(rotation);
     let x0 = x.saturating_sub(slop);
@@ -1190,6 +1183,25 @@ pub(crate) fn wifi_action_hit(fx: u16, fy: u16, rotation: PageRotation) -> bool 
     let x1 = x.saturating_add(w).saturating_add(slop);
     let y1 = y.saturating_add(h).saturating_add(slop);
     px >= x0 && px < x1 && py >= y0 && py < y1
+}
+
+/// True when a **pre-rotation framebuffer** tap lands in the START/STOP button.
+///
+/// Pass [`seeed_reterminal_sticky::touch::to_framebuffer`] (raw GT911),
+/// not UART `p0=` / [`seeed_reterminal_sticky::touch::to_screen`].
+/// [`gray4_touch_framebuffer`] then [`framebuffer_to_page`]:
+/// [`PageRotation::Landscape0`] uses only the OTP [`set_gray`] 180°;
+/// other in-plane holds invert the tap canvas. Do not OR both
+/// (empty opposite side toggled on a 2026-09-04 `wifi_ap` sit).
+#[cfg(feature = "wifi")]
+pub(crate) fn wifi_action_hit(fx: u16, fy: u16, rotation: PageRotation) -> bool {
+    let Some((hx, hy)) = display::gray4_touch_framebuffer(fx, fy, rotation) else {
+        return false;
+    };
+    let Some((px, py)) = display::framebuffer_to_page(hx, hy, rotation) else {
+        return false;
+    };
+    wifi_page_in_action(px, py, rotation)
 }
 
 /// Fill the current page with one OTP gray tone.

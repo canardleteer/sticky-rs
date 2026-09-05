@@ -44,6 +44,9 @@ Live-ask, never-erase, and flash I/O: root
   Pair idle is a framed how-to with empty PIN boxes; digits appear
   only after `pair pin=`. Advertise only on that card. Wi-Fi cards
   stay idle until a tap on `[ START SURVEY ]` / `[ START HOTSPOT ]`.
+  Landscape0 START uses only the OTP `set_gray` 180° of the
+  canvas. Landscape180 and portrait invert the tap canvas.
+  Do not OR both.
   Legend is a document (keys, sleep / standby / power, OTP), not
   72×72 nub boxes.
   OTP gray4 splash / legend / tones / pair / Wi-Fi / Ferris-off;
@@ -86,8 +89,19 @@ Live-ask, never-erase, and flash I/O: root
   Page Down printed both scene tokens; START taps printed
   `touch n=1` but **no** `wifi_survey` / `wifi_ap` until
   hit-test used `to_framebuffer` + `framebuffer_to_page` (UART
-  `p0=` is `to_screen` / glass; gray4 is the pre-rotation
-  canvas). SoftAP join / `GET /` is **host-verified**
+  `p0=` is `to_screen` / glass). Landscape START still
+  missed after that: gray4 `set_gray` writes
+  `(W-1-x, H-1-y)` and landscape `page_to_framebuffer` is
+  mirror-X only, so ink is the OTP 180 of the canvas.
+  Landscape0 uses only that complement; Landscape180 and
+  portrait invert the tap canvas. Do not OR both: the OR
+  image toggled the empty opposite side (operator, same
+  sit). Confirmed on a physical unit (2026-09-04): FaceUp
+  with the last landscape page, `wifi tap page=362,53
+  hit=1` and glass `p0=362,426`, then `wifi_ap
+  state=active`; STOP `page=382,78 hit=1`; second START
+  then `imu=Landscape180`. SoftAP
+  join / `GET /` is **host-verified**
   (2026-09-04): spare STA, DHCP `192.168.4.50`, JSON
   `device` / `scene=wifi_ap` / `wifi` counts. After STOP +
   replug + START: UART `wifi_ap … clients=1` then
@@ -228,7 +242,10 @@ On a physical unit (2026-09-04) the walk printed
 UART `to_screen` as if it were the gray4 canvas produced **no**
 radio line (`p0=679,189` while `imu=Portrait0` mapped to the
 top of the portrait page). Hit-test must use `to_framebuffer`
-then `framebuffer_to_page`. After that fix, a host spare STA
+then `framebuffer_to_page`. Landscape0 uses only the OTP
+`set_gray` 180° of that canvas; Landscape180 inverts the
+tap canvas. Do not OR both. After
+the portrait fix, a host spare STA
 joined `sticky-rs-AP` / `sticky26`: DHCP `192.168.4.50`,
 `GET /` JSON `device` / `scene=wifi_ap` /
 `wifi.{hotspot,ssid,clients,requests}` (`clients=1`,
@@ -243,12 +260,22 @@ or PC. A host STA check is allowed only when the human
 **explicitly asked** for that sit.
 
 1. **Channel survey.** Human walks to `scene=wifi_survey` and taps
-   `[ START SURVEY ]`. UART prints
-   `wifi_survey count=… ch1=… ch6=… ch11=… other=…`. Glass shows
+   `[ START SURVEY ]` (portrait or landscape; Landscape0 uses
+   only the OTP 180° canvas). UART prints `wifi tap page=… hit=1`
+   then `wifi_survey count=… ch1=… ch6=… ch11=… other=…`.
+   START and the result each run a **full OTP gray4** (whole
+   panel). Extra hits while scanning toggle stop/start and
+   queue more waveforms. On a physical unit (2026-09-04)
+   Landscape180: opposite `page=435,53 hit=0`; ink
+   `page=452,399 hit=1`; then `wifi_survey count=16` /
+   `count=18`. Glass shows
    occupancy and the strongest APs. Starting survey tears down an
    active SoftAP.
 2. **SoftAP + JSON HTTP.** Human walks to `scene=wifi_ap` and taps
-   `[ START HOTSPOT ]`. Glass shows SSID, password, URL, client
+   `[ START HOTSPOT ]` (Landscape0 OTP 180° sat 2026-09-04:
+   `page=362,53 hit=1` / `p0=362,426`; OR image also
+   toggled the empty opposite side).
+   Glass shows SSID, password, URL, client
    count, and HTTP request count. UART prints
    `wifi_ap state=active ssid=sticky-rs-AP …`.
 3. **Host-agent SoftAP check** (when the human asks for a live
@@ -268,16 +295,22 @@ or PC. A host STA check is allowed only when the human
      used `fetch_update`'s previous value). Firmware now keeps
      one subscriber, emits the new count, and sets SoftAP idle
      timeout 10 s for a USB STA that does not deauth. That
-     leave-drop is **not measured** on the new image yet.
+     leave-drop is **not measured** on the landscape-button
+     image (2026-09-04 host join had no UART: USB-C in other
+     use). That sit: spare STA, DHCP `192.168.4.50`, `GET /`
+     `clients=1` `requests=1` then `requests=2`. Operator:
+     landscape START/STOP did the right thing on glass.
    - Do not print a station MAC.
 
 Keys still walk pages. AI Voice is not a start/stop. Touch
 START/STOP uses composed page coords
 ([`draw::wifi_action_hit`](src/draw.rs) on raw
 [`to_framebuffer`](../../crates/seeed-reterminal-sticky/src/touch.rs)
+[`gray4_touch_framebuffer`](../../crates/seeed-reterminal-sticky/src/display.rs)
 then
 [`framebuffer_to_page`](../../crates/seeed-reterminal-sticky/src/display.rs)
-for all four in-plane holds; UART `p0=` stays `to_screen`).
+(Landscape0: OTP 180° only). UART prints `wifi tap page=… hit=`;
+`p0=` stays `to_screen`).
 Human how-to:
 [README.md](README.md#wifi-test-instructions).
 

@@ -147,7 +147,12 @@ printed `touch n=1` (`p0=679,189` on survey while
 `imu=Portrait0`). An image that hit-tested UART `to_screen`
 against gray4 `page_to_framebuffer` produced **no**
 `wifi_survey` / `wifi_ap` line (tap mapped to the top of the
-page). After the framebuffer hit-test fix, a host spare STA
+page). Landscape0 START uses `gray4_touch_framebuffer`
+(OTP 180° only). Same-day sit: `wifi tap page=362,53
+hit=1` / `p0=362,426` then `wifi_ap state=active` (FaceUp,
+last landscape page); the OR image also toggled the empty
+opposite side. After the portrait framebuffer
+hit-test fix, a host spare STA
 joined `sticky-rs-AP` / `sticky26` (2026-09-04): DHCP
 `192.168.4.50`, `GET /` JSON `device` / `scene=wifi_ap` /
 `wifi` counts (`clients=1`, `requests=1`). After STOP +

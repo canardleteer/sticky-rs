@@ -108,8 +108,9 @@ Live-ask, never-erase, and flash I/O: root
   `wifi_http req=1 path=/`. Host disconnect produced no later
   `wifi_ap` decrement on that image. Leave now keeps one event
   subscriber, emits the new count, and wakes gray4; SoftAP idle
-  timeout is 10 s. That drop is **not measured** on the new
-  image yet. Do not
+  timeout is 10 s. Same evening, landscape-button image, no
+  UART: after host disconnect the operator glass showed
+  `clients=0` and `http=2`. Do not
   combine with `mic`, `radio`, `charge`, or `sd`. Walkthrough:
   [src/wifi.rs](src/wifi.rs). How-to:
   [README.md](README.md#wifi-test-instructions).
@@ -294,12 +295,12 @@ or PC. A host STA check is allowed only when the human
      `clients=1` (subscriber was recreated each wait; UART
      used `fetch_update`'s previous value). Firmware now keeps
      one subscriber, emits the new count, and sets SoftAP idle
-     timeout 10 s for a USB STA that does not deauth. That
-     leave-drop is **not measured** on the landscape-button
-     image (2026-09-04 host join had no UART: USB-C in other
-     use). That sit: spare STA, DHCP `192.168.4.50`, `GET /`
-     `clients=1` `requests=1` then `requests=2`. Operator:
-     landscape START/STOP did the right thing on glass.
+     timeout 10 s for a USB STA that does not deauth. Same
+     evening, landscape-button image, no UART (USB-C in other
+     use): spare STA, DHCP `192.168.4.50`, `GET /`
+     `clients=1` `requests=1` then `requests=2`. After host
+     disconnect, operator glass `clients=0` `http=2`.
+     Landscape START/STOP did the right thing on glass.
    - Do not print a station MAC.
 
 Keys still walk pages. AI Voice is not a start/stop. Touch

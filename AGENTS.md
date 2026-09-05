@@ -123,7 +123,9 @@ side toggled on a 2026-09-04 `wifi_ap` sit). SoftAP join /
 `device` / `scene=wifi_ap` / `wifi` counts. After STOP +
 replug + START: UART `wifi_ap … clients=1` then
 `wifi_http req=1 path=/`. Host disconnect produced no later
-`wifi_ap` decrement.
+`wifi_ap` decrement on that image. Same evening, after a
+host join with no UART, operator glass showed `clients=0`
+and `http=2`.
 
 If the host has a spare STA adapter **and** the human
 **explicitly asked** for that sit in that message, agents may

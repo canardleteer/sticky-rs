@@ -570,6 +570,10 @@ should print `wifi_http req=` plus `path=/`.
 
 This is WPA2 only. The board does not offer WPA3.
 
+When the phone or PC leaves, the glass client count should
+drop to `0`. The HTTP count stays (a sit showed `clients=0`
+and `http=2` after a host leave).
+
 Tap `[ STOP HOTSPOT ]` when you are done. UART should print
 `wifi_ap state=stopped`. Walking away without tapping STOP
 leaves the hotspot up until sleep or power-off.
@@ -579,16 +583,23 @@ leaves the hotspot up until sleep or power-off.
 - **Idle first**: neither card starts a radio until you tap
   START.
 - **Survey**: `wifi_survey count=` on UART; nearby names on
-  glass only.
+  glass only. START and the result each flash the whole
+  panel (OTP four-gray).
 - **Hotspot**: `wifi_ap state=active` with the fixed demo
-  SSID/pass, then `wifi_http` after a `GET /`.
+  SSID/pass, then `wifi_http` after a `GET /`. After the
+  station leaves, glass `clients=0` and the HTTP count
+  stays.
+- **Landscape**: tap the ink; the empty opposite edge must
+  miss.
 - **Fail**: hang, panic, a neighbor SSID or MAC on UART, or a
   SoftAP that stays up after latch power-off.
 
 A host `nmcli` / `curl` sit is optional and only when you asked
 for it. On a physical unit a spare host STA joined
 `sticky-rs-AP`, got `192.168.4.50`, and `GET /` returned JSON
-with `device`, `scene=wifi_ap`, and `wifi` counts.
+with `device`, `scene=wifi_ap`, and `wifi` counts
+(`clients=1`, `requests` 1 then 2). After that host left,
+the glass showed `clients=0` and `http=2`.
 
 ## Charge Test Instructions
 

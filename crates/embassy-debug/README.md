@@ -68,6 +68,8 @@ On a physical unit a host central typed the UART passkey and UART
 printed `pair ok`. The `wifi_survey` / `wifi_ap` / `wifi_http` lines
 are printed by the default image’s Wi-Fi cards (counts and the fixed
 demo SSID/pass only; never a neighbor SSID, BSSID, or station MAC).
+A host join sit returned JSON `clients=1` then, after that STA
+left, the glass showed `clients=0` and `http=2`.
 The `sd`
 lines are printed only by `--features sd` (read-only identify and FAT
 list; never a CID product serial or file contents). The `ce` lines are

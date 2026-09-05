@@ -158,5 +158,7 @@ joined `sticky-rs-AP` / `sticky26` (2026-09-04): DHCP
 `wifi` counts (`clients=1`, `requests=1`). After STOP +
 replug + START: UART `wifi_ap … clients=1` then
 `wifi_http req=1 path=/`. Host disconnect produced no later
-`wifi_ap` decrement. Hit-test space:
+`wifi_ap` decrement on that image. Same evening, after a
+host leave with no UART, operator glass showed `clients=0`
+and `http=2`. Hit-test space:
 [touch.md](touch.md#coordinate-transform-on-a-physical-unit).

@@ -5,6 +5,11 @@ members, **not** default-members. Host `cargo test` must not
 compile them. Root rules still apply: [AGENTS.md](../AGENTS.md).
 Board contract:
 [seeed-sticky-hardware](../.agents/skills/seeed-sticky-hardware/SKILL.md).
+Official Seeed C++ (dashboard / peripheral zips and the three
+ESP-IDF guides) is wiring intent in that skill’s
+[catalog.md](../.agents/skills/seeed-sticky-hardware/references/catalog.md).
+Do not treat those sequences as electrical fact. Do not `idf.py`
+them from this tree.
 
 Human how-to (what the image does, numbered flash / listen
 steps) lives in each package `README.md` and

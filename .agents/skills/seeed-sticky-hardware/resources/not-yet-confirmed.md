@@ -47,8 +47,10 @@ row that asks anyone to invent the deleted GT911 register map.
 
 ### nyc-gpio46-pulse
 
-This skill and ESPHome/Bunny: **GPIO45 and GPIO46 stay high**. Some write-ups
-pulse GPIO46 (low→high→low) after raising GPIO45.
+This skill, official `Sticky_dashboard_demo`, ESPHome, and Bunny:
+**GPIO45 and GPIO46 stay high**. The official zip never pulses GPIO46.
+Some third-party write-ups pulse GPIO46 (low→high→low) after raising
+GPIO45.
 
 - On battery, with USB unplugged after boot: compare hold-both-high vs the
   pulse sequence. Does the rail drop with either recipe?

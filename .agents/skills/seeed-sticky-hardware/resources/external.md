@@ -35,15 +35,15 @@ Use them directly; do not treat the skill as a substitute for the git history.
 | Seeed docs hub | https://www.seeedstudio.com/sticky/docs/ | Device guides (still being written) |
 | Hardware overview | https://www.seeedstudio.com/sticky/docs/en/device-guide/hardware-overview/ | Pin tables, GPIO7 as IMU INT |
 | ESP-IDF basics | https://www.seeedstudio.com/sticky/docs/en/device-guide/esp-basics/ | Dashboard demo layout |
-| Pages and peripherals | https://www.seeedstudio.com/sticky/docs/en/device-guide/esp-pages/ | Peripheral patterns |
-| Display refresh | https://www.seeedstudio.com/sticky/docs/en/device-guide/esp-refresh/ | `seeed_epaper` refresh modes |
+| Pages and peripherals | https://www.seeedstudio.com/sticky/docs/en/device-guide/esp-pages/ | Official bus-sharing, SD-then-panel, GPIO0 SPI trap |
+| Display refresh | https://www.seeedstudio.com/sticky/docs/en/device-guide/esp-refresh/ | Official gray4 / mono / partial and AI-hold sleep |
 | Playground site | https://www.seeedstudio.com/sticky/playground/ | Flash catalog |
 | ESPHome Playground | https://www.seeedstudio.com/sticky/docs/en/playground-docs/esphome/ | Generated YAML |
 | Playground registry | https://github.com/Seeed-Projects/reterminal-sticky-playground-registry | `integration.json`, CI, `sticky-2048` source |
 | Registry CONTRIBUTING | https://github.com/Seeed-Projects/reterminal-sticky-playground-registry/blob/main/CONTRIBUTING.md | Contribution paths |
 | Registry schema | https://github.com/Seeed-Projects/reterminal-sticky-playground-registry/blob/main/schemas/integration.schema.json | Catalog validation |
 | `sticky-2048` upstream | https://github.com/Lukilyy/reterminal-sticky-2048-eink-game | ESP-IDF app, `pin_config.h`, drivers |
-| Official firmware repo | https://github.com/Seeed-Projects/OSHW-reTerminal-Sticky | Referenced; has been 404 |
+| Official firmware repo | https://github.com/Seeed-Projects/OSHW-reTerminal-Sticky | Still **404** (2026-09-05). Public official C++ is the CDN zips in [catalog.md](../references/catalog.md) |
 | E-series wiki (concepts only) | https://wiki.seeedstudio.com/reterminal_e10xx_main_page/ | Not Sticky pins; UF2/XIAO flow does not apply |
 | E-series ESPHome | https://wiki.seeedstudio.com/reterminal_e10xx_with_esphome/ | Idioms only |
 | E-series OSHW | https://github.com/Seeed-Projects/OSHW-reTerminal-Series-E-D | Different product line |

@@ -19,8 +19,10 @@ On every boot, including deep-sleep wake:
 GPIO46 is a strapping pin (boot mode with GPIO0). GPIO45 is a strapping pin
 (VDD_SPI voltage). Both default to **weak pull-down** at reset (v2.2 Table
 2-1 / 3-1), so the latch must be driven high against silicon default. Do
-not use GPIO46 as a general-purpose toggle. Some write-ups pulse GPIO46
-instead of holding it high — do not switch recipes until
+not use GPIO46 as a general-purpose toggle. Official
+`Sticky_dashboard_demo` holds both pins high and never pulses GPIO46
+([cpp-platformio.md](cpp-platformio.md#official-esp-idf-demos)). Some
+third-party write-ups pulse GPIO46 instead — do not switch recipes until
 [nyc-gpio46-pulse](../resources/not-yet-confirmed.md#nyc-gpio46-pulse). The
 maximum delay from reset to assertion:
 [nyc-latch-deadline](../resources/not-yet-confirmed.md#nyc-latch-deadline).
@@ -53,11 +55,13 @@ In-repo **default** images park `/CE`. embassy-debug `--features charge`
 is an attended ≤ 2 s enable when GPIO9 is high, then park (settle,
 then `hold_disabled` if STAT is still low). Default `embassy-debug`
 is back on `app0` after that sit (no `ce` lines). When FreeInk and
-Bunny disagree on charger GPIO, prefer FreeInk:
+the official dashboard (or Bunny) disagree on charger GPIO, prefer
+FreeInk for a **default debug image**:
 `FREEINK_DEVICE_STICKY` reads GPIO40 (STAT **low** = charging,
-`INPUT_PULLUP`) and leaves GPIO39 undriven. Bunny
-`board_charger_init` drives GPIO39 **low** at boot. Do not copy
-Bunny’s boot enable into a default debug image.
+`INPUT_PULLUP`) and leaves GPIO39 undriven. Official
+`sticky_charger_init` and Bunny `board_charger_init` drive GPIO39
+**low** at boot. That is vendor intent, not a reason to enable
+charge in an unattended debug image.
 
 Treat GPIO9 as a digital **edge source**, not a level you poll: stock firmware
 installs an any-edge GPIO interrupt on it and raises a power-state-changed
@@ -80,6 +84,11 @@ firmware actively maintains its Full Charge Capacity — see
 [nyc-gauge-profile](../resources/not-yet-confirmed.md#nyc-gauge-profile).
 
 ## Deep-sleep rails
+
+Official
+[Refresh and Low Power](https://www.seeedstudio.com/sticky/docs/en/device-guide/esp-refresh/)
+uses this same rail table: latch high, EPD/touch/mic/SD/buzzer held
+disabled, then GPIO4 `ext1` ANY_LOW after the AI button is released.
 
 Keep the **latch high** so the MCU can sleep without collapsing the board.
 Turn **peripheral rails off** so they do not draw:

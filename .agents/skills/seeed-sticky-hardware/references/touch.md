@@ -145,9 +145,18 @@ is module programming, not an MCU guess.
 ## Coordinate transform (on a physical unit)
 
 The GT911 sample `(cx, cy)` is **portrait 480×800**, not panel 800×480.
-A host map that scaled `cx` as if the range were 800 compressed the
-keys axis: glass corners next to the keys printed `y≈195` (2026-08-30
-sit, USB-C down).
+A host map that scaled **raw** `cx` as if the range were 800 compressed
+the keys axis: glass corners next to the keys printed `y≈195`
+(2026-08-30 sit, USB-C down).
+
+Official `Sticky_dashboard_demo` is a **software-map** convention, not a
+claim the silicon is 800 wide. `GT911::begin(800, 480)` is the landscape
+canvas. `readResolution()` still reads `0x8146` and logs
+`sensor=%ux%u map=%ux%u`. `read_points` then `mapCoord` raw → 800×480.
+`transform_touch_coordinate` comments “portrait-oriented” and scales
+those already-mapped points with 800 as the X source. Do not apply that
+second scale to raw samples. Official UI only needs swipe direction; we
+have not corner-sat their full stack on glass.
 
 Map that sample onto the pre-rotation 800×480 canvas, then undo the
 display’s 180° transmit rotation.

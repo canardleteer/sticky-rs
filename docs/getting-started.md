@@ -249,6 +249,17 @@ backlog. When sources disagree, the skill user weighs them. Observed
 hardware on this product outranks official board docs and chip
 datasheets, which outrank third-party firmware.
 
+Seeed’s own pages for this product:
+
+- [Hardware Overview](https://www.seeedstudio.com/sticky/docs/en/device-guide/hardware-overview/)
+  (schematic Rev 01 and a case STL under Resources)
+- [ESP-IDF basics](https://www.seeedstudio.com/sticky/docs/en/device-guide/esp-basics/),
+  [pages](https://www.seeedstudio.com/sticky/docs/en/device-guide/esp-pages/),
+  [refresh](https://www.seeedstudio.com/sticky/docs/en/device-guide/esp-refresh/)
+  — these download `Sticky_dashboard_demo` /
+  `Sticky_peripheral_demo`. Flashing a zip replaces `app0`. This
+  repository does not flash with `idf.py`.
+
 Datasheet catalog (symlink into that skill): [DATASHEETS.md](DATASHEETS.md).
 This repository’s host tools and crate layout:
 [`.agents/skills/sticky-rs/`](../.agents/skills/sticky-rs/SKILL.md).

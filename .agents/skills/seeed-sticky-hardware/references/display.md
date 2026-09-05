@@ -111,9 +111,12 @@ Refresh is expensive; the panel holds pixels without power.
   (`0xF7`). Cold boot: white clear.
 - **Partial** / DU black/white: OTP
   `UpdateSequence::DISPLAY_MODE_2_WITH_TEMP` (`0xFF`). Still panel-wide;
-  send a full comparison frame, not a dirty rectangle alone. Lotus
-  independently documents that Master Activation drives the whole panel
-  from 0x24; a RAM window only scopes the write. Do not copy
+  send a full comparison frame, not a dirty rectangle alone. Official
+  `sticky_display_refresh_partial()` and Lotus independently document
+  that Master Activation drives the whole panel from 0x24; a RAM window
+  only scopes the write. Official
+  [Refresh and Low Power](https://www.seeedstudio.com/sticky/docs/en/device-guide/esp-refresh/)
+  says the same and forbids mono partial on a gray4 page. Do not copy
   Lotus/bb_epaper `0xFC`.
 - **Gray4**: OTP `SEEED_GRAY4_TEMPERATURE` then
   `UpdateSequence::SEEED_GRAY4` (`0xD7`), dual planes with Seeed’s inverted
@@ -138,8 +141,10 @@ Refresh is expensive; the panel holds pixels without power.
   Page Up 5 s sleep / Page Down 5 s latch off). The 2 s look
   auto-resume is no longer the policy.
 
-Seeed’s open `seeed_epaper` SSD1677 driver and stock `reterminal_template`
-agree on that OTP path. They do **not** write a 105-byte LUT. A FreeInk MCU
+Seeed’s official dashboard `seeed_epaper` SSD1677 driver and stock
+`reterminal_template` agree on that OTP path (gray4 also writes
+`0x1A = {0x67, 0x00}` before `0xD7`). They do **not** write a 105-byte LUT.
+A FreeInk MCU
 table for Sticky was compared to stock app0 and is **absent**; it stays
 commented. Full register table, hazards, and the commented bytes:
 [docs/ssd1677.md](../../../../docs/ssd1677.md).

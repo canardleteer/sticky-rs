@@ -20,9 +20,9 @@ observed silicon or other sources, name both sides
 | Quick start | https://www.seeedstudio.com/sticky/docs/en/quick-start/ — appearance diagram vendored as [resources/enclosure/appearance_en.png](../resources/enclosure/appearance_en.png); layout: [enclosure.md](enclosure.md) |
 | Release notes | https://www.seeedstudio.com/sticky/docs/en/quick-start/release-notes |
 | Hardware overview | https://www.seeedstudio.com/sticky/docs/en/device-guide/hardware-overview/ |
-| ESP-IDF basics | https://www.seeedstudio.com/sticky/docs/en/device-guide/esp-basics/ |
-| Pages and peripherals | https://www.seeedstudio.com/sticky/docs/en/device-guide/esp-pages/ |
-| Display refresh and low power | https://www.seeedstudio.com/sticky/docs/en/device-guide/esp-refresh/ |
+| ESP-IDF basics | https://www.seeedstudio.com/sticky/docs/en/device-guide/esp-basics/ — demo zip download buttons; project tree |
+| Pages and peripherals | https://www.seeedstudio.com/sticky/docs/en/device-guide/esp-pages/ — official bus-sharing, SD-then-panel, GPIO0 SPI trap, GPIO9 as “charging”/VBUS. Walks the dashboard zip |
+| Display refresh and low power | https://www.seeedstudio.com/sticky/docs/en/device-guide/esp-refresh/ — official gray4 / mono / partial, panel-wide comparison frame, AI-hold deep sleep, GPIO4 `ext1` |
 | Playground (flash catalog) | https://www.seeedstudio.com/sticky/playground/ |
 | Playground: CrossPoint Reader | https://www.seeedstudio.com/sticky/docs/en/playground-docs/crosspoint-reader/ |
 | Playground: OpenDisplay | https://www.seeedstudio.com/sticky/docs/en/playground-docs/opendisplay/ — firmware is [OpenDisplay/Firmware](https://github.com/OpenDisplay/Firmware), not the Seeed registry |
@@ -31,21 +31,30 @@ observed silicon or other sources, name both sides
 | Product marketing | https://www.seeedstudio.com/sticky/ |
 | Store listing | https://www.seeedstudio.com/reTerminal-Sticky-p-6861.html |
 
-`wiki.seeedstudio.com/reterminal_sticky/` and `/sticky/` have been **404**.
-Hardware Overview Resources publish the board schematic
+`wiki.seeedstudio.com/reterminal_sticky/` and `/sticky/` have been **404**
+(rechecked 2026-09-05). The Support hub GitHub button is a **Coming soon**
+modal, not a repository. Hardware Overview Resources still publish the same
+board schematic
 ([Rev 01 PDF](https://files.seeedstudio.com/wiki/reterminal_sticky/res/reTerminal_Sticky_Schematic_diagram_260609.pdf),
-CC BY-SA 4.0). Cache id `seeed-sticky-schematic` in
+CC BY-SA 4.0, 2026-06-05). Cache id `seeed-sticky-schematic` in
 [datasheets.md](../resources/datasheets.md). Nets on that PDF are official
-electrical evidence. There is **no BOM** in this file.
+electrical evidence. There is **no BOM** (a guessed `BOM.pdf` on that CDN
+path is 403). The same Resources list also publishes a vendor-hosted
+[case STL](https://files.seeedstudio.com/wiki/reterminal_sticky/res/sticky_case_simple.stl)
+(Faulince Huang) plus third-party stand / wallet links. The Hardware Overview
+pin tables omit latch 45/46, `/CE` 39, STAT 40, GPIO9, SD EN/DET, and mic EN;
+the official demo `pin_config.h` is the fuller published pin list
+([cpp-platformio.md](cpp-platformio.md#official-esp-idf-demos)).
 
 ## Firmware you can actually run
 
 | Firmware | Kind | Notes |
 | --- | --- | --- |
-| Factory `reterminal_template` | Stock image (measured) | Dual-OTA LittleFS, 160 MHz, Winbond DIO. Vendor’s internal board name is **`reterminal_e1005`** (E1005) — pair that with the app name `reterminal_template` when searching for vendor docs, sources, or firmware. Restore via Playground factory package when published; do not flash another unit’s full-chip dump. [measure.md](measure.md). Official source `Seeed-Projects/OSHW-reTerminal-Sticky` is still **404**; binaries live in the registry. |
+| Factory `reterminal_template` | Stock image (measured) | Dual-OTA LittleFS, 160 MHz, Winbond DIO. Vendor’s internal board name is **`reterminal_e1005`** (E1005) — pair that with the app name `reterminal_template` when searching for vendor docs, sources, or firmware. Playground Seeedash package is still **v1.1.0**. Restore via that package when published; do not flash another unit’s full-chip dump. [measure.md](measure.md). Git `Seeed-Projects/OSHW-reTerminal-Sticky` is still **404** (2026-09-05). Official C++ demos are the CDN zips below. |
 | `reTerminal_Sticky_Bunny` | Community ESP-IDF / PlatformIO | [limengdu/reTerminal_Sticky_Bunny](https://github.com/limengdu/reTerminal_Sticky_Bunny). Same `seeed_epaper` OTP SSD1677 as stock (no 0x32). Latch on a physical unit, 10 MHz SPI, display/touch, IMU, sleep. [cpp-platformio.md](cpp-platformio.md) |
 | ESPHome `seeed-reterminal-sticky` | YAML / Playground | **Not in the registry.** Playground generates YAML; the driver is ESPHome `epaper_spi` SSD1677 ([PR 16950](https://github.com/esphome/esphome/pull/16950)). B/W only (`EPaperMono`), booster Level 2, `0x22` F7/FF, sleep `0x03`. A 2026.8.2 “everything” generator YAML (Arduino + IDF 5.5.5) adds GT911 `0x5D` (INT 21 / RST 41, 100 kHz), PDM GPIO19/20 EN 38, SD DET/EN only (CS 8 named, unused), BQ27220 read-only templates, PCF8563 + HA write-back, and `ext1` GPIO4 `ANY_LOW` (`run_duration` 30 s). IMU is still a commented external component. `/CE` GPIO39 is inverted and not turned on at boot. Orientation may not match Bunny physical-unit mapping ([nyc-esphome-orient](../resources/not-yet-confirmed.md#nyc-esphome-orient)). [sira-fiinikkusu/reterminal-sticky-voice-companion](https://github.com/sira-fiinikkusu/reterminal-sticky-voice-companion) is household ESPHome on this stack. Wiring: [sensors.md](sensors.md#pdm-microphone). |
-| FreeInk `STICKY` / CrossPoint | Compiled board profile | Wiring intent for mic/SHT40/GPIO40; GPIO39 left undriven (prefer over Bunny boot-enable). Default 40 MHz SPI and `n16r8` 16 MB limits are wrong for this flash. MCU gray LUT is **not** factory data. |
+| Official `Sticky_dashboard_demo` / `Sticky_peripheral_demo` | Vendor ESP-IDF v5.4 zips | Published on the [ESP-IDF basics](https://www.seeedstudio.com/sticky/docs/en/device-guide/esp-basics/) page (CDN last-modified 2026-08-16 / 2026-08-14). [Dashboard zip](https://files.seeedstudio.com/wiki/reterminal_sticky/res/Sticky_dashboard_demo.zip) SHA-256 `f52918c42411f73375db1125b4c5ee0fc8691d8b8523c26d3c8aab7e8a256101`. [Peripheral zip](https://files.seeedstudio.com/wiki/reterminal_sticky/res/Sticky_peripheral_demo.zip) SHA-256 `2872c5c10629e8eff55f8c3c1c6a6026dd511bd313f04385b1fae4cb0a49d7cc`. Official `pin_config.h`, latch, OTP `seeed_epaper`, charger enable. Intent and ordering — not electrical fact. [cpp-platformio.md](cpp-platformio.md#official-esp-idf-demos). |
+| FreeInk `STICKY` / CrossPoint | Compiled board profile | Wiring intent for mic/SHT40/GPIO40; GPIO39 left undriven (prefer over official-demo / Bunny boot-enable for default debug images). Default 40 MHz SPI and `n16r8` 16 MB limits are wrong for this flash. MCU gray LUT is **not** factory data. |
 | Playground `sticky-2048` | Community ESP-IDF in the registry | [Lukilyy/reterminal-sticky-2048-eink-game](https://github.com/Lukilyy/reterminal-sticky-2048-eink-game). **In-tree source** in the [Seeed Playground registry](https://github.com/Seeed-Projects/reterminal-sticky-playground-registry) at `integrations/sticky-2048/source/`. Buildable `seeed_epaper` OTP reference. Portrait 270° + `mirror_x` is an **app** choice. GPIO7 appears as `PIN_BFG_INT` there. |
 | OpenDisplay | Partner firmware (not in registry) | [OpenDisplay/Firmware](https://github.com/OpenDisplay/Firmware), GPL-3.0. Toolbox preset `reterminal-sticky` / panel **GDEM0397T81P** via bb_epaper EP397. OTP, but gray4 uses `0x1A = 0x5A` (one byte) and partial `0x22 = 0xFC`. GT911 default `0x5D` — probe `0x14` first. |
 | TRMNL | Partner, registry firmware-only | [usetrmnl/trmnl-firmware](https://github.com/usetrmnl/trmnl-firmware) `env:seeed_sticky`. Same bb_epaper EP397 path as OpenDisplay. Env uses `esp32s3_n16r8` on a **32 MB** part and SPI 8 MHz. Playground docs say erase-from-0 — that destroys factory NVS. |
@@ -53,10 +62,10 @@ electrical evidence. There is **no BOM** in this file.
 | Other Playground cards | Partner / community | CrossInk, Sticky Arcade, Followup, etc. Read each project’s pins before copying them. |
 
 Official Seeedash firmware source (`Seeed-Projects/OSHW-reTerminal-Sticky`)
-has been referenced while **404** (checked 2026-08-27). The dashboard demo
-discussed in Seeed’s ESP-IDF guides is a layered `board/` / `devices/` /
-`pages/` tree; use it for C++ structure, not as a substitute for
-[pin-map.md](pin-map.md). Do not copy pins from E-series
+is still **404** (checked 2026-09-05). The public official C++ trees are the
+two CDN zips above, not that git path. Use them for vendor sequencing, not as
+a substitute for [pin-map.md](pin-map.md) when a unit disagrees. Do not copy
+pins from E-series
 [OSHW-reTerminal-Series-E-D](https://github.com/Seeed-Projects/OSHW-reTerminal-Series-E-D).
 
 ## Native ESP-IDF (no Playground)

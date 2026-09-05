@@ -65,6 +65,14 @@ mount. Magnets can snap to a desk or fridge while a USB cable is attached.
 Thin card. SD slot is toward the bottom of the left long edge in that view.
 The buzzer (GPIO48) has **no** hole on this diagram; it is internal.
 
+## Official case STL
+
+Hardware Overview Resources also publish
+[sticky_case_simple.stl](https://files.seeedstudio.com/wiki/reterminal_sticky/res/sticky_case_simple.stl)
+(Faulince Huang, CDN last-modified 2026-08-20). That file is a 3D
+casing mesh, not a pinout and not a schematic. Accessory stands linked
+from the same page are third-party.
+
 ## What this drawing is not
 
 - Not a pinout. It does not assign GPIO numbers; those come from

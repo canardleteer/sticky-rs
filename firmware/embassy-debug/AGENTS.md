@@ -12,7 +12,9 @@ Live-ask, never-erase, and flash I/O: root
 
 - Latch GPIO45 then GPIO46 before logs or buses.
 - Park BQ25616 `/CE` disabled. Default image does not enable
-  charging. `--features charge` is an attended ≤ 2 s `/CE` pulse
+  charging (official `Sticky_dashboard_demo` and Bunny drive
+  GPIO39 low at boot; do not copy that). `--features charge` is
+  an attended ≤ 2 s `/CE` pulse
   when GPIO9 is high after a cold boot or a 1 s Page Up resume
   hold, then park. A wake that re-sleeps does not pulse `/CE`.
   Do not combine with `mic`, `radio`, `pair`, `wifi`, or `sd`. Do not

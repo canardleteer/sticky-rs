@@ -1,8 +1,9 @@
 # Vendor C/C++, ESP-IDF, and PlatformIO
 
 Hardware pins and levels are in the other reference files. This page is how
-existing **C/C++** firmware drives them — wiring evidence (third-party
-unless the vendor published the tree), not a flash path for this skill.
+existing **C/C++** firmware drives them — wiring evidence (official when
+Seeed published the tree; otherwise third-party), not a flash path for
+this skill.
 
 Do not treat `idf.py flash`, PlatformIO upload, or `espflash flash` as this
 skill’s host path. Observed silicon: [measure.md](measure.md). Docs and
@@ -12,11 +13,87 @@ firmware catalog: [catalog.md](catalog.md).
 
 | Tree | Role |
 | --- | --- |
+| Official `Sticky_dashboard_demo` / `Sticky_peripheral_demo` | Vendor ESP-IDF v5.4 zips (CDN 2026-08). Official `pin_config.h` and sequences. [Official ESP-IDF demos](#official-esp-idf-demos) |
 | Factory `reterminal_template` 1.1.0 | **Measured** on hardware — [measure.md](measure.md) |
 | `reTerminal_Sticky_Bunny` (PlatformIO, ESP-IDF 5.4.1) | Sequences confirmed on a physical unit: latch, 10 MHz SPI, display/touch, IMU, sleep |
 | FreeInk SDK `FREEINK_DEVICE_STICKY` / CrossPoint | Compiled `BoardProfile STICKY`; some items still pending |
 | ESPHome `seeed-reterminal-sticky` | 10 MHz, `mirror_x`, sensor I2C examples |
 | Playground `sticky-2048` | Buildable `seeed_epaper` / `gt911` / `bq27220`; GPIO7 as `PIN_BFG_INT` |
+
+## Official ESP-IDF demos
+
+Seeed’s three ESP-IDF guides walk the same dashboard zip (not the
+still-404 `OSHW-reTerminal-Sticky` git):
+[basics](https://www.seeedstudio.com/sticky/docs/en/device-guide/esp-basics/),
+[pages](https://www.seeedstudio.com/sticky/docs/en/device-guide/esp-pages/),
+[refresh](https://www.seeedstudio.com/sticky/docs/en/device-guide/esp-refresh/).
+Zip URLs and SHA-256: [catalog.md](catalog.md). Flashing them replaces
+`app0`. This skill does not flash them.
+
+Official prose on those pages that is board-relevant (intent, not
+electrical fact):
+
+- **Pages:** I2C1 GPIO0/1 is shared by BQ27220, PCF8563, SHT40, and the
+  IMU; I2C0 GPIO2/3 is GT911 only. SPI2 is shared by the panel and
+  MicroSD (different CS). `sticky_sdcard_read_text()` must mount, read,
+  and unmount **before** a panel refresh, and must not
+  `spi_bus_free` SPI2. Unused `spi_bus_config_t` data pins must be
+  `-1` or GPIO0 is stolen from sensor SCL. The Battery page’s
+  `charging` flag is GPIO9 VBUS, shown separately from the gauge
+  percent. IMU is a 100 ms poll with five matching samples before
+  `OrientationChanged` (no GPIO7). Microphone capture is on-demand
+  (~1 s), rail on then off.
+- **Refresh:** Home is the only gray4 full refresh
+  (`sticky_display_refresh`). Other pages are mono full. RTC minute
+  updates are mono partial of a **complete** comparison frame. Do not
+  partial-refresh a gray4 page. AI hold ~2 s: beep, save RTC state,
+  mono sleep page, stop touch, `sticky_display_sleep`, then hold latch
+  high and EPD/touch/mic/SD/buzzer **off**. Wait for AI release, then
+  GPIO4 `ext1` ANY_LOW. The guide’s FAQ: GT911 errors or an immediate
+  wake mean touch was still polling or the hold was still low.
+
+`main/pin_config.h` (both zips) matches [pin-map.md](pin-map.md) for the
+nets it names: latch 45/46, AI/Up/Down 4/5/6, `/CE` 39, VBUS detect 9,
+sensor I2C 0/1, touch 2/3/21/41/42, EPD 13/14/12/15/16/17/18/47, SD
+8/10/11, mic 19/20/38, buzzer 48. Addresses: BQ27220 `0x55`, PCF8563
+`0x51`, SHT40 `0x44`, LSM6DS3TR-C `0x6A`. **GPIO7 and GPIO40 are not in
+the macros.** Do not treat the omission as free GPIO; schematic still
+shares IMU INT1 / gauge GPOUT on 7 and STAT on 40.
+
+Dashboard `board_init()`: on deep-sleep wake, preload 45/46 high before
+`gpio_hold_dis`; then hold both high, 100 ms; park SD CS and **SD EN
+high**; sensor I2C1 at default with internal pull-ups. It never pulses
+GPIO46.
+
+`sticky_charger_init()` drives GPIO39 **low** at boot (official enable)
+and reads GPIO9 as a bool named `charging` (VBUS present, not STAT). Do
+not copy that boot-enable into a default debug image
+([power-and-sleep.md](power-and-sleep.md)).
+
+`sticky_display_init()`: EPD_EN, SPI2 10 MHz mode 0, unused data pins
+**-1** (official comment: zero-init steals GPIO0 from sensor SCL),
+`mirror_x`, 180° rotate, 96 KiB gray4 in SPIRAM. OTP `seeed_epaper`:
+gray4 `0x1A = {0x67,0x00}` then `0x22 = 0xD7`; mono full `0xF7`;
+partial `0xFF`. Comment in `sticky_display_refresh_partial()`: SSD1677
+partial is **panel-wide**; send a full comparison frame. Sleep `0x10 =
+0x03`. No 0x32 LUT.
+
+`sticky_touch` I2C0, EN 250 ms, INT-during-reset (`INT=0 → 0x5D`).
+`GT911::begin(800, 480)` is the landscape canvas map; the driver reads
+`0x8146` (`sensor=` vs `map=`) and does not rewrite config RAM.
+`read_points` already `mapCoord`s onto 800×480.
+`transform_touch_coordinate` then treats those points as portrait and
+scales with 800 as X. That is SDK layering (landscape as the starting
+canvas), not a 800-wide FPC. Do not apply that second scale to raw
+480×800 samples ([touch.md](touch.md)).
+
+Deep sleep: wait for AI release, hold latch high and rails off, wake
+GPIO4 `ext1` ANY_LOW only. IMU is polled over I2C (no GPIO7). PDM is
+16 kHz mono, GPIO38 off until capture.
+
+`sdkconfig.defaults`: 32 MB, octal PSRAM 80 MHz, `SINGLE_APP_LARGE` (not
+factory dual-OTA). Flash mode is not pinned (IDF default, not a DIO/QIO
+fact).
 
 ## Bare ESP-IDF skeleton
 

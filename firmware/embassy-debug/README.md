@@ -613,8 +613,8 @@ pulse. A wake that re-sleeps does not. Do not leave it as a daily
 driver. Do not combine with `mic`, `radio`, `pair`, `wifi`, or `sd`.
 
 FreeInk is the SDK wiring: GPIO40 STAT low = charging, GPIO39
-undriven at idle. Bunny enables charge at boot; this image does
-not copy that.
+undriven at idle. Seeed’s official dashboard demo and Bunny
+enable charge at boot; this image does not copy that.
 
 USB-C stays plugged (flash uses that port, so VBUS should read
 high). Snapshot first:

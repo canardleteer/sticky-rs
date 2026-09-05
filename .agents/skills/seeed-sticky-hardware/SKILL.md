@@ -91,8 +91,9 @@ winner against the user.
    not confirmed on this model.
 4. **Third-party** firmware, Playground apps, community skills, ESPHome,
    FreeInk profiles. Often first to carry new valid detail; also the usual
-   source of stale or wrong maps. When FreeInk and Bunny disagree on
-   charger GPIO, prefer FreeInk unless a physical unit says otherwise.
+   source of stale or wrong maps. When FreeInk and the official dashboard
+   (or Bunny) disagree on charger GPIO, prefer FreeInk for a default debug
+   image unless a physical unit says otherwise.
 
 An observed address or pin (2) outranks a datasheet default (3): both
 GT911 7-bit addresses ACK here depending on INT at RST (Rev.09 §6.1:

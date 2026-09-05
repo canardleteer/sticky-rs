@@ -1,7 +1,10 @@
 # Pin and bus map
 
 GPIO numbers are ESP32-S3 package pins. Levels are those observed on working
-hardware unless marked otherwise.
+hardware unless marked otherwise. Official `Sticky_dashboard_demo`
+`pin_config.h` names the same nets for every row it publishes
+([cpp-platformio.md](cpp-platformio.md#official-esp-idf-demos)). It omits
+GPIO7 and GPIO40; those still come from schematic Rev 01.
 
 ## GPIO table
 
@@ -48,7 +51,9 @@ reassign 43/44.
 
 Do not treat GPIO7 as free GPIO. Schematic Rev 01 ties **both** LSM6DS3TR-C
 INT1 (`6D_INTn`) and BQ27220 GPOUT (`BFG_INT`) to this pin. Seeed’s overview
-and `sticky-2048` `PIN_BFG_INT` were naming the same net. Leave it an input.
+and `sticky-2048` `PIN_BFG_INT` were naming the same net. Official
+`pin_config.h` omits the pin; that is not permission to drive it. Leave
+it an input.
 Do not enable both chips as push-pull.
 
 UART learning firmware (input + pull-up, IMU polled over I2C) read GPIO7

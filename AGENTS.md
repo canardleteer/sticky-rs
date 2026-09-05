@@ -251,7 +251,12 @@ Two skills:
 
 - [seeed-sticky-hardware](.agents/skills/seeed-sticky-hardware/SKILL.md) —
   board contract (pins, rails, datasheets, observed silicon, source
-  precedence). The skill user weighs conflicts.
+  precedence). The skill user weighs conflicts. Official Seeed C++ for
+  this board is the `Sticky_dashboard_demo` / `Sticky_peripheral_demo`
+  CDN zips and the three ESP-IDF guides
+  ([catalog.md](.agents/skills/seeed-sticky-hardware/references/catalog.md)).
+  `Seeed-Projects/OSHW-reTerminal-Sticky` is still 404. Those trees
+  prove intent and ordering, never electrical fact.
 - [sticky-rs](.agents/skills/sticky-rs/SKILL.md) — this repository’s host
   tools (`cargo xtask` / `sticky-host`), crate layout, and Rust firmware
   path.

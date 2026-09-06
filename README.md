@@ -2,11 +2,9 @@
 
 > **Embedded Rust Tooling & Crates for the [Sticky](https://www.seeedstudio.com/sticky/docs/)**
 
-> [!NOTE]
-> I do have a "functioning" Embedded Rust dev environment for the Sticky,
-> but I'm porting it over to clean git history slowly.
->
-> This is an "agent copy from private repo", so needs some polish still.
+> [!IMPORTANT]
+> This repository is not currently stable. It is being built as we
+> confirm hardware capabilities and code.
 
 ## Seeed Studio reTerminal Sticky in Rust
 

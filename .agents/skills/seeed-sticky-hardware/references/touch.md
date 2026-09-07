@@ -196,7 +196,8 @@ only that OTP 180° canvas; Landscape180 uses the same OTP
 180° (2026-09-05 USB-C-left sit: visible START missed and the
 USB-C-right strip fired until this matched; later same day,
 visible `p0=339,77` / `page=339,402 hit=1` started SoftAP,
-ghost `p0=341,409` / `page=341,70 hit=0`). Do not OR both: a 2026-09-04 `wifi_ap` sit toggled
+ghost `p0=341,409` / `page=341,70 hit=0`). Do not OR both: a
+2026-09-04 `wifi_ap` sit toggled
 the empty opposite side. Do not apply the Landscape0 180°
 on portrait: that is the `p0=679,189` miss. Prefer the raw
 GT911 sample through

@@ -54,7 +54,9 @@ embassy-debug: poweroff
 IMU reports use [`IMU_REPORT_SECS`] (5). A read-only `gt911 st=` line
 follows board `touch::STATUS_HEARTBEAT` (`EverySecs(10)` or `Off`).
 This FPC delivers five contacts (Rev.09 §1). `p0=` is physical
-800×480 after board `to_screen` (sample is 480×800). A pose that
+800×480 after board `to_screen` (sample is 480×800). `--features
+remote-debug` appends `src=phys` / `src=syn` after that line; the
+default image omits the token. A pose that
 does not classify is the token `imu=none`; the raw sample is still
 printed. The `mic`
 and `pcm` lines are printed only by the `--features mic` image. AI Voice

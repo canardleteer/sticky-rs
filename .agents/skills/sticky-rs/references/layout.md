@@ -17,7 +17,9 @@
 
 Chip drivers (`bq25616`, `bq27220`, `ssd1677-gray4`) are MCU-agnostic and
 carry no `esp-hal` dependency. `panel-view` is the board-agnostic
-logical-canvas trait (draw + touch + landmarks + hold). Board specifics —
+logical-canvas trait (draw + touch + landmarks + hold) plus snapshot /
+tagged-touch companions (`ExpectedFrame`, `TouchSource`; not methods on
+`PanelView`). Board specifics —
 pins, latch, rails, transforms — belong in `seeed-reterminal-sticky`
 (`View` implements `PanelView`). Keep that split.
 

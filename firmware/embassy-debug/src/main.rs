@@ -36,9 +36,9 @@ use embassy_debug::TONE_DUMP_WINDOWS;
 use embassy_debug::{
     classify_page_up_hold, classify_power_off_hold, classify_standby_exit_hold, format_event,
     format_git, format_latched, Event, ImuPose, PageUpHold, PowerOffHold, ResumeHold, Scene,
-    StandbyExitHold, TouchPoint, BUZZER_CHIRP_MS, BUZZER_TONE_HZ, GIT_CAPACITY, IMU_REPORT_SECS,
-    LATCHED_CAPACITY, LINE_CAPACITY, LOG_PREFIX, MAX_TOUCH_POINTS, PAGE_DOWN_POWER_OFF_MS,
-    PAGE_UP_SLEEP_MS,
+    StandbyExitHold, TouchPoint, TouchSource, BUZZER_CHIRP_MS, BUZZER_TONE_HZ, GIT_CAPACITY,
+    IMU_REPORT_SECS, LATCHED_CAPACITY, LINE_CAPACITY, LOG_PREFIX, MAX_TOUCH_POINTS,
+    PAGE_DOWN_POWER_OFF_MS, PAGE_UP_SLEEP_MS,
 };
 
 // Embassy runtime: tasks, channels, time.
@@ -860,6 +860,17 @@ async fn touch_task(
 ) {
     let Some(addr) = addr else {
         println!("{LOG_PREFIX}: gt911 absent");
+        #[cfg(feature = "remote-debug")]
+        loop {
+            if crate::sleep::is_requested() {
+                loop {
+                    Timer::after(Duration::from_secs(3_600)).await;
+                }
+            }
+            poll_synthetic();
+            Timer::after(Duration::from_millis(STATUS_POLL_MS)).await;
+        }
+        #[cfg(not(feature = "remote-debug"))]
         return;
     };
     let mut last_n = 0u8;
@@ -867,6 +878,8 @@ async fn touch_task(
     let mut last_status_uart: Option<Instant> = None;
 
     loop {
+        #[cfg(feature = "remote-debug")]
+        poll_synthetic();
         if crate::sleep::is_requested() {
             rst.set_low();
             crate::sleep::hold_output(&mut rst);
@@ -962,49 +975,16 @@ async fn touch_task(
                         t_ms: now_ms(),
                         n,
                         points: mapped,
+                        source: TouchSource::Physical,
                     });
                     if became_contact {
-                        ask_beep();
                         #[cfg(feature = "wifi")]
-                        if let Some(scene) = crate::wifi::ui_scene() {
-                            let rotation = crate::wifi::ui_rotation();
-                            if let Some((fx, fy)) = fb0 {
-                                let hit = crate::draw::wifi_action_hit(fx, fy, rotation);
-                                if let Some((px, py)) = PanelView::map_touch_framebuffer(
-                                    &View::from_hold(rotation),
-                                    fx,
-                                    fy,
-                                ) {
-                                    println!(
-                                        "{LOG_PREFIX}: wifi tap page={px},{py} hit={}",
-                                        u8::from(hit)
-                                    );
-                                }
-                                if hit {
-                                    match scene {
-                                        Scene::WifiSurvey => {
-                                            let cmd = match crate::wifi::wifi_mode() {
-                                                crate::wifi::WifiMode::SurveyScanning => {
-                                                    crate::wifi::WifiCommand::StopSurvey
-                                                }
-                                                _ => crate::wifi::WifiCommand::StartSurvey,
-                                            };
-                                            crate::wifi::send_wifi_cmd(cmd);
-                                        }
-                                        Scene::WifiAp => {
-                                            let cmd = match crate::wifi::wifi_mode() {
-                                                crate::wifi::WifiMode::Hotspot => {
-                                                    crate::wifi::WifiCommand::StopHotspot
-                                                }
-                                                _ => crate::wifi::WifiCommand::StartHotspot,
-                                            };
-                                            crate::wifi::send_wifi_cmd(cmd);
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                            }
+                        match fb0 {
+                            Some((fx, fy)) => dispatch_first_contact(fx, fy),
+                            None => ask_beep(),
                         }
+                        #[cfg(not(feature = "wifi"))]
+                        ask_beep();
                     }
                 }
                 let _ = i2c.write(addr, &Register::Status.write_u8(StatusWrite::Clear.byte()));
@@ -1012,6 +992,75 @@ async fn touch_task(
         }
         Timer::after(Duration::from_millis(STATUS_POLL_MS)).await;
     }
+}
+
+/// First glass or inject contact in **pre-rotation framebuffer** space.
+///
+/// Same path for GT911 (`to_framebuffer`) and a synthetic tap. Beep,
+/// then hit-test START/STOP with [`crate::draw::wifi_action_hit`]
+/// (not UART `p0=`). `fx` / `fy` are native 800×480, not a raw
+/// GT911 480×800 sample. Without `wifi` the hit-test is compiled
+/// out; a synthetic tap still beeps.
+#[cfg(any(feature = "wifi", feature = "remote-debug"))]
+#[cfg_attr(not(feature = "wifi"), allow(unused_variables))]
+fn dispatch_first_contact(fx: u16, fy: u16) {
+    ask_beep();
+    #[cfg(feature = "wifi")]
+    if let Some(scene) = crate::wifi::ui_scene() {
+        let rotation = crate::wifi::ui_rotation();
+        let hit = crate::draw::wifi_action_hit(fx, fy, rotation);
+        if let Some((px, py)) = PanelView::map_touch_framebuffer(&View::from_hold(rotation), fx, fy)
+        {
+            println!(
+                "{LOG_PREFIX}: wifi tap page={px},{py} hit={}",
+                u8::from(hit)
+            );
+        }
+        if hit {
+            match scene {
+                Scene::WifiSurvey => {
+                    let cmd = match crate::wifi::wifi_mode() {
+                        crate::wifi::WifiMode::SurveyScanning => {
+                            crate::wifi::WifiCommand::StopSurvey
+                        }
+                        _ => crate::wifi::WifiCommand::StartSurvey,
+                    };
+                    crate::wifi::send_wifi_cmd(cmd);
+                }
+                Scene::WifiAp => {
+                    let cmd = match crate::wifi::wifi_mode() {
+                        crate::wifi::WifiMode::Hotspot => crate::wifi::WifiCommand::StopHotspot,
+                        _ => crate::wifi::WifiCommand::StartHotspot,
+                    };
+                    crate::wifi::send_wifi_cmd(cmd);
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+/// Drain one queued synthetic tap into the same first-contact path.
+///
+/// No GT911 I2C. `p0=` is the 180° involution of the framebuffer
+/// point so the UART token matches a finger at that ink.
+#[cfg(feature = "remote-debug")]
+fn poll_synthetic() {
+    let Some(sample) = crate::remote_debug::take_synthetic() else {
+        return;
+    };
+    let Some((sx, sy)) = crate::remote_debug::framebuffer_to_uart_screen(sample.x, sample.y) else {
+        return;
+    };
+    let mut mapped = [TouchPoint::default(); MAX_TOUCH_POINTS];
+    mapped[0] = TouchPoint { x: sx, y: sy };
+    emit(Event::Touch {
+        t_ms: now_ms(),
+        n: 1,
+        points: mapped,
+        source: TouchSource::Synthetic,
+    });
+    dispatch_first_contact(sample.x, sample.y);
 }
 
 /// Tilt the card: the current page follows in-plane pose; UART about every
@@ -1156,6 +1205,8 @@ mod mic;
 mod pair;
 #[cfg(feature = "radio")]
 mod radio;
+#[cfg(feature = "remote-debug")]
+mod remote_debug;
 #[cfg(feature = "sd")]
 mod sd;
 mod sleep;

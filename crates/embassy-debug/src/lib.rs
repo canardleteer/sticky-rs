@@ -13,6 +13,10 @@
 use core::fmt::{self, Write};
 use core::str;
 
+pub use panel_view::{
+    ExpectedFrame, FrameKind, PanelCapture, PanelTouchAlign, TouchSample, TouchSource,
+};
+
 /// Token before every UART line (`embassy-debug: …`).
 pub const LOG_PREFIX: &str = "embassy-debug";
 
@@ -582,6 +586,9 @@ pub enum Event {
         n: u8,
         /// Screen-space points. Only the first `n` entries are printed.
         points: [TouchPoint; MAX_TOUCH_POINTS],
+        /// Digitizer or a debugger inject. Default UART omits this;
+        /// `--features remote-debug` prints `src=phys` / `src=syn`.
+        source: TouchSource,
     },
     /// Periodic accelerometer sample.
     Imu {
@@ -897,7 +904,12 @@ pub fn format_event<'a>(event: &Event, buf: &'a mut [u8]) -> Result<&'a str, For
             buf,
             format_args!("{LOG_PREFIX}: t={t_ms} gt911 st={status:#04x}"),
         ),
-        Event::Touch { t_ms, n, points } => format_touch(t_ms, n, &points, buf),
+        Event::Touch {
+            t_ms,
+            n,
+            points,
+            source,
+        } => format_touch(t_ms, n, &points, source, buf),
         Event::Imu {
             t_ms,
             pose,
@@ -1144,10 +1156,11 @@ fn format_touch<'a>(
     t_ms: u32,
     n: u8,
     points: &[TouchPoint; MAX_TOUCH_POINTS],
+    source: TouchSource,
     buf: &'a mut [u8],
 ) -> Result<&'a str, FormatError> {
     let n = core::cmp::min(n as usize, MAX_TOUCH_POINTS);
-    match n {
+    let line = match n {
         0 => write_into(buf, format_args!("{LOG_PREFIX}: t={t_ms} touch n=0")),
         1 => write_into(
             buf,
@@ -1200,7 +1213,30 @@ fn format_touch<'a>(
                 points[4].y
             ),
         ),
+    }?;
+    #[cfg(feature = "remote-debug")]
+    {
+        let mut prefix = [0u8; LINE_CAPACITY];
+        let n = line.len();
+        prefix[..n].copy_from_slice(line.as_bytes());
+        let prefix = str::from_utf8(&prefix[..n]).map_err(|_| FormatError::Truncated)?;
+        append_src_token(buf, prefix, source.as_uart_token())
     }
+    #[cfg(not(feature = "remote-debug"))]
+    {
+        let _ = source;
+        Ok(line)
+    }
+}
+
+/// Append ` src=phys` / `src=syn` after a default-image touch line.
+#[cfg(feature = "remote-debug")]
+fn append_src_token<'a>(
+    buf: &'a mut [u8],
+    prefix: &str,
+    token: &str,
+) -> Result<&'a str, FormatError> {
+    write_into(buf, format_args!("{prefix} src={token}"))
 }
 
 fn write_into<'a>(buf: &'a mut [u8], args: fmt::Arguments<'_>) -> Result<&'a str, FormatError> {
@@ -1247,6 +1283,20 @@ mod tests {
     fn line(event: &Event) -> String {
         let mut buf = [0u8; LINE_CAPACITY];
         String::from(format_event(event, &mut buf).unwrap())
+    }
+
+    /// Default-image `touch` text, plus ` src=` when the crate feature is on.
+    fn with_src(base: &str, source: TouchSource) -> String {
+        #[cfg(feature = "remote-debug")]
+        {
+            use std::format;
+            format!("{base} src={}", source.as_uart_token())
+        }
+        #[cfg(not(feature = "remote-debug"))]
+        {
+            let _ = source;
+            String::from(base)
+        }
     }
 
     #[test]
@@ -1305,8 +1355,9 @@ mod tests {
                 t_ms: 2180,
                 n: 0,
                 points: [TouchPoint::default(); MAX_TOUCH_POINTS],
+                source: TouchSource::Physical,
             }),
-            "embassy-debug: t=2180 touch n=0"
+            with_src("embassy-debug: t=2180 touch n=0", TouchSource::Physical)
         );
     }
 
@@ -1319,9 +1370,69 @@ mod tests {
                 t_ms: 2100,
                 n: 1,
                 points,
+                source: TouchSource::Physical,
             }),
-            "embassy-debug: t=2100 touch n=1 p0=123,456"
+            with_src(
+                "embassy-debug: t=2100 touch n=1 p0=123,456",
+                TouchSource::Physical
+            )
         );
+    }
+
+    #[cfg(not(feature = "remote-debug"))]
+    #[test]
+    fn default_touch_line_omits_src() {
+        let mut points = [TouchPoint::default(); MAX_TOUCH_POINTS];
+        points[0] = TouchPoint { x: 123, y: 456 };
+        let text = line(&Event::Touch {
+            t_ms: 2100,
+            n: 1,
+            points,
+            source: TouchSource::Physical,
+        });
+        assert_eq!(text, "embassy-debug: t=2100 touch n=1 p0=123,456");
+        assert!(!text.contains("src="));
+    }
+
+    #[cfg(feature = "remote-debug")]
+    #[test]
+    fn remote_debug_touch_appends_src() {
+        let mut points = [TouchPoint::default(); MAX_TOUCH_POINTS];
+        points[0] = TouchPoint { x: 123, y: 456 };
+        assert_eq!(
+            line(&Event::Touch {
+                t_ms: 2100,
+                n: 1,
+                points,
+                source: TouchSource::Physical,
+            }),
+            "embassy-debug: t=2100 touch n=1 p0=123,456 src=phys"
+        );
+        assert_eq!(
+            line(&Event::Touch {
+                t_ms: 2100,
+                n: 1,
+                points,
+                source: TouchSource::Synthetic,
+            }),
+            "embassy-debug: t=2100 touch n=1 p0=123,456 src=syn"
+        );
+    }
+
+    #[test]
+    fn physical_and_synthetic_share_the_seeed_wifi_hit() {
+        use seeed_reterminal_sticky::display::{screen_to_framebuffer, PageRotation};
+        use seeed_reterminal_sticky::view::View;
+
+        let rotation = PageRotation::Portrait0;
+        let view = View::from_hold(rotation);
+        let (fx, fy) = screen_to_framebuffer(679, 189).expect("on panel");
+        let phys = view.align_touch(TouchSample::new(TouchSource::Physical, fx, fy));
+        let syn = view.align_touch(TouchSample::new(TouchSource::Synthetic, fx, fy));
+        assert_eq!(phys, syn);
+        let (px, py) = phys.expect("in page");
+        assert!((50..430).contains(&px));
+        assert!((650..740).contains(&py));
     }
 
     #[test]
@@ -1686,6 +1797,7 @@ mod tests {
                 t_ms: u32::MAX,
                 n: 5,
                 points,
+                source: TouchSource::Physical,
             },
             &mut buf,
         )

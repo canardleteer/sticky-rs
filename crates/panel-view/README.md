@@ -13,3 +13,11 @@ same trait later without taking Sticky pins or GT911 math.
 
 Native identity (zero-cost panel RAM) is an implementor policy. Do not bake
 in “starting position is horizontal.”
+
+Companions (always compiled, not a Cargo feature): `TouchSource` /
+`TouchSample` (physical glass vs a debugger inject, both in pre-rotation
+framebuffer pixels), `ExpectedFrame` / `PanelCapture` (last composed
+planes; the implementor owns the buffers), and `PanelTouchAlign` (source
+does not change the framebuffer map). `PanelView` itself stays remap-only
+and does not own pixel buffers. The Sticky `View` type is `Copy` and does
+not implement `PanelCapture`.

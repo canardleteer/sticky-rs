@@ -869,6 +869,7 @@ dependencies = [
 name = "embassy-debug"
 version = "0.1.0"
 dependencies = [
+ "panel-view",
  "seeed-reterminal-sticky",
 ]
 

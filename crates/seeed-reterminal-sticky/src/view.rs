@@ -30,7 +30,9 @@
 //! [`gray4_touch_framebuffer`](crate::display::gray4_touch_framebuffer)
 //! stay the algebra. [`View`] calls them. It does not own SPI.
 //! [`View`] implements [`panel_view::PanelView`] so shared UI (later
-//! papermono-rs) can talk to the trait.
+//! papermono-rs) can talk to the trait. It does not implement
+//! [`panel_view::PanelCapture`]: this type is `Copy` remap-only.
+//! Last compose lives in firmware (or a host stub).
 
 use crate::display::{
     framebuffer_to_page, gray4_touch_framebuffer, page_to_framebuffer, PageRotation, HEIGHT,

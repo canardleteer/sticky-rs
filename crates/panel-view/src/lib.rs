@@ -6,6 +6,8 @@
 //!
 //! This crate has **no** SPI, GPIO, or pixel buffers. It does not own a
 //! panel. Rotation algebra and digitizer physics stay in the implementor.
+//! Last-compose snapshot and tagged touches live in [`debug`]: they are
+//! companions, not methods on [`PanelView`].
 //!
 //! Native identity (zero-cost panel RAM) is an implementor policy, not a
 //! trait variant. Official “starting position is horizontal” must not be
@@ -14,6 +16,12 @@
 #![no_std]
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
+
+pub mod debug;
+
+pub use debug::{
+    ExpectedFrame, FrameKind, PanelCapture, PanelTouchAlign, TouchSample, TouchSource,
+};
 
 /// Logical canvas plus touch remap for one product.
 ///

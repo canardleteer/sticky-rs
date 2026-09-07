@@ -172,6 +172,9 @@ mod tests {
         assert!(!embassy_debug_needs_no_default_features(&[
             "spi20".to_string()
         ]));
+        assert!(!embassy_debug_needs_no_default_features(&[
+            "remote-debug".to_string()
+        ]));
         assert!(!embassy_debug_needs_no_default_features(&[]));
     }
 }

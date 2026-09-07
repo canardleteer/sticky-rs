@@ -71,8 +71,8 @@ Host-only. `cargo +esp` build (`--profile release-fw`, \
 `target/xtensa-esp32s3-none-elf/release-fw/`.
 
 IMAGE is `simple-debug` or `embassy-debug`. Features: `operator` \
-(simple-debug); `mic`, `radio`, `pair`, `spi20`, `sd`, or `charge` \
-(embassy-debug). \
+(simple-debug); `mic`, `radio`, `pair`, `spi20`, `sd`, `charge`, or \
+`remote-debug` (embassy-debug). \
 Needs the `esp` toolchain and `espflash` on PATH. Does not open a UART \
 and does not flash.";
 
@@ -80,7 +80,8 @@ const CI_ABOUT: &str = "\
 Host-only CI gate: `cargo fmt --check --all`; host clippy and test on \
 default-members (default features, then `--all-features`), then \
 `-p ssd1677-gray4 --no-default-features`; `cargo +esp` clippy for \
-`simple-debug-fw` and `embassy-debug-fw` feature variants; then `rumdl \
+`simple-debug-fw` and `embassy-debug-fw` feature variants (including \
+`remote-debug`); then `rumdl \
 check`, `cargo machete`, and `cargo audit`.
 
 Needs the `esp` toolchain for firmware clippy. Missing extra tools print \
@@ -319,7 +320,7 @@ impl From<FirmwareImageArg> for FirmwareImage {
 pub struct BuildFwCliArgs {
     /// `simple-debug` or `embassy-debug`.
     pub image: FirmwareImageArg,
-    /// Cargo features on that package (`operator` / `mic` / `radio` / `pair` / `spi20` / `sd` / `charge`).
+    /// Cargo features on that package (`operator` / `mic` / `radio` / `pair` / `spi20` / `sd` / `charge` / `remote-debug`).
     #[arg(long)]
     pub features: Vec<String>,
     /// Build the debug profile instead of `--profile release-fw`.
@@ -877,6 +878,21 @@ mod tests {
         match cli.command {
             super::Command::BuildFw(args) => {
                 assert_eq!(args.features, ["pair"]);
+            }
+            other => panic!("expected BuildFw, got {other:?}"),
+        }
+
+        let cli = Cli::try_parse_from([
+            "xtask",
+            "build-fw",
+            "embassy-debug",
+            "--features",
+            "remote-debug",
+        ])
+        .expect("build-fw embassy-debug --features remote-debug");
+        match cli.command {
+            super::Command::BuildFw(args) => {
+                assert_eq!(args.features, ["remote-debug"]);
             }
             other => panic!("expected BuildFw, got {other:?}"),
         }

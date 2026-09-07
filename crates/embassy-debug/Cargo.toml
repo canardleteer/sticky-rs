@@ -19,6 +19,12 @@ pair = []
 # Survey / SoftAP cards and `wifi_survey` / `wifi_ap` / `wifi_http` lines.
 # Default embassy-debug-fw enables this with `pair`.
 wifi = []
+# Append `src=phys` / `src=syn` on `touch` lines. Insecure desk debug
+# only; embassy-debug-fw enables this behind `--features remote-debug`.
+remote-debug = []
+
+[dependencies]
+panel-view = { path = "../panel-view", version = "0.1.0" }
 
 [dev-dependencies]
 seeed-reterminal-sticky = { path = "../seeed-reterminal-sticky", version = "0.1.0" }

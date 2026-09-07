@@ -34,6 +34,7 @@ pub fn run(repo_root: &Path) -> Result<(), Error> {
     fw_clippy(repo_root, "embassy-debug-fw", Some("spi20"))?;
     fw_clippy(repo_root, "embassy-debug-fw", Some("sd"))?;
     fw_clippy(repo_root, "embassy-debug-fw", Some("charge"))?;
+    fw_clippy(repo_root, "embassy-debug-fw", Some("remote-debug"))?;
 
     require_on_path("rumdl", "cargo install rumdl")?;
     step(repo_root, "rumdl", &["check"])?;

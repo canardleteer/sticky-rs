@@ -90,6 +90,10 @@ embedded-io-async = { version = "0.7", optional = true }
 # Exclusive sits (`mic` / `radio` / `charge` / `sd`) must pass
 # `--no-default-features` (xtask `build-fw` / `ci` do).
 default = ["pair", "wifi"]
+# Insecure desk debug: last DRAW snapshot + synthetic tap mux +
+# UART `src=phys` / `src=syn`. Not default. Packs with `pair` +
+# `wifi` (not an exclusive sit). No UART RX parser in this image.
+remote-debug = ["embassy-debug/remote-debug"]
 # Enable MicRail + I2S PDM RX and print `mic rms=` / `peak=` lines.
 # Community 16 kHz / 16-bit / left recipe; unconfirmed on this unit.
 mic = []

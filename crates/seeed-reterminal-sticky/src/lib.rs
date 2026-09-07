@@ -65,7 +65,9 @@ pub mod view;
 
 pub use crate::power::{Latch, Latched};
 pub use crate::rails::{EpdRail, MicRail, PanelParked, SdRail, TouchRail};
-pub use panel_view::PanelView;
+pub use panel_view::{
+    ExpectedFrame, FrameKind, PanelCapture, PanelTouchAlign, PanelView, TouchSample, TouchSource,
+};
 
 /// Why [`pins::AMBIGUOUS_INTERRUPT`] (GPIO7) is input-only here.
 ///

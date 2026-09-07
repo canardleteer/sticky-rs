@@ -739,6 +739,8 @@ where
         *kind = next;
     }
     draw_splash(bw, red, rotation);
+    #[cfg(feature = "remote-debug")]
+    crate::remote_debug::publish_gray4(bw, red, rotation);
     if driver
         .write_gray4_frame(&display::FULL_WINDOW, bw, red)
         .is_err()
@@ -828,6 +830,11 @@ where
         return false;
     }
 
+    // DRAW is still the pre-rotation compose. Snapshot it before
+    // the second-plane wipe. Do not publish `tx` (180° transmit).
+    #[cfg(feature = "remote-debug")]
+    crate::remote_debug::publish_mono(draw, rotation);
+
     draw.fill(0);
     if driver.write_black_white_plane(tx).is_err() {
         println!("embassy-debug: epd write failed");
@@ -868,6 +875,11 @@ where
         Scene::WifiAp => draw_wifi_ap(bw, red, rotation),
         Scene::Shapes => {}
     }
+
+    // `red` lives in the caller’s `tx` buffer; that is compose, not
+    // the 1-bit rotate destination.
+    #[cfg(feature = "remote-debug")]
+    crate::remote_debug::publish_gray4(bw, red, rotation);
 
     if driver
         .write_gray4_frame(&display::FULL_WINDOW, bw, red)

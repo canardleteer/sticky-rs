@@ -58,6 +58,7 @@ embassy-futures = "0.1.2"
 
 seeed-reterminal-sticky = { path = "../../crates/seeed-reterminal-sticky" }
 embassy-debug = { path = "../../crates/embassy-debug" }
+remote-debug-wire = { path = "../../crates/remote-debug-wire", optional = true }
 bq25616 = { path = "../../crates/bq25616" }
 bq27220 = { path = "../../crates/bq27220", optional = true }
 
@@ -90,10 +91,11 @@ embedded-io-async = { version = "0.7", optional = true }
 # Exclusive sits (`mic` / `radio` / `charge` / `sd`) must pass
 # `--no-default-features` (xtask `build-fw` / `ci` do).
 default = ["pair", "wifi"]
-# Insecure desk debug: last DRAW snapshot + synthetic tap mux +
-# UART `src=phys` / `src=syn`. Not default. Packs with `pair` +
-# `wifi` (not an exclusive sit). No UART RX parser in this image.
-remote-debug = ["embassy-debug/remote-debug"]
+# Insecure desk debug: last DRAW snapshot + synthetic tap/key mux +
+# UART `src=phys` / `src=syn` / `snap`. Not default. Packs with
+# `pair` + `wifi` (not an exclusive sit). Codec only — no UART RX
+# parser and no SoftAP / BLE framebuffer protocol in this image.
+remote-debug = ["embassy-debug/remote-debug", "dep:remote-debug-wire"]
 # Enable MicRail + I2S PDM RX and print `mic rms=` / `peak=` lines.
 # Community 16 kHz / 16-bit / left recipe; unconfirmed on this unit.
 mic = []

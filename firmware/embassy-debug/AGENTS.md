@@ -121,13 +121,20 @@ Live-ask, never-erase, and flash I/O: root
   and is **insecure**. It packs with default `pair` + `wifi` (not
   an exclusive sit). Snapshot is the last composed **DRAW** planes
   (pre-rotation 800×480) plus hold — not a panel readout and not
-  the 1-bit `TX` 180° copy. Physical GT911 and a Synthetic inject
-  share the same framebuffer hit-test
-  ([`dispatch_first_contact`](src/main.rs)). UART `touch` lines
-  append `src=phys` / `src=syn`; the default image omits that
-  token. `p0=` stays glass (`to_screen`); a synthetic tap converts
-  framebuffer → glass with the 180° involution
-  (`screen_to_framebuffer`). No UART RX parser and no SoftAP / BLE
+  the 1-bit `TX` 180° copy. Capacity is **one frozen slot**: a
+  host `GetSnapshot` nonce freezes LAST until matching
+  `SnapshotAck` or `SnapshotClear`; later paints do not overwrite.
+  Physical GT911 and a Synthetic inject share the same framebuffer
+  hit-test ([`dispatch_first_contact`](src/main.rs)). Synthetic
+  keys walk the same short-press path (GPIO 4/5/6); hold-to-standby
+  / sleep stays on the physical pads. UART `touch` lines append
+  `src=phys` / `src=syn`; synthetic `btn` adds `src=syn`;
+  snapshot ops print `snap get|retry|busy|empty|ack|clear`. The
+  default image omits those tokens. `p0=` stays glass
+  (`to_screen`); a synthetic tap converts framebuffer → glass with
+  the 180° involution (`screen_to_framebuffer`). Codec is
+  [`remote-debug-wire`](../../crates/remote-debug-wire) (u32 LE
+  length + `Envelope`). No UART RX parser and no SoftAP / BLE
   framebuffer protocol in this image. Walkthrough:
   [src/remote_debug.rs](src/remote_debug.rs).
 - Panel standby: hold Page Up 2 s. `UpdateSequence::STANDBY` then

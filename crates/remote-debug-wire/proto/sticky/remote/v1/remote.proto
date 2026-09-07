@@ -1,0 +1,99 @@
+syntax = "proto3";
+
+package sticky.remote.v1;
+
+// Desk-debug wire for last-compose snapshot and faux physical inject.
+// Transport is not specified: length-delimited Envelope only
+// (uint32 little-endian size, then this message).
+
+// Who produced a tap. Injects must be SYNTHETIC.
+enum TouchSource {
+  TOUCH_SOURCE_UNSPECIFIED = 0;
+  TOUCH_SOURCE_PHYSICAL = 1;
+  TOUCH_SOURCE_SYNTHETIC = 2;
+}
+
+// Right-edge keys. Firmware maps these to GPIO; the schema stays
+// product names, not pad numbers.
+enum ProductKey {
+  PRODUCT_KEY_UNSPECIFIED = 0;
+  PRODUCT_KEY_OK = 1;
+  PRODUCT_KEY_PAGE_UP = 2;
+  PRODUCT_KEY_PAGE_DOWN = 3;
+}
+
+// How many 1-bit planes the frozen compose used.
+enum FrameKind {
+  FRAME_KIND_UNSPECIFIED = 0;
+  FRAME_KIND_MONO = 1;
+  FRAME_KIND_GRAY4 = 2;
+}
+
+// One framed message. `version` is ENVELOPE_VERSION (1).
+message Envelope {
+  uint32 version = 1;
+  oneof body {
+    InjectTouch inject_touch = 10;
+    InjectButton inject_button = 11;
+    GetSnapshot get_snapshot = 12;
+    Snapshot snapshot = 13;
+    SnapshotAck snapshot_ack = 14;
+    SnapshotClear snapshot_clear = 15;
+    SnapshotBusy snapshot_busy = 16;
+    LogLine log_line = 17;
+  }
+}
+
+// Pre-rotation framebuffer tap (native 800×480 on the Sticky).
+// Not UART p0= / glass space, not a raw GT911 480×800 sample.
+message InjectTouch {
+  uint32 x = 1;
+  uint32 y = 2;
+  optional uint32 slot = 3;
+  TouchSource source = 4;
+}
+
+// Short key edge. Firmware applies the same short-press walk as GPIO;
+// hold-to-standby / sleep stays on the physical pins.
+message InjectButton {
+  ProductKey key = 1;
+  bool down = 2;
+}
+
+// Host-chosen pull id. Zero is invalid and does not arm.
+message GetSnapshot {
+  fixed64 nonce = 1;
+}
+
+// One frozen compose. Planes are packed 1-bit, width/8 stride.
+// Encode from the armed static buffers; do not heap-clone on device.
+message Snapshot {
+  fixed64 nonce = 1;
+  uint32 width = 2;
+  uint32 height = 3;
+  FrameKind kind = 4;
+  // Product hold token (Sticky PageRotation discriminant), or unset.
+  optional uint32 hold = 5;
+  bytes bw = 6;
+  bytes red = 7;
+}
+
+// Host received Snapshot for this nonce. Mismatch does not free the slot.
+message SnapshotAck {
+  fixed64 nonce = 1;
+}
+
+// Operator abort. No nonce; frees the slot if armed.
+message SnapshotClear {}
+
+// Slot already armed for a different nonce, or LAST was never published.
+// `nonce` is the armed pull (0 when nothing is armed / never published).
+message SnapshotBusy {
+  fixed64 nonce = 1;
+}
+
+// Copy of one plaintext UART format_event line (no second schema).
+message LogLine {
+  uint32 t_ms = 1;
+  string text = 2;
+}

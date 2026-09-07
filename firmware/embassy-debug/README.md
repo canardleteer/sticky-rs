@@ -41,10 +41,12 @@ On the unit:
   Do not combine `spi20` / `sd` / `charge` with `mic` or `radio`.
   Do not combine `charge` with `sd` or `wifi`.
   `--features remote-debug` is insecure desk debug (last composed
-  DRAW snapshot plus a synthetic tap mux). It is not in the default
-  image. UART `touch` lines then append `src=phys` / `src=syn`.
-  There is no UART tap parser and no SoftAP / BLE framebuffer
-  protocol in this image.
+  DRAW snapshot plus a synthetic tap / key mux). It is not in the
+  default image. UART `touch` lines then append `src=phys` /
+  `src=syn`; synthetic keys print `btn … src=syn`; snapshot ops
+  print `snap …`. The codec is `remote-debug-wire` (protobuf
+  envelope). There is no UART tap parser and no SoftAP / BLE
+  framebuffer protocol in this image.
 - Tilt the card for `imu=…`. A short beep answers a key-down. Tap the
   glass for `touch n=` (Rev.09 INT-low address select; on a physical
   unit through `n=5`).

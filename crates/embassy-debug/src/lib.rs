@@ -5,6 +5,8 @@
 //! timestamped button, touch, GT911 status, IMU, mic-energy, PCM-dump,
 //! radio-scan, BLE pair-card, Wi-Fi survey / SoftAP, read-only SD identify, and charge-sit lines,
 //! and no factory serial / USB serial / MAC / card product-serial fields.
+//! `--features remote-debug` adds `snap` / `touch drop src=syn` and
+//! `src=` on `touch` / synthetic `btn` edges.
 
 #![no_std]
 #![forbid(unsafe_code)]
@@ -558,6 +560,38 @@ pub const fn classify_resume_hold(held_ms: u32, still_low: bool) -> ResumeHold {
     }
 }
 
+/// Snapshot slot op (`--features remote-debug` UART `snap` lines).
+#[cfg(feature = "remote-debug")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SnapOp {
+    /// `Empty` → `Armed`.
+    Get,
+    /// Armed with the same nonce (host retry).
+    Retry,
+    /// Armed with a different nonce.
+    Busy {
+        /// Pull the host still owes.
+        armed: u64,
+    },
+    /// LAST was never published.
+    Empty,
+    /// Get with nonce `0`.
+    GetZero,
+    /// Matching Ack; slot is empty.
+    Ack,
+    /// Ack nonce does not match the armed pull.
+    AckMiss {
+        /// Pull still armed.
+        armed: u64,
+    },
+    /// Ack while the slot is empty.
+    AckStale,
+    /// Ack with nonce `0`.
+    AckZero,
+    /// Operator `SnapshotClear`.
+    Clear,
+}
+
 /// A timestamped event the firmware sends to the log task.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Event {
@@ -569,6 +603,10 @@ pub enum Event {
         gpio: u8,
         /// `true` when the key went low.
         down: bool,
+        /// Physical pad or a debugger inject. Default UART omits this;
+        /// `--features remote-debug` appends ` src=syn` on a synthetic
+        /// edge only (physical keys stay untagged).
+        source: TouchSource,
     },
     /// Read-only GT911 status byte (`Register::Status` / `StatusBits`).
     /// Printed when board `touch::STATUS_HEARTBEAT` is on.
@@ -742,6 +780,26 @@ pub enum Event {
         /// 1-based request count this SoftAP session.
         req: u32,
     },
+    /// One snapshot-slot op (`--features remote-debug`).
+    ///
+    /// Hex nonces (`0x` + lowercase). Never a MAC.
+    #[cfg(feature = "remote-debug")]
+    Snap {
+        /// Milliseconds since boot.
+        t_ms: u32,
+        /// Which `snap` token to print.
+        op: SnapOp,
+        /// Host nonce for this op (`0` on GetZero / AckZero / Clear).
+        nonce: u64,
+    },
+    /// Synthetic tap dropped (out of 800×480 or channel full).
+    ///
+    /// Line: `touch drop src=syn`.
+    #[cfg(feature = "remote-debug")]
+    TouchDrop {
+        /// Milliseconds since boot.
+        t_ms: u32,
+    },
 }
 
 /// Writes `embassy-debug: latched` into `buf` without a trailing newline.
@@ -893,13 +951,12 @@ pub fn format_git<'a>(hash: &str, dirty: bool, buf: &'a mut [u8]) -> Result<&'a 
 /// Writes `event` into `buf` without a trailing newline.
 pub fn format_event<'a>(event: &Event, buf: &'a mut [u8]) -> Result<&'a str, FormatError> {
     match *event {
-        Event::Button { t_ms, gpio, down } => {
-            let edge = if down { "down" } else { "up" };
-            write_into(
-                buf,
-                format_args!("{LOG_PREFIX}: t={t_ms} btn {gpio} {edge}"),
-            )
-        }
+        Event::Button {
+            t_ms,
+            gpio,
+            down,
+            source,
+        } => format_button(t_ms, gpio, down, source, buf),
         Event::Gt911Status { t_ms, status } => write_into(
             buf,
             format_args!("{LOG_PREFIX}: t={t_ms} gt911 st={status:#04x}"),
@@ -981,6 +1038,75 @@ pub fn format_event<'a>(event: &Event, buf: &'a mut [u8]) -> Result<&'a str, For
         } => format_wifi_ap_event(t_ms, active, clients, buf),
         #[cfg(feature = "wifi")]
         Event::WifiHttp { t_ms, req } => format_wifi_http(t_ms, req, "/", buf),
+        #[cfg(feature = "remote-debug")]
+        Event::Snap { t_ms, op, nonce } => format_snap(t_ms, op, nonce, buf),
+        #[cfg(feature = "remote-debug")]
+        Event::TouchDrop { t_ms } => write_into(
+            buf,
+            format_args!("{LOG_PREFIX}: t={t_ms} touch drop src=syn"),
+        ),
+    }
+}
+
+/// `btn {gpio} {down|up}`, plus ` src=syn` on a synthetic edge when
+/// `--features remote-debug` is on. Physical keys stay untagged.
+fn format_button(
+    t_ms: u32,
+    gpio: u8,
+    down: bool,
+    source: TouchSource,
+    buf: &mut [u8],
+) -> Result<&str, FormatError> {
+    let edge = if down { "down" } else { "up" };
+    #[cfg(feature = "remote-debug")]
+    if source == TouchSource::Synthetic {
+        return write_into(
+            buf,
+            format_args!("{LOG_PREFIX}: t={t_ms} btn {gpio} {edge} src=syn"),
+        );
+    }
+    let _ = source;
+    write_into(
+        buf,
+        format_args!("{LOG_PREFIX}: t={t_ms} btn {gpio} {edge}"),
+    )
+}
+
+/// Exact `snap` tokens from the remote-debug UART contract.
+#[cfg(feature = "remote-debug")]
+fn format_snap(t_ms: u32, op: SnapOp, nonce: u64, buf: &mut [u8]) -> Result<&str, FormatError> {
+    match op {
+        SnapOp::Get => write_into(
+            buf,
+            format_args!("{LOG_PREFIX}: t={t_ms} snap get nonce={nonce:#x}"),
+        ),
+        SnapOp::Retry => write_into(
+            buf,
+            format_args!("{LOG_PREFIX}: t={t_ms} snap retry nonce={nonce:#x}"),
+        ),
+        SnapOp::Busy { armed } => write_into(
+            buf,
+            format_args!("{LOG_PREFIX}: t={t_ms} snap busy nonce={nonce:#x} armed={armed:#x}"),
+        ),
+        SnapOp::Empty => write_into(
+            buf,
+            format_args!("{LOG_PREFIX}: t={t_ms} snap empty nonce={nonce:#x}"),
+        ),
+        SnapOp::GetZero => write_into(buf, format_args!("{LOG_PREFIX}: t={t_ms} snap get zero")),
+        SnapOp::Ack => write_into(
+            buf,
+            format_args!("{LOG_PREFIX}: t={t_ms} snap ack nonce={nonce:#x}"),
+        ),
+        SnapOp::AckMiss { armed } => write_into(
+            buf,
+            format_args!("{LOG_PREFIX}: t={t_ms} snap ack miss nonce={nonce:#x} armed={armed:#x}"),
+        ),
+        SnapOp::AckStale => write_into(
+            buf,
+            format_args!("{LOG_PREFIX}: t={t_ms} snap ack stale nonce={nonce:#x}"),
+        ),
+        SnapOp::AckZero => write_into(buf, format_args!("{LOG_PREFIX}: t={t_ms} snap ack zero")),
+        SnapOp::Clear => write_into(buf, format_args!("{LOG_PREFIX}: t={t_ms} snap clear")),
     }
 }
 
@@ -1317,6 +1443,7 @@ mod tests {
                 t_ms: 1204,
                 gpio: 4,
                 down: true,
+                source: TouchSource::Physical,
             }),
             "embassy-debug: t=1204 btn 4 down"
         );
@@ -1325,6 +1452,7 @@ mod tests {
                 t_ms: 1410,
                 gpio: 4,
                 down: false,
+                source: TouchSource::Physical,
             }),
             "embassy-debug: t=1410 btn 4 up"
         );
@@ -1392,6 +1520,151 @@ mod tests {
         });
         assert_eq!(text, "embassy-debug: t=2100 touch n=1 p0=123,456");
         assert!(!text.contains("src="));
+    }
+
+    #[cfg(not(feature = "remote-debug"))]
+    #[test]
+    fn default_button_line_omits_src() {
+        let text = line(&Event::Button {
+            t_ms: 1204,
+            gpio: 4,
+            down: true,
+            source: TouchSource::Synthetic,
+        });
+        assert_eq!(text, "embassy-debug: t=1204 btn 4 down");
+        assert!(!text.contains("src="));
+    }
+
+    #[cfg(feature = "remote-debug")]
+    #[test]
+    fn remote_debug_button_appends_src_only_on_synthetic() {
+        assert_eq!(
+            line(&Event::Button {
+                t_ms: 1204,
+                gpio: 4,
+                down: true,
+                source: TouchSource::Physical,
+            }),
+            "embassy-debug: t=1204 btn 4 down"
+        );
+        assert_eq!(
+            line(&Event::Button {
+                t_ms: 1204,
+                gpio: 4,
+                down: true,
+                source: TouchSource::Synthetic,
+            }),
+            "embassy-debug: t=1204 btn 4 down src=syn"
+        );
+        assert_eq!(
+            line(&Event::Button {
+                t_ms: 1410,
+                gpio: 6,
+                down: false,
+                source: TouchSource::Synthetic,
+            }),
+            "embassy-debug: t=1410 btn 6 up src=syn"
+        );
+    }
+
+    #[cfg(feature = "remote-debug")]
+    #[test]
+    fn remote_debug_snap_and_touch_drop_match_the_agreed_shape() {
+        assert_eq!(
+            line(&Event::Snap {
+                t_ms: 9,
+                op: SnapOp::Get,
+                nonce: 0xab,
+            }),
+            "embassy-debug: t=9 snap get nonce=0xab"
+        );
+        assert_eq!(
+            line(&Event::Snap {
+                t_ms: 9,
+                op: SnapOp::Retry,
+                nonce: 0xab,
+            }),
+            "embassy-debug: t=9 snap retry nonce=0xab"
+        );
+        assert_eq!(
+            line(&Event::Snap {
+                t_ms: 9,
+                op: SnapOp::Busy { armed: 0x11 },
+                nonce: 0x22,
+            }),
+            "embassy-debug: t=9 snap busy nonce=0x22 armed=0x11"
+        );
+        assert_eq!(
+            line(&Event::Snap {
+                t_ms: 9,
+                op: SnapOp::Empty,
+                nonce: 0xab,
+            }),
+            "embassy-debug: t=9 snap empty nonce=0xab"
+        );
+        assert_eq!(
+            line(&Event::Snap {
+                t_ms: 9,
+                op: SnapOp::GetZero,
+                nonce: 0,
+            }),
+            "embassy-debug: t=9 snap get zero"
+        );
+        assert_eq!(
+            line(&Event::Snap {
+                t_ms: 9,
+                op: SnapOp::Ack,
+                nonce: 0xab,
+            }),
+            "embassy-debug: t=9 snap ack nonce=0xab"
+        );
+        assert_eq!(
+            line(&Event::Snap {
+                t_ms: 9,
+                op: SnapOp::AckMiss { armed: 0x11 },
+                nonce: 0x22,
+            }),
+            "embassy-debug: t=9 snap ack miss nonce=0x22 armed=0x11"
+        );
+        assert_eq!(
+            line(&Event::Snap {
+                t_ms: 9,
+                op: SnapOp::AckStale,
+                nonce: 0xab,
+            }),
+            "embassy-debug: t=9 snap ack stale nonce=0xab"
+        );
+        assert_eq!(
+            line(&Event::Snap {
+                t_ms: 9,
+                op: SnapOp::AckZero,
+                nonce: 0,
+            }),
+            "embassy-debug: t=9 snap ack zero"
+        );
+        assert_eq!(
+            line(&Event::Snap {
+                t_ms: 9,
+                op: SnapOp::Clear,
+                nonce: 0,
+            }),
+            "embassy-debug: t=9 snap clear"
+        );
+        assert_eq!(
+            line(&Event::TouchDrop { t_ms: 9 }),
+            "embassy-debug: t=9 touch drop src=syn"
+        );
+        let mut buf = [0u8; LINE_CAPACITY];
+        let text = format_event(
+            &Event::Snap {
+                t_ms: u32::MAX,
+                op: SnapOp::Busy { armed: u64::MAX },
+                nonce: u64::MAX,
+            },
+            &mut buf,
+        )
+        .unwrap();
+        assert!(text.len() < LINE_CAPACITY);
     }
 
     #[cfg(feature = "remote-debug")]
@@ -1827,6 +2100,7 @@ mod tests {
                     t_ms: 1,
                     gpio: 4,
                     down: true,
+                    source: TouchSource::Physical,
                 },
                 &mut buf
             ),

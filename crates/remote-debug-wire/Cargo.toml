@@ -1,0 +1,27 @@
+[package]
+name = "remote-debug-wire"
+version = "0.1.0"
+description = "Protobuf codec for Sticky remote-debug snapshot and inject (transport-agnostic)"
+readme = "README.md"
+publish = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+default = []
+
+[dependencies]
+buffa = { version = "0.9.2", default-features = false }
+panel-view = { path = "../panel-view", version = "0.1.0" }
+
+[build-dependencies]
+buffa-build = "0.9.2"
+buf-tools = "=1.72.0-hotfix.2"
+
+[lints]
+workspace = true

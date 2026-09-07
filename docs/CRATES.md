@@ -46,9 +46,16 @@ in the lockfile).
 | [`panel-view`](../crates/panel-view) | No crates.io trait pairs draw remap, touch remap, enclosure landmarks, and in-plane hold. Board crates implement it; UI talks to the trait. Last-compose (`ExpectedFrame` / `PanelCapture`) and tagged taps (`TouchSource` / `PanelTouchAlign`) are companions, not methods on `PanelView`. |
 | [`seeed-reterminal-sticky`](../crates/seeed-reterminal-sticky) | No board crate exists for this product. |
 | [`simple-debug`](../crates/simple-debug) | UART heartbeat, GPIO edges, and [`IdleListen`](../crates/simple-debug/src/idle.rs) for unattended `vet-idle-log`. Host-tested because the Xtensa image cannot run `cargo test` on the host compiler. |
-| [`embassy-debug`](../crates/embassy-debug) | Timestamped button / touch / IMU / mic / radio / BLE pair-card / Wi-Fi survey + SoftAP / read-only SD identify / charge-sit lines and [`IdleListen`](../crates/embassy-debug/src/idle.rs) for unattended `vet-idle-log`. `--features remote-debug` appends `src=phys` / `src=syn` on `touch` lines; default image omits that token. Host-tested because the Xtensa image cannot run `cargo test` on the host compiler. |
+| [`embassy-debug`](../crates/embassy-debug) | Timestamped button / touch / IMU / mic / radio / BLE pair-card / Wi-Fi survey + SoftAP / read-only SD identify / charge-sit lines and [`IdleListen`](../crates/embassy-debug/src/idle.rs) for unattended `vet-idle-log`. `--features remote-debug` appends `src=phys` / `src=syn` on `touch` lines, `src=syn` on synthetic `btn` edges, and `snap` / `touch drop` lines; default image omits those tokens. Host-tested because the Xtensa image cannot run `cargo test` on the host compiler. |
+| [`remote-debug-wire`](../crates/remote-debug-wire) | Transport-agnostic protobuf codec (`Envelope`, inject, one frozen snapshot slot). UART stays plaintext; this crate does not pick SoftAP / BLE / UART framing beyond u32 LE length. Generated `buffa` types are committed so host and firmware clippy stay offline. |
 
 ## Infrastructure
+
+`remote-debug-wire` uses [`buffa`](https://crates.io/crates/buffa) 0.9.2
+(`default-features = false` → `no_std` + `alloc`) and locates official
+`buf` via [`buf-tools`](https://crates.io/crates/buf-tools)
+`1.72.0-hotfix.2` when `REGEN_PROTO=1`. That is infrastructure for the
+codec, not a chip-driver verdict. Do not add `buffa` to `panel-view`.
 
 `sticky-host` uses [`espflash`](https://crates.io/crates/espflash) 4.5 as a
 library (`default-features = false`, feature `serialport`).
@@ -102,4 +109,4 @@ operator TTY in cbreak so `learn-uart` can skip a wait on `s` without Enter
 
 ## Counts
 
-5 adopted from crates.io, 7 explicitly rejected, 6 written here.
+5 adopted from crates.io, 7 explicitly rejected, 7 written here.

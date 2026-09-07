@@ -19,7 +19,10 @@ Chip drivers (`bq25616`, `bq27220`, `ssd1677-gray4`) are MCU-agnostic and
 carry no `esp-hal` dependency. `panel-view` is the board-agnostic
 logical-canvas trait (draw + touch + landmarks + hold) plus snapshot /
 tagged-touch companions (`ExpectedFrame`, `TouchSource`; not methods on
-`PanelView`). Board specifics —
+`PanelView`). `remote-debug-wire` is the protobuf codec
+(`sticky.remote.v1.Envelope`, u32 LE length, one frozen snapshot
+slot) mapped onto those companions; it does not own planes or pick a
+transport. Board specifics —
 pins, latch, rails, transforms — belong in `seeed-reterminal-sticky`
 (`View` implements `PanelView`). Keep that split.
 

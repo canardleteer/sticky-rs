@@ -236,7 +236,8 @@ image. Later the same evening, operator glass showed
 sits (`mic` / `radio` / `charge` / `sd`) build with
 `--no-default-features`.
 `remote-debug` is **not** exclusive of `pair` (insecure desk
-snapshot + synthetic tap mux; not default).
+snapshot + synthetic tap / key mux + `remote-debug-wire` codec;
+not default).
 `wifi` is **not** exclusive of `pair`. `trouble-host` 0.7 still
 needs the `central` feature so `GAP_SERVICE_ATTRIBUTE_COUNT`
 exists. Offer a phone sit first; a host BlueZ or SoftAP

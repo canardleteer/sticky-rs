@@ -43,7 +43,11 @@ use embassy_debug::{
 
 // Embassy runtime: tasks, channels, time.
 use embassy_executor::Spawner;
-use embassy_futures::select::{select, select3, Either, Either3};
+use embassy_futures::select::{select, Either};
+#[cfg(not(feature = "remote-debug"))]
+use embassy_futures::select::{select3, Either3};
+#[cfg(feature = "remote-debug")]
+use embassy_futures::select::{select4, Either4};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::signal::Signal;
@@ -643,7 +647,8 @@ async fn log_task() {
 /// panel standby; keep holding to 5 s for MCU sleep. Page Up 1 s leaves
 /// standby or sleep. Hold Page Down 5 s to drop the latch. With
 /// `--features mic`, AI Voice dumps PCM and does not play the buzzer
-/// or change the page.
+/// or change the page. `--features remote-debug` also `select`s a
+/// synthetic short-press channel (same walk; holds stay physical).
 #[embassy_executor::task]
 async fn button_task(
     mut ai_voice: Input<'static>,
@@ -652,16 +657,42 @@ async fn button_task(
     mut scene: Scene,
 ) {
     loop {
-        let gpio = match select3(
-            ai_voice.wait_for_any_edge(),
-            page_up.wait_for_any_edge(),
-            page_down.wait_for_any_edge(),
-        )
-        .await
-        {
-            Either3::First(_) => 4,
-            Either3::Second(_) => 5,
-            Either3::Third(_) => 6,
+        let gpio = {
+            #[cfg(not(feature = "remote-debug"))]
+            {
+                match select3(
+                    ai_voice.wait_for_any_edge(),
+                    page_up.wait_for_any_edge(),
+                    page_down.wait_for_any_edge(),
+                )
+                .await
+                {
+                    Either3::First(_) => 4,
+                    Either3::Second(_) => 5,
+                    Either3::Third(_) => 6,
+                }
+            }
+            #[cfg(feature = "remote-debug")]
+            {
+                match select4(
+                    ai_voice.wait_for_any_edge(),
+                    page_up.wait_for_any_edge(),
+                    page_down.wait_for_any_edge(),
+                    crate::remote_debug::wait_button(),
+                )
+                .await
+                {
+                    Either4::First(_) => 4,
+                    Either4::Second(_) => 5,
+                    Either4::Third(_) => 6,
+                    Either4::Fourth(btn) => {
+                        if btn.down {
+                            apply_synthetic_short(btn.gpio, &mut scene);
+                        }
+                        continue;
+                    }
+                }
+            }
         };
         Timer::after(Duration::from_millis(20)).await;
         let down = match gpio {
@@ -673,6 +704,7 @@ async fn button_task(
             t_ms: now_ms(),
             gpio,
             down,
+            source: TouchSource::Physical,
         });
         if !down {
             continue;
@@ -701,6 +733,46 @@ async fn button_task(
     }
 }
 
+/// Short-press walk for a debugger inject (`--features remote-debug`).
+///
+/// Same scene next/prev + beep as a physical tap under 2 s. Hold-to
+/// standby, sleep, and latch power-off stay on the real pads — this
+/// path does not start those machines. Page Up while the panel is
+/// already in standby does not walk (physical Page Up still holds
+/// to resume / sleep).
+///
+/// `--features mic`: GPIO4 still dumps PCM and does not change the
+/// page (*The Embassy Book*: one scene owner — `SCENE.signal`).
+#[cfg(feature = "remote-debug")]
+fn apply_synthetic_short(gpio: u8, scene: &mut Scene) {
+    match gpio {
+        4 => {
+            #[cfg(feature = "mic")]
+            ask_pcm_dump();
+            #[cfg(not(feature = "mic"))]
+            {
+                ask_beep();
+                *scene = scene.next();
+                SCENE.signal(*scene);
+            }
+        }
+        5 => {
+            if crate::sleep::is_in_standby() {
+                return;
+            }
+            ask_beep();
+            *scene = scene.prev();
+            SCENE.signal(*scene);
+        }
+        6 => {
+            ask_beep();
+            *scene = scene.next();
+            SCENE.signal(*scene);
+        }
+        _ => {}
+    }
+}
+
 /// Awake Page Up: short = previous card; 2 s = standby; 5 s = sleep.
 ///
 /// The same hold can enter standby at 2 s and continue to sleep at 5 s.
@@ -719,6 +791,7 @@ async fn hold_page_up_awake(page_up: &mut Input<'static>, scene: &mut Scene) {
                     t_ms: now_ms(),
                     gpio: 5,
                     down: false,
+                    source: TouchSource::Physical,
                 });
                 *scene = scene.prev();
                 SCENE.signal(*scene);
@@ -735,6 +808,7 @@ async fn hold_page_up_awake(page_up: &mut Input<'static>, scene: &mut Scene) {
                         t_ms: now_ms(),
                         gpio: 5,
                         down: false,
+                        source: TouchSource::Physical,
                     });
                     break;
                 }
@@ -751,6 +825,7 @@ async fn hold_page_up_awake(page_up: &mut Input<'static>, scene: &mut Scene) {
                     t_ms: now_ms(),
                     gpio: 5,
                     down: false,
+                    source: TouchSource::Physical,
                 });
                 loop {
                     Timer::after(Duration::from_secs(3_600)).await;
@@ -778,6 +853,7 @@ async fn hold_page_up_from_standby(page_up: &mut Input<'static>) {
                     t_ms: now_ms(),
                     gpio: 5,
                     down: false,
+                    source: TouchSource::Physical,
                 });
                 break;
             }
@@ -788,6 +864,7 @@ async fn hold_page_up_from_standby(page_up: &mut Input<'static>) {
                     t_ms: now_ms(),
                     gpio: 5,
                     down: false,
+                    source: TouchSource::Physical,
                 });
                 break;
             }
@@ -798,6 +875,7 @@ async fn hold_page_up_from_standby(page_up: &mut Input<'static>) {
                     t_ms: now_ms(),
                     gpio: 5,
                     down: false,
+                    source: TouchSource::Physical,
                 });
                 loop {
                     Timer::after(Duration::from_secs(3_600)).await;
@@ -825,6 +903,7 @@ async fn hold_page_down(page_down: &mut Input<'static>, scene: &mut Scene) {
                     t_ms: now_ms(),
                     gpio: 6,
                     down: false,
+                    source: TouchSource::Physical,
                 });
                 *scene = scene.next();
                 SCENE.signal(*scene);
@@ -839,6 +918,7 @@ async fn hold_page_down(page_down: &mut Input<'static>, scene: &mut Scene) {
                     t_ms: now_ms(),
                     gpio: 6,
                     down: false,
+                    source: TouchSource::Physical,
                 });
                 loop {
                     Timer::after(Duration::from_secs(3_600)).await;
@@ -1050,6 +1130,7 @@ fn poll_synthetic() {
         return;
     };
     let Some((sx, sy)) = crate::remote_debug::framebuffer_to_uart_screen(sample.x, sample.y) else {
+        crate::remote_debug::emit_touch_drop();
         return;
     };
     let mut mapped = [TouchPoint::default(); MAX_TOUCH_POINTS];

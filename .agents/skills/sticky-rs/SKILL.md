@@ -74,7 +74,9 @@ A device may be attached for unrelated reasons; ignore it.
 
 Chip drivers (`bq25616`, `bq27220`, `ssd1677-gray4`) stay MCU-agnostic.
 `panel-view` is the shared canvas trait plus last-compose / tagged-touch
-companions. Board pins, latch, rails, and
+companions. `remote-debug-wire` is the protobuf codec for an insecure
+desk snapshot / inject (transport-agnostic; UART stays plaintext).
+Board pins, latch, rails, and
 transforms belong in `seeed-reterminal-sticky`.
 
 Never `bq27xxx` (wrong gauge family). Never a generic SSD1677 four-gray LUT.

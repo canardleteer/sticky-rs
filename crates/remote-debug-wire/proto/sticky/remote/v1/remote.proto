@@ -41,6 +41,13 @@ message Envelope {
     SnapshotClear snapshot_clear = 15;
     SnapshotBusy snapshot_busy = 16;
     LogLine log_line = 17;
+    // MCU software reset of the **embedded device**, not the host.
+    // After this the GATT session is dead. RAM SMP bonds do not survive.
+    // Implementing firmware SHOULD re-advertise after that reset so a
+    // central can Connect and pair again. Do not persist keys to factory
+    // NVS. Hosts must not assume a remembered LTK still works.
+    Reboot reboot = 18;
+    RebootAck reboot_ack = 19;
   }
 }
 
@@ -97,3 +104,9 @@ message LogLine {
   uint32 t_ms = 1;
   string text = 2;
 }
+
+// Host → device: reset the embedded MCU (not the desk host).
+message Reboot {}
+
+// Device → host: ACK before the MCU software-reset so ATT can flush.
+message RebootAck {}

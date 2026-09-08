@@ -6,7 +6,10 @@ use buffa::Message;
 
 use buffa::EncodeSink;
 
-use crate::v1::{envelope::Body, Envelope, FrameKind, SnapshotAck, SnapshotBusy, SnapshotClear};
+use crate::v1::{
+    envelope::Body, Envelope, FrameKind, Reboot, RebootAck, SnapshotAck, SnapshotBusy,
+    SnapshotClear,
+};
 
 /// `Envelope.version` this crate writes and accepts.
 pub const ENVELOPE_VERSION: u32 = 1;
@@ -154,6 +157,18 @@ pub fn encode_snapshot_busy(armed: u64) -> Vec<u8> {
         nonce: armed,
         ..SnapshotBusy::default()
     })
+}
+
+/// Host → device: software-reset the **embedded MCU** (not the host).
+#[must_use]
+pub fn encode_reboot() -> Vec<u8> {
+    encode_body(Reboot::default())
+}
+
+/// Device → host: ACK before the MCU reset so ATT can flush.
+#[must_use]
+pub fn encode_reboot_ack() -> Vec<u8> {
+    encode_body(RebootAck::default())
 }
 
 /// Encoded size of a `Snapshot` body (no envelope wrapper).

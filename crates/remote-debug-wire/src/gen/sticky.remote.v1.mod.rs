@@ -67,3 +67,11 @@ pub use self::__buffa::view::SnapshotBusyOwnedView;
 pub use self::__buffa::view::LogLineView;
 #[doc(inline)]
 pub use self::__buffa::view::LogLineOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::RebootView;
+#[doc(inline)]
+pub use self::__buffa::view::RebootOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::RebootAckView;
+#[doc(inline)]
+pub use self::__buffa::view::RebootAckOwnedView;

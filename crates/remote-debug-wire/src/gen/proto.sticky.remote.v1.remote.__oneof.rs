@@ -14,6 +14,8 @@ pub mod envelope {
         SnapshotClear(::buffa::alloc::boxed::Box<super::super::super::SnapshotClear>),
         SnapshotBusy(::buffa::alloc::boxed::Box<super::super::super::SnapshotBusy>),
         LogLine(::buffa::alloc::boxed::Box<super::super::super::LogLine>),
+        Reboot(::buffa::alloc::boxed::Box<super::super::super::Reboot>),
+        RebootAck(::buffa::alloc::boxed::Box<super::super::super::RebootAck>),
     }
     impl ::buffa::Oneof for Body {}
     impl From<super::super::super::InjectTouch> for Body {
@@ -93,6 +95,26 @@ pub mod envelope {
     }
     impl From<super::super::super::LogLine> for ::core::option::Option<Body> {
         fn from(v: super::super::super::LogLine) -> Self {
+            Self::Some(Body::from(v))
+        }
+    }
+    impl From<super::super::super::Reboot> for Body {
+        fn from(v: super::super::super::Reboot) -> Self {
+            Self::Reboot(::buffa::alloc::boxed::Box::new(v))
+        }
+    }
+    impl From<super::super::super::Reboot> for ::core::option::Option<Body> {
+        fn from(v: super::super::super::Reboot) -> Self {
+            Self::Some(Body::from(v))
+        }
+    }
+    impl From<super::super::super::RebootAck> for Body {
+        fn from(v: super::super::super::RebootAck) -> Self {
+            Self::RebootAck(::buffa::alloc::boxed::Box::new(v))
+        }
+    }
+    impl From<super::super::super::RebootAck> for ::core::option::Option<Body> {
+        fn from(v: super::super::super::RebootAck) -> Self {
             Self::Some(Body::from(v))
         }
     }

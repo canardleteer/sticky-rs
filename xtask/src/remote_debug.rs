@@ -28,6 +28,10 @@ fails if `monitor` holds it). `--pin` skips UART. `--remember` allowlists \
 this unit (factory / USB serial in gitignored developer-data/remote-debug/; \
 never a MAC, never the PIN).
 
+`reboot` software-resets the embedded MCU (not this host) and re-pairs \
+unless `--no-reconnect`. After reset, UART may reprint `pair pin=` every \
+5s on splash or the pair card until `pair ok`.
+
 `--mcp` is a long-lived session on this subtree only (not flash-app / \
 restore). Do not also run `monitor`. Coordinates are framebuffer.";
 
@@ -90,6 +94,8 @@ pub enum RemoteDebugCommand {
     SnapshotClear,
     /// Whether a session is held
     Status,
+    /// Software-reset the embedded MCU (not this host)
+    Reboot(RebootArgs),
     /// Drop GATT; unknown units lose the BlueZ bond
     Disconnect,
 }
@@ -150,6 +156,26 @@ pub struct SnapshotAckArgs {
     /// Nonce from the last get (default: last get).
     #[arg(long)]
     pub nonce: Option<u64>,
+}
+
+/// Reset the **embedded MCU**, then optionally Connect again.
+#[derive(Debug, Clone, Args)]
+pub struct RebootArgs {
+    /// Do not re-pair after the device reset.
+    #[arg(long)]
+    pub no_reconnect: bool,
+    /// Six-digit PIN for `--reconnect` (skip UART).
+    #[arg(long)]
+    pub pin: Option<u32>,
+    /// Serial device. Also `ESPFLASH_PORT`. Optional if one Sticky CH343.
+    #[arg(long, env = "ESPFLASH_PORT", hide_env_values = true)]
+    pub port: Option<String>,
+    /// Advertise name (default `sticky-rs`).
+    #[arg(long, default_value = DEFAULT_ADV_NAME)]
+    pub name: String,
+    /// Keep the BlueZ bond after the new pair; write this unit into allowlist.
+    #[arg(long)]
+    pub remember: bool,
 }
 
 /// Process-lifetime BLE session (MCP). CLI one-shots connect as needed.
@@ -253,6 +279,7 @@ pub fn run(
             guard.last_nonce,
             guard.session.is_some(),
         ),
+        RemoteDebugCommand::Reboot(args) => reboot_cmd(&mut guard, args)?,
         RemoteDebugCommand::Disconnect => {
             if let Some(mut session) = guard.session.take() {
                 session.disconnect().map_err(map_ble)?;
@@ -313,6 +340,36 @@ fn connect_cmd(
         },
         None,
         true,
+    ))
+}
+
+fn reboot_cmd(state: &mut RemoteDebugState, args: RebootArgs) -> Result<RemoteDebugOutput, String> {
+    let mut session = state
+        .session
+        .take()
+        .ok_or_else(|| "not connected; run remote-debug connect first".to_string())?;
+    session.reboot().map_err(map_ble)?;
+    state.last_nonce = None;
+    if args.no_reconnect {
+        return Ok(out(
+            "device reboot sent; GATT session gone (embedded MCU, not this host)",
+            None,
+            false,
+        ));
+    }
+    let connected = connect_cmd(
+        state,
+        ConnectArgs {
+            pin: args.pin,
+            port: args.port,
+            name: args.name,
+            remember: args.remember,
+        },
+    )?;
+    Ok(out(
+        &format!("device rebooted; {}", connected.message),
+        connected.nonce,
+        connected.connected,
     ))
 }
 
@@ -453,6 +510,10 @@ mod tests {
         assert!(
             !leaves.iter().any(|n| n.contains("restore")),
             "restore must not be an MCP tool: {leaves:?}"
+        );
+        assert!(
+            leaves.iter().any(|n| n.contains("reboot")),
+            "leaves={leaves:?}"
         );
     }
 

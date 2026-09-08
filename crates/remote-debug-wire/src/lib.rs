@@ -6,6 +6,12 @@
 //!
 //! Snapshot capacity is **one frozen slot** ([`SnapshotSlot`]). Planes
 //! stay with the implementor; encode them from borrowed slices.
+//!
+//! [`v1::Reboot`] resets the **embedded MCU**, not the host. After that
+//! the session is dead and RAM SMP bonds are gone. Implementing firmware
+//! should re-advertise so a central can Connect and pair again. Do not
+//! persist keys to factory NVS. Hosts must not assume a remembered LTK
+//! still works.
 
 #![no_std]
 #![forbid(unsafe_code)]
@@ -29,11 +35,11 @@ mod reassemble;
 mod slot;
 
 pub use frame::{
-    bytes_field_header_to_slice, decode_envelope, encode_body, encode_envelope,
-    encode_snapshot_ack, encode_snapshot_busy, encode_snapshot_clear, encode_snapshot_envelope,
-    framed, snapshot_body_len, snapshot_envelope_payload_len, snapshot_preamble_to_slice, unframe,
-    write_bytes_field_header, write_framed_snapshot, write_snapshot_preamble, FrameError,
-    SnapshotMeta, ENVELOPE_VERSION,
+    bytes_field_header_to_slice, decode_envelope, encode_body, encode_envelope, encode_reboot,
+    encode_reboot_ack, encode_snapshot_ack, encode_snapshot_busy, encode_snapshot_clear,
+    encode_snapshot_envelope, framed, snapshot_body_len, snapshot_envelope_payload_len,
+    snapshot_preamble_to_slice, unframe, write_bytes_field_header, write_framed_snapshot,
+    write_snapshot_preamble, FrameError, SnapshotMeta, ENVELOPE_VERSION,
 };
 pub use gatt::{GATT_RX_UUID, GATT_SERVICE_UUID, GATT_TX_UUID};
 pub use map::{
@@ -308,5 +314,14 @@ mod tests {
         assert_eq!(snap.nonce, 0x99);
         assert_eq!(snap.bw, bw);
         assert_eq!(snap.hold, Some(2));
+    }
+
+    #[test]
+    fn reboot_round_trips_as_embedded_mcu_reset() {
+        let bytes = encode_reboot();
+        let env = decode_envelope(&bytes).expect("reboot");
+        assert!(matches!(env.body, Some(Body::Reboot(_))));
+        let ack = decode_envelope(&encode_reboot_ack()).expect("ack");
+        assert!(matches!(ack.body, Some(Body::RebootAck(_))));
     }
 }

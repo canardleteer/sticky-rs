@@ -76,6 +76,10 @@ impl Transport for FakeTransport {
             Some(Body::SnapshotClear(_)) => {
                 let _ = self.slot.on_clear();
             }
+            Some(Body::Reboot(_)) => {
+                self.inbound
+                    .push_back(remote_debug_wire::encode_reboot_ack());
+            }
             Some(Body::InjectTouch(_) | Body::InjectButton(_)) | None => {}
             Some(_) => {}
         }

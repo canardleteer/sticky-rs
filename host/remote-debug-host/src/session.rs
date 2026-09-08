@@ -8,8 +8,8 @@ use remote_debug_wire::v1::{
     GetSnapshot, InjectButton, InjectTouch, ProductKey, SnapshotAck, TouchSource as WireTouch,
 };
 use remote_debug_wire::{
-    decode_envelope, encode_body, encode_snapshot_clear, inject_button_gpio, snapshot_expected,
-    FrameAssembler, GATT_RX_UUID, GATT_SERVICE_UUID, GATT_TX_UUID,
+    decode_envelope, encode_body, encode_reboot, encode_snapshot_clear, inject_button_gpio,
+    snapshot_expected, FrameAssembler, GATT_RX_UUID, GATT_SERVICE_UUID, GATT_TX_UUID,
 };
 
 use crate::{Error, Transport};
@@ -156,6 +156,38 @@ impl<T: Transport> Session<T> {
         self.transport.write_frame(&encode_snapshot_clear())
     }
 
+    /// Software-reset the **embedded MCU** (not this host).
+    ///
+    /// Writes `Reboot`, waits for `RebootAck` or a link drop, then
+    /// forgets the BlueZ bond. RAM keys on the device do not survive.
+    ///
+    /// # Errors
+    ///
+    /// Write failure before the reset starts.
+    pub fn reboot(&mut self) -> Result<(), Error> {
+        self.transport.write_frame(&encode_reboot())?;
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            if std::time::Instant::now() > deadline {
+                break;
+            }
+            match self.transport.read_chunk() {
+                Ok(chunk) => match self.assembler.push(&chunk) {
+                    Ok(None) => continue,
+                    Ok(Some(frame)) => {
+                        if matches!(decode_envelope(&frame)?.body, Some(Body::RebootAck(_))) {
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                },
+                Err(_) => break,
+            }
+        }
+        let _ = self.transport.disconnect(false);
+        Ok(())
+    }
+
     /// Drop the link. Unknown units lose the BlueZ bond when `keep_bond` is false.
     ///
     /// # Errors
@@ -194,5 +226,19 @@ impl<T: Transport> Session<T> {
                 },
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Session;
+    use crate::FakeTransport;
+
+    #[test]
+    fn reboot_acks_then_forgets_the_bluez_bond() {
+        let mut session = Session::new(FakeTransport::tiny(), true);
+        session.reboot().expect("reboot");
+        assert_eq!(session.transport.disconnects, 1);
+        assert_eq!(session.transport.last_keep_bond, Some(false));
     }
 }

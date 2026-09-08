@@ -544,9 +544,11 @@ cargo xtask remote-debug connect
 `--remember` keeps the BlueZ bond for this unit (factory / USB
 serial in gitignored `developer-data/remote-debug/`; never a MAC).
 
-You should see `connected` on the host. On the glass, the pair
-card should show `Paired`. You can walk to another page; the
-GATT stays up.
+You should see `connected` on the host. UART may print
+`pair pin=` more than once (every 5 s on splash or the pair
+card until `pair ok`) if the first line was missed. On the
+glass, the pair card should show `Paired`. You can walk to
+another page; the GATT stays up.
 
 ### Step 5: Inject and snapshot
 
@@ -563,7 +565,20 @@ pixel. `get-snapshot` writes planes under
 A second `get-snapshot` with a different nonce should fail busy
 until you ack or `snapshot-clear`.
 
-### Step 6: Observe and report
+### Step 6: Optional — reboot the device
+
+```shell
+cargo xtask remote-debug reboot
+```
+
+This resets the **board**, not your computer. The GATT session
+drops. By default the host Connects again and scrapes a new
+`pair pin=`. `--no-reconnect` only kicks the MCU.
+
+After that reset the image advertises on splash (no need to walk
+to the pair card). You should see `connected` again.
+
+### Step 7: Observe and report
 
 - **Pair then hold**: `pair ok` / `Paired`, then walking away
   does not drop the desk session.
@@ -573,7 +588,8 @@ until you ack or `snapshot-clear`.
   is busy until ack or clear.
 - **Fail**: hang, panic, a MAC on UART or in
   `developer-data/remote-debug/`, or a session that dies when you
-  leave the pair card.
+  leave the pair card. After `reboot`, a leftover BlueZ bond
+  without a new PIN is a fail (the MCU forgot the keys).
 
 `cargo xtask remote-debug --mcp` is the same session for an MCP
 client. It does not expose `flash-app` or restore.

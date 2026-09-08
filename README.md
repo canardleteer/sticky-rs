@@ -63,7 +63,7 @@ exactly one QinHeng CH343 (`1a86:55d3`).
 | `build-fw` | no | Host-only. `cargo +esp` + `save-image` for `simple-debug` or `embassy-debug`. Default embassy-debug includes `pair` + `wifi`. `--features operator` / `mic` / `radio` / `pair` / `wifi` / `spi20` / `sd` / `charge` / `remote-debug` |
 | `ci` | no | Host-only CI gate (fmt, host clippy/test, firmware clippy, rumdl, machete, audit) |
 | `monitor` | yes | UART0 at 115200 |
-| `remote-debug` | live BLE; UART on auto-PIN | Encrypted GATT after DisplayOnly pair. `--mcp` is this subtree only |
+| `remote-debug` | live BLE; UART on auto-PIN | Encrypted GATT after DisplayOnly pair. `reboot` resets the embedded MCU. `--mcp` is this subtree only |
 
 ## License
 

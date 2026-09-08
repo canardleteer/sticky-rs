@@ -18,11 +18,16 @@
 //!   current card. Walking away stops advertising. Without
 //!   `--features remote-debug`, it also drops the GATT connection.
 //!   With remote-debug, a paired link is **held** after leave so
-//!   encrypted RX/TX can keep serving framed envelopes. Reconnect
-//!   after a drop means walk back to the pair card. Keys still walk
-//!   pages. AI Voice is not a confirm.
+//!   encrypted RX/TX can keep serving framed envelopes. After a
+//!   `CoreSw` software reset on that image, advertise starts on
+//!   splash so a desk host can Connect without walking to the pair
+//!   card. Reconnect after any other drop means walk back to the
+//!   pair card (or wait for that post-reset advertise). Keys still
+//!   walk pages. AI Voice is not a confirm.
 //! - **RAM bonds this boot.** `HostResources` holds them. Do not write
-//!   factory NVS (RF cal and identity live there).
+//!   factory NVS (RF cal and identity live there). A `Reboot`
+//!   envelope software-resets the **MCU**, not the host; the next
+//!   pairing is a new DisplayOnly PIN.
 //! - **Fixed random address.** Do not read or print the eFuse MAC.
 //!   `runner.run()` seeds the security CSPRNG from controller `LeRand`
 //!   (not the crate’s zero seed).
@@ -48,17 +53,23 @@ compile_error!("remote-debug needs pair (encrypted GATT after DisplayOnly SMP)")
 use crate::{emit, now_ms};
 
 use core::cell::RefCell;
+#[cfg(feature = "remote-debug")]
+use core::sync::atomic::AtomicU8;
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use bt_hci::cmd::le::{LeSetAdvData, LeSetAdvEnable, LeSetAdvParams, LeSetScanResponseData};
 use bt_hci::controller::ControllerCmdSync;
-use embassy_debug::{Event, PairFailWhy, PAIR_ADV_NAME, PAIR_FAIL_HOLD_MS};
+use embassy_debug::{Event, PairFailWhy, Scene, PAIR_ADV_NAME, PAIR_FAIL_HOLD_MS};
 use embassy_futures::select::{select, Either};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::blocking_mutex::Mutex;
 use embassy_sync::signal::Signal;
 use embassy_time::{Duration, Timer};
 use esp_hal::peripherals::BT;
+#[cfg(feature = "remote-debug")]
+use esp_hal::rtc_cntl::{reset_reason, SocResetReason};
+#[cfg(feature = "remote-debug")]
+use esp_hal::system::Cpu;
 use esp_println::println;
 use esp_radio::ble::controller::BleConnector;
 use trouble_host::prelude::*;
@@ -99,6 +110,11 @@ static CURRENT: Mutex<CriticalSectionRawMutex, RefCell<PairView>> =
 /// The display task writes this; the BLE task waits on [`PAIR_GATE`].
 static PAIR_VISIBLE: AtomicBool = AtomicBool::new(false);
 
+/// Last painted scene persist-byte. Display writes this so remote-debug
+/// can reprint `pair pin=` on splash or the pair card only.
+#[cfg(feature = "remote-debug")]
+static UI_SCENE: AtomicU8 = AtomicU8::new(0);
+
 /// Wake the BLE task when [`set_visible`] changes the gate.
 static PAIR_GATE: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 
@@ -120,6 +136,31 @@ pub fn set_visible(on: bool) {
 #[must_use]
 pub fn is_visible() -> bool {
     PAIR_VISIBLE.load(Ordering::Acquire)
+}
+
+/// Display task: remember the current card for PIN reprints.
+///
+/// Remote-debug reads this so a 5 s `pair pin=` reprint stays on
+/// splash or the pair card only (*The Embassy Book*: one writer).
+pub fn set_scene(scene: Scene) {
+    #[cfg(feature = "remote-debug")]
+    UI_SCENE.store(scene.persist_byte(), Ordering::Release);
+    #[cfg(not(feature = "remote-debug"))]
+    let _ = scene;
+}
+
+/// Scene the display last painted.
+#[cfg(feature = "remote-debug")]
+#[must_use]
+fn current_scene() -> Option<Scene> {
+    Scene::from_persist_byte(UI_SCENE.load(Ordering::Acquire))
+}
+
+/// Splash or pair card: remote-debug may reprint `pair pin=` here.
+#[cfg(feature = "remote-debug")]
+#[must_use]
+fn should_reprint_pin() -> bool {
+    current_scene().is_some_and(Scene::pair_pin_reprint)
 }
 
 /// Wait until [`is_visible`] matches `want`.
@@ -211,13 +252,15 @@ struct PairService {
     token: u8,
 }
 
-/// Bring up the BLE host; advertise only while the pair card is showing.
+/// Bring up the BLE host; advertise while the pair card is showing.
 ///
 /// On the unit: walking to `scene=pair` prints
 /// `pair advertise sticky-rs; no NVS; no MAC` and starts connectable
-/// advertise. Leaving that card stops it. In the MCU: controller →
-/// trouble-host runner + gated accept loop. The runner must stay
-/// polled or `LeRand` never seeds SMP.
+/// advertise. Leaving that card stops it, except after a remote-debug
+/// `CoreSw` software reset (advertise starts on splash so a desk
+/// host can Connect). In the MCU: controller → trouble-host runner
+/// + gated accept loop. The runner must stay polled or `LeRand`
+/// never seeds SMP.
 #[embassy_executor::task]
 pub async fn pair_task(bluetooth: BT<'static>) {
     let Ok(connector) = BleConnector::new(bluetooth, Default::default()) else {
@@ -256,12 +299,19 @@ pub async fn pair_task(bluetooth: BT<'static>) {
 
     show(PairView::Idle);
 
+    #[cfg(feature = "remote-debug")]
+    let ungated_adv = reset_reason(Cpu::ProCpu) == Some(SocResetReason::CoreSw);
+    #[cfg(not(feature = "remote-debug"))]
+    let ungated_adv = false;
+
     let pair_loop = async {
         loop {
-            wait_until_visible(true).await;
+            if !ungated_adv {
+                wait_until_visible(true).await;
+            }
             println!("{LOG}: pair advertise {PAIR_ADV_NAME}; no NVS; no MAC");
             show(PairView::Idle);
-            match advertise_once(&mut peripheral, &server).await {
+            match advertise_once(&mut peripheral, &server, ungated_adv).await {
                 Ok(()) => {
                     // Disconnect, or (without remote-debug) the operator
                     // left the pair card. Remote-debug holds GATT after leave.
@@ -288,6 +338,7 @@ pub async fn pair_task(bluetooth: BT<'static>) {
 async fn advertise_once<C>(
     peripheral: &mut Peripheral<'_, C, DefaultPacketPool>,
     server: &Server<'_>,
+    ungated: bool,
 ) -> Result<(), PairFailWhy>
 where
     C: Controller
@@ -319,7 +370,17 @@ where
         .map_err(|_| PairFailWhy::Advertise)?;
 
     // Dropping `advertiser` here (operator left the card) stops ADV.
-    let conn = match select(advertiser.accept(), wait_until_visible(false)).await {
+    // After a remote-debug `CoreSw` reset, splash is not the pair
+    // card (`PAIR_VISIBLE` is false). Do not treat that as leave or
+    // advertise ends before a desk Connect.
+    let leave = async {
+        if ungated {
+            core::future::pending::<()>().await;
+        } else {
+            wait_until_visible(false).await;
+        }
+    };
+    let conn = match select(advertiser.accept(), leave).await {
         Either::First(Ok(conn)) => conn,
         Either::First(Err(_)) => return Err(PairFailWhy::Advertise),
         Either::Second(()) => return Ok(()),
@@ -368,12 +429,43 @@ async fn drive_connection<P: PacketPool>(
 ) -> Result<(), PairFailWhy> {
     #[cfg(feature = "remote-debug")]
     let mut rx_asm = remote_debug_wire::FrameAssembler::device_rx();
+    #[cfg(feature = "remote-debug")]
+    let mut pending_pin: Option<u32> = None;
+    #[cfg(feature = "remote-debug")]
+    let mut paired = false;
     loop {
-        match gatt.next().await {
+        #[cfg(feature = "remote-debug")]
+        let event = match select(gatt.next(), Timer::after(Duration::from_secs(5))).await {
+            Either::First(event) => event,
+            Either::Second(()) => {
+                if let (Some(pin), false) = (pending_pin, paired) {
+                    if should_reprint_pin() {
+                        emit(Event::PairPin {
+                            t_ms: now_ms(),
+                            pin,
+                        });
+                    }
+                }
+                continue;
+            }
+        };
+        #[cfg(not(feature = "remote-debug"))]
+        let event = gatt.next().await;
+        match event {
             GattConnectionEvent::PassKeyDisplay(key) => {
-                show(PairView::Pin(key.value() % 1_000_000));
+                let pin = key.value() % 1_000_000;
+                #[cfg(feature = "remote-debug")]
+                {
+                    pending_pin = Some(pin);
+                    paired = false;
+                }
+                show(PairView::Pin(pin));
             }
             GattConnectionEvent::PairingComplete { .. } => {
+                #[cfg(feature = "remote-debug")]
+                {
+                    paired = true;
+                }
                 show(PairView::Ok);
             }
             GattConnectionEvent::PairingFailed(err) => {
@@ -443,6 +535,12 @@ async fn on_remote_rx<P: PacketPool>(
         Ok(crate::remote_debug::EnvelopeOutcome::Busy { armed }) => {
             let bytes = remote_debug_wire::encode_snapshot_busy(armed);
             notify_bytes(gatt, &server.remote.tx, &bytes).await;
+        }
+        Ok(crate::remote_debug::EnvelopeOutcome::Reboot) => {
+            let bytes = remote_debug_wire::encode_reboot_ack();
+            notify_bytes(gatt, &server.remote.tx, &bytes).await;
+            Timer::after(Duration::from_millis(100)).await;
+            esp_hal::system::software_reset();
         }
         Ok(crate::remote_debug::EnvelopeOutcome::None) | Err(_) => {}
     }

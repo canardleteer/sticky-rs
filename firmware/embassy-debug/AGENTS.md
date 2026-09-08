@@ -46,7 +46,8 @@ Live-ask, never-erase, and flash I/O: root
   page-space dots then two midline slides; `target loop`
   restarts the walk (no white end card).
   Pair idle is a framed how-to with empty PIN boxes; digits appear
-  only after `pair pin=`. Advertise only on that card. Wi-Fi cards
+  only after `pair pin=`. Advertise only on that card (remote-debug
+  also advertises on splash after a software reset). Wi-Fi cards
   stay idle until a tap on `[ START SURVEY ]` / `[ START HOTSPOT ]`.
   Landscape0 START uses only the OTP `set_gray` 180° of the
   canvas. Landscape180 and portrait invert the tap canvas.
@@ -248,13 +249,18 @@ or `sd`.
 phone pair first (same pair card). Host desk I/O is a separate
 live ask.
 
-1. Walk Page Down to `scene=pair` (`pair advertise sticky-rs`).
+1. Walk Page Down to `scene=pair` (`pair advertise sticky-rs`),
+   unless the unit just took a remote-debug software reset (then
+   it advertises on splash).
 2. Do **not** also run `monitor`. Default `connect` takes the UART
-   lock to scrape a **new** `pair pin=`. `--pin` skips UART.
+   lock to scrape a **new** `pair pin=`. The image reprints that
+   line every 5 s on splash or the pair card until `pair ok`.
+   `--pin` skips UART.
 3. `cargo xtask remote-debug connect` (or `connect --remember`, or
    `remote-debug --mcp` then the `connect` tool). BlueZ **Connect**,
    not `Pair()`. After `pair ok` the image **holds** GATT when
-   walking off the pair card.
+   walking off the pair card. `reboot` resets the **embedded MCU**
+   (not the host) and re-pairs unless `--no-reconnect`.
 4. Injects are framebuffer (`inject-touch --x --y`), not UART
    `p0=` / raw GT911. Product keys are `ok` / `page-up` /
    `page-down`.
@@ -265,7 +271,8 @@ live ask.
 6. `--remember` writes factory / CH343 USB serial into
    `developer-data/remote-debug/allowlist.yaml`. Never a MAC.
    Never store the PIN. Unknown units lose the BlueZ bond on
-   disconnect. After a device reboot, UART auto-PIN re-pairs.
+   disconnect. After `reboot` / a device reset, UART auto-PIN
+   re-pairs (leftover BlueZ LTK is stale).
 
 Human how-to:
 [README.md](README.md#remote-debug-test-instructions).

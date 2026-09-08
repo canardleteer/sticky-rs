@@ -17,7 +17,10 @@ heap-clone a 48 KiB panel on the device.
 
 Injects are framebuffer pixels (`TouchSample`) and product keys
 (`Ok` / `PageUp` / `PageDown` → GPIO 4/5/6). Not UART `p0=` glass
-space, and not a raw GT911 480×800 sample.
+space, and not a raw GT911 480×800 sample. `Reboot` software-resets
+the **embedded MCU**, not the host. After that the session is dead;
+implementing firmware should re-advertise so a central can Connect
+and pair again. Do not persist SMP keys to factory NVS.
 
 `#![no_std]` plus `alloc`. Runtime is `buffa` with default features
 off. Generated Rust under `src/gen/` is committed so default builds

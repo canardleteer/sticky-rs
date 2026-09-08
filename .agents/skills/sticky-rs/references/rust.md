@@ -243,6 +243,9 @@ sits (`mic` / `radio` / `charge` / `sd`) build with
 snapshot + synthetic tap / key mux + `remote-debug-wire` codec +
 encrypted GATT after pair; not default). After `pair ok` that
 image holds the bonded link when walking off the pair card.
+A `Reboot` envelope software-resets the **MCU** (not the host);
+after `CoreSw` that image advertises on splash. UART reprints
+`pair pin=` every 5 s on splash or the pair card until `pair ok`.
 `cargo xtask remote-debug` is a live BLE ask (UART auto-PIN when
 a CH343 is present). `host/remote-debug-host` wraps Linux `bluer`
 (Connect, not Pair).

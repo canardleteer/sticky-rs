@@ -45,6 +45,7 @@ embassy-debug: t=13 scene=targets
 embassy-debug: t=15 target show id=0 kind=dot page=240,400 r=48
 embassy-debug: t=16 target hit id=0 kind=dot page=238,402 expect=240,400 d=3
 embassy-debug: t=17 target loop
+embassy-debug: t=9 remote reboot
 embassy-debug: t=9 scene=sleeping
 embassy-debug: sleeping
 embassy-debug: t=17 poweroff
@@ -61,8 +62,9 @@ This FPC delivers five contacts (Rev.09 §1). `p0=` is physical
 800×480 after board `to_screen` (sample is 480×800). `--features
 remote-debug` appends `src=phys` / `src=syn` after that line and
 `src=syn` on a synthetic `btn` edge (physical keys stay untagged).
-It also prints `snap get|retry|busy|empty|ack|clear` and
-`touch drop src=syn`. The default image omits those tokens. A pose that
+It also prints `snap get|retry|busy|empty|ack|clear`,
+`touch drop src=syn`, and `remote reboot` (embedded MCU reset).
+The default image omits those tokens. A pose that
 does not classify is the token `imu=none`; the raw sample is still
 printed. The `mic`
 and `pcm` lines are printed only by the `--features mic` image. AI Voice
@@ -72,6 +74,8 @@ The `wifi` and `ble` lines are printed only by the `--features radio`
 image (SSID / local name and RSSI; never a MAC or BSSID). The `pair`
 lines are printed by the default embassy-debug image while the pair
 card is showing (a six-digit passkey or `ok` / `fail=`; never a MAC).
+`--features remote-debug` may reprint `pair pin=` every 5 s on splash
+or the pair card until `pair ok`.
 On a physical unit a host central typed the UART passkey and UART
 printed `pair ok`. The `wifi_survey` / `wifi_ap` / `wifi_http` lines
 are printed by the default image’s Wi-Fi cards (counts and the fixed

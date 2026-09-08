@@ -78,6 +78,12 @@ sealed snapshots, `developer-data/uart-inspection-records/` for learn-uart,
 `developer-data/remote-debug/` for remember-me allowlist and snapshot
 planes). Do not use a leftover repo-root `backups/`.
 
+### CH343 UART: do not break ACM
+
+Default `monitor` and remote-debug UART listen claim the CH343 over
+USB CDC. Do not open `/dev/ttyACM*` for app UART (`--acm-tty` pulses
+EN / `POWERON`).
+
 ## Bluetooth testing options
 
 When testing Bluetooth pairing on default `embassy-debug-fw` (walk
@@ -114,15 +120,19 @@ from their own phone first. The host desk session is a separate
 live ask (`cargo xtask remote-debug` or `remote-debug --mcp`).
 Do not also run `monitor` (auto-PIN takes the UART lock).
 
-Advertise still only on `scene=pair`. After `pair ok`, this image
+Advertise still only on `scene=pair`, except after a software
+reset (`CoreSw`) on this image, which advertises on splash so a
+desk host can Connect without walking. After `pair ok`, this image
 **holds** the bonded GATT when walking off the pair card. Default
 image (no `remote-debug`) still drops the link on leave. Reconnect
-after a drop means walk back to the pair card. Firmware RAM-bonds
-this boot only; do not write factory NVS. `--remember` keep the
-BlueZ bond for allowlisted factory / CH343 USB serials in
+after any other drop means walk back to the pair card. Firmware
+RAM-bonds this boot only; do not write factory NVS. `--remember`
+keep the BlueZ bond for allowlisted factory / CH343 USB serials in
 gitignored `developer-data/remote-debug/` (never a MAC, never the
-PIN). After a device reboot, UART auto-PIN re-pairs and refreshes
-that host bond.
+PIN). `reboot` software-resets the **embedded MCU** (not the host);
+the GATT session dies and leftover BlueZ LTK must not be reused.
+UART auto-PIN re-pairs (the image reprints `pair pin=` every 5 s
+on splash or the pair card until `pair ok`).
 
 Injects are framebuffer pixels and product keys, not UART `p0=` /
 raw GT911. Snapshot is the last composed DRAW planes (one frozen

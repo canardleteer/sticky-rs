@@ -173,6 +173,7 @@ pub struct TouchPoint {
 pub enum Scene {
     /// Cold-boot title card: Ferris, `sticky-rs`, then a smaller hint.
     /// Composed in the current in-plane page (FaceUp / FaceDown keep the last).
+    /// Remote-debug may reprint `pair pin=` here after `PassKeyDisplay`.
     Splash,
     /// Geometric calibration (nested frames, Koch snowflake, triangle, rect).
     /// Composed in the current in-plane page.
@@ -354,6 +355,21 @@ impl Scene {
             6 => Some(Self::WifiAp),
             7 => Some(Self::Targets),
             _ => None,
+        }
+    }
+
+    /// Splash (no walk yet) or the pair card.
+    ///
+    /// Remote-debug reprints `pair pin=` on these cards only, after
+    /// `PassKeyDisplay` and until `pair ok`.
+    #[inline]
+    #[must_use]
+    pub const fn pair_pin_reprint(self) -> bool {
+        match self {
+            Self::Splash => true,
+            #[cfg(feature = "pair")]
+            Self::Pair => true,
+            _ => false,
         }
     }
 
@@ -827,6 +843,14 @@ pub enum Event {
         /// Milliseconds since boot.
         t_ms: u32,
     },
+    /// Embedded MCU will software-reset (`--features remote-debug`).
+    ///
+    /// Line: `remote reboot`. The **device**, not the host.
+    #[cfg(feature = "remote-debug")]
+    RemoteReboot {
+        /// Milliseconds since boot.
+        t_ms: u32,
+    },
     /// Touch-validation mark (`target show|hit|miss|loop`).
     ///
     /// Page pixels for the current IMU hold. Never a MAC.
@@ -1094,6 +1118,11 @@ pub fn format_event<'a>(event: &Event, buf: &'a mut [u8]) -> Result<&'a str, For
         Event::TouchDrop { t_ms } => write_into(
             buf,
             format_args!("{LOG_PREFIX}: t={t_ms} touch drop src=syn"),
+        ),
+        #[cfg(feature = "remote-debug")]
+        Event::RemoteReboot { t_ms } => write_into(
+            buf,
+            format_args!("{LOG_PREFIX}: t={t_ms} remote reboot"),
         ),
         Event::Target {
             t_ms,
@@ -1731,6 +1760,10 @@ mod tests {
             line(&Event::TouchDrop { t_ms: 9 }),
             "embassy-debug: t=9 touch drop src=syn"
         );
+        assert_eq!(
+            line(&Event::RemoteReboot { t_ms: 9 }),
+            "embassy-debug: t=9 remote reboot"
+        );
         let mut buf = [0u8; LINE_CAPACITY];
         let text = format_event(
             &Event::Snap {
@@ -2127,6 +2160,18 @@ mod tests {
             assert_eq!(Scene::from_persist_byte(scene.persist_byte()), Some(scene));
         }
         assert_eq!(Scene::from_persist_byte(9), None);
+    }
+
+    #[test]
+    fn splash_reprints_pair_pin_and_shapes_do_not() {
+        assert!(Scene::Splash.pair_pin_reprint());
+        assert!(!Scene::Shapes.pair_pin_reprint());
+    }
+
+    #[cfg(feature = "pair")]
+    #[test]
+    fn pair_card_reprints_pair_pin() {
+        assert!(Scene::Pair.pair_pin_reprint());
     }
 
     #[test]

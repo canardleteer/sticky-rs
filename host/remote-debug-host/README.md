@@ -14,6 +14,9 @@ call BlueZ `Device1.Pair()` / `bluetoothctl pair` — that races a
 peripheral SMP Security Request. A KeyboardOnly agent answers
 `RequestPasskey` without blocking the D-Bus loop. Never print a MAC.
 
+`Session::reboot` writes a `Reboot` envelope (embedded MCU, not this
+host), waits for `RebootAck` or a drop, and forgets the BlueZ bond.
+
 Allowlisted long-term bonds and UART `pair pin=` scraping live in the
 caller (`sticky-host` / `cargo xtask remote-debug`), not here.
 

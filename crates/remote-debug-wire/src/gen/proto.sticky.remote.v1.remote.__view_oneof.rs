@@ -46,5 +46,15 @@ pub mod envelope {
                 super::super::super::super::__buffa::view::LogLineView<'a>,
             >,
         ),
+        Reboot(
+            ::buffa::alloc::boxed::Box<
+                super::super::super::super::__buffa::view::RebootView<'a>,
+            >,
+        ),
+        RebootAck(
+            ::buffa::alloc::boxed::Box<
+                super::super::super::super::__buffa::view::RebootAckView<'a>,
+            >,
+        ),
     }
 }

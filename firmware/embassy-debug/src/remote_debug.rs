@@ -363,14 +363,17 @@ pub(crate) enum EnvelopeOutcome {
         /// Nonce already holding the slot, or 0.
         armed: u64,
     },
+    /// Host asked to software-reset the **embedded MCU** (not the host).
+    Reboot,
 }
 
 /// Decode one framed [`remote_debug_wire::v1::Envelope`] and apply it.
 ///
 /// Injects go to the tap / key mux. Snapshot Get / Ack / Clear
-/// update the frozen slot and emit the `snap` UART line.
-/// [`crate::pair`] is the BLE caller (*The Embassy Book*: keep
-/// protocol out of the display task).
+/// update the frozen slot and emit the `snap` UART line. `Reboot`
+/// emits `remote reboot` and asks the BLE task to ACK then
+/// software-reset the **MCU** (*The Embassy Book*: keep protocol
+/// out of the display task).
 ///
 /// # Errors
 ///
@@ -395,9 +398,14 @@ pub(crate) fn handle_envelope(bytes: &[u8]) -> Result<EnvelopeOutcome, FrameErro
             handle_clear();
             EnvelopeOutcome::None
         }
-        Some(Body::Snapshot(_) | Body::SnapshotBusy(_) | Body::LogLine(_)) | None => {
-            EnvelopeOutcome::None
+        Some(Body::Reboot(_)) => {
+            crate::emit(Event::RemoteReboot {
+                t_ms: crate::now_ms(),
+            });
+            EnvelopeOutcome::Reboot
         }
+        Some(Body::Snapshot(_) | Body::SnapshotBusy(_) | Body::LogLine(_) | Body::RebootAck(_))
+        | None => EnvelopeOutcome::None,
     };
     Ok(outcome)
 }

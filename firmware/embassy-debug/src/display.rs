@@ -155,6 +155,8 @@ pub async fn display_task(
     let mut kind = scene_kind(scene);
     #[cfg(feature = "pair")]
     crate::pair::set_visible(scene == Scene::Pair);
+    #[cfg(feature = "pair")]
+    crate::pair::set_scene(scene);
     #[cfg(feature = "wifi")]
     crate::wifi::set_ui_scene(scene);
     #[cfg(feature = "wifi")]
@@ -369,6 +371,8 @@ pub async fn display_task(
                 scene = next;
                 #[cfg(feature = "pair")]
                 crate::pair::set_visible(scene == Scene::Pair);
+                #[cfg(feature = "pair")]
+                crate::pair::set_scene(scene);
                 #[cfg(feature = "wifi")]
                 crate::wifi::set_ui_scene(scene);
                 crate::targets::set_visible(scene == Scene::Targets);

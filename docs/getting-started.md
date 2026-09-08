@@ -155,6 +155,13 @@ Unattended you should see `embassy-debug: latched`, INT-low `0x5d ack`
 and tilt add `btn` / `touch` / pose lines and a short beep. Page Down
 reaches the four-tone boxes (`scene=tones`). Full sequence and restore:
 [firmware/embassy-debug/AGENTS.md](../firmware/embassy-debug/AGENTS.md).
+`--features remote-debug` is a later desk sit (encrypted GATT after
+the pair card). Build with
+`cargo xtask build-fw embassy-debug --features remote-debug`.
+`cargo xtask remote-debug` is live BLE (and UART when auto-PIN
+scrapes `pair pin=`). Do not start it unless you asked for that
+sit. How-to:
+[firmware/embassy-debug/README.md](../firmware/embassy-debug/README.md#remote-debug-test-instructions).
 
 `flash-app` writes a `.bin`; it does not compile. If the build fails, do
 not flash a leftover ELF. (`esp_app_desc!()` is required; do not
@@ -228,9 +235,10 @@ charge enable, latch timing, and sleep current remain human-approved work.
 | [`crates/embassy-debug`](../crates/embassy-debug) | Host-tested UART event lines for the Embassy image |
 | `firmware/simple-debug` | ESP32-S3 proof-of-life. Workspace member, not a default-member |
 | `firmware/embassy-debug` | ESP32-S3 Embassy event logger. Same membership; panel always on |
-| `host/sticky-host/` | Host library: detect, factory backup, confirm, restore, `build-fw`, `flash-app`, learn-uart, monitor (`Layout` in; UART lock inside live methods) |
+| `host/sticky-host/` | Host library: detect, factory backup, confirm, restore, `build-fw`, `flash-app`, learn-uart, monitor, remote-debug UART PIN / allowlist (`Layout` in; UART lock inside live methods) |
+| `host/remote-debug-host/` | Generic Linux BLE central for framed remote-debug envelopes (no clap, no UART) |
 | `xtask/` | Clap front-end at the repo root (`cargo xtask`) over `sticky-host` |
-| `developer-data/` | Gitignored private / personalized files. Sealed snapshots in `developer-data/backups/`; learn-uart YAML in `uart-inspection-records/<serial>/`; confirm reports in `confirm-records/<serial>/`; not in git |
+| `developer-data/` | Gitignored private / personalized files. Sealed snapshots in `developer-data/backups/`; learn-uart YAML in `uart-inspection-records/<serial>/`; confirm reports in `confirm-records/<serial>/`; remote-debug allowlist and planes in `remote-debug/`; not in git |
 
 The chip drivers are `#![no_std]`, depend only on `embedded-hal` 1.0, and
 know nothing about ESP32-S3. Board specifics live in the board-support

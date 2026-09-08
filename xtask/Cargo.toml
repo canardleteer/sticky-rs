@@ -12,8 +12,14 @@ authors.workspace = true
 
 [dependencies]
 clap = { version = "4.5.41", features = ["derive", "env"] }
+clap-mcp = { version = "0.1.0", features = ["output-schema"] }
 env_logger = "0.11.8"
 embassy-debug = { path = "../crates/embassy-debug" }
+remote-debug-host = { path = "../host/remote-debug-host" }
+remote-debug-wire = { path = "../crates/remote-debug-wire" }
+panel-view = { path = "../crates/panel-view" }
+schemars = { version = "1.2.2", features = ["derive"] }
+serde = { version = "1.0.219", features = ["derive"] }
 simple-debug = { path = "../crates/simple-debug" }
 sticky-host = { path = "../host/sticky-host" }
 

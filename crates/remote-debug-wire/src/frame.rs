@@ -4,12 +4,30 @@ use alloc::vec::Vec;
 
 use buffa::Message;
 
-use crate::v1::{
-    envelope::Body, Envelope, FrameKind, Snapshot, SnapshotAck, SnapshotBusy, SnapshotClear,
-};
+use buffa::EncodeSink;
+
+use crate::v1::{envelope::Body, Envelope, FrameKind, SnapshotAck, SnapshotBusy, SnapshotClear};
 
 /// `Envelope.version` this crate writes and accepts.
 pub const ENVELOPE_VERSION: u32 = 1;
+
+/// Snapshot scalars. Planes stay borrowed at the call site.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SnapshotMeta {
+    /// Host nonce that armed the slot.
+    pub nonce: u64,
+    /// Packed width.
+    pub width: u16,
+    /// Packed height.
+    pub height: u16,
+    /// Mono or gray4.
+    pub kind: FrameKind,
+    /// Product hold token.
+    pub hold: Option<u32>,
+}
+
+/// Protobuf field number for `Envelope.snapshot`.
+const ENVELOPE_SNAPSHOT_FIELD: u32 = 13;
 
 /// Framing or version error.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -20,6 +38,8 @@ pub enum FrameError {
     Version,
     /// buffa could not decode an Envelope.
     Decode,
+    /// Length prefix or assembler buffer exceeded the configured cap.
+    TooLarge,
 }
 
 /// Prepend a little-endian u32 length to `payload`.
@@ -85,22 +105,20 @@ pub fn encode_snapshot_envelope(
     bw: &[u8],
     red: Option<&[u8]>,
 ) -> Vec<u8> {
-    let snap = Snapshot {
-        nonce,
-        width: u32::from(width),
-        height: u32::from(height),
-        kind: kind.into(),
-        hold,
-        bw: bw.to_vec(),
-        red: red.map(<[u8]>::to_vec).unwrap_or_default(),
-        ..Snapshot::default()
-    };
-    let env = Envelope {
-        version: ENVELOPE_VERSION,
-        body: Some(Body::from(snap)),
-        ..Envelope::default()
-    };
-    encode_envelope(&env)
+    let mut out = Vec::new();
+    write_framed_snapshot(
+        SnapshotMeta {
+            nonce,
+            width,
+            height,
+            kind,
+            hold,
+        },
+        bw,
+        red,
+        &mut out,
+    );
+    out
 }
 
 /// Wrap a body in a versioned envelope and frame it.
@@ -136,4 +154,219 @@ pub fn encode_snapshot_busy(armed: u64) -> Vec<u8> {
         nonce: armed,
         ..SnapshotBusy::default()
     })
+}
+
+/// Encoded size of a `Snapshot` body (no envelope wrapper).
+///
+/// Used so a device can write the u32 LE length and the length-delimited
+/// snapshot header without cloning `bw` / `red`.
+#[must_use]
+pub fn snapshot_body_len(
+    nonce: u64,
+    width: u16,
+    height: u16,
+    kind: FrameKind,
+    hold: Option<u32>,
+    bw_len: usize,
+    red_len: usize,
+) -> u32 {
+    let mut size = 0u64;
+    if nonce != 0 {
+        size += 1 + u64::from(buffa::types::FIXED64_ENCODED_LEN as u32);
+    }
+    if width != 0 {
+        size += 1 + buffa::types::uint32_encoded_len(u32::from(width)) as u64;
+    }
+    if height != 0 {
+        size += 1 + buffa::types::uint32_encoded_len(u32::from(height)) as u64;
+    }
+    let kind_i = buffa::Enumeration::to_i32(&kind);
+    if kind_i != 0 {
+        size += 1 + buffa::types::int32_encoded_len(kind_i) as u64;
+    }
+    if let Some(v) = hold {
+        size += 1 + buffa::types::uint32_encoded_len(v) as u64;
+    }
+    if bw_len != 0 {
+        size += 1 + buffa::encoding::varint_len(bw_len as u64) as u64 + bw_len as u64;
+    }
+    if red_len != 0 {
+        size += 1 + buffa::encoding::varint_len(red_len as u64) as u64 + red_len as u64;
+    }
+    buffa::saturate_size(size)
+}
+
+/// Encoded size of a versioned envelope whose body is one `Snapshot`.
+#[must_use]
+pub fn snapshot_envelope_payload_len(inner: u32) -> u32 {
+    let mut size = 0u64;
+    size += 1 + buffa::types::uint32_encoded_len(ENVELOPE_VERSION) as u64;
+    size += 1 + buffa::encoding::varint_len(u64::from(inner)) as u64 + u64::from(inner);
+    buffa::saturate_size(size)
+}
+
+/// Write a framed snapshot envelope from borrowed planes.
+///
+/// Writes `u32` LE length, then `Envelope.version` and a length-delimited
+/// `Snapshot`. Device transports implement [`EncodeSink`] so they can
+/// flush ATT notify chunks without a second 48 KiB `Vec`.
+pub fn write_framed_snapshot<S: EncodeSink>(
+    meta: SnapshotMeta,
+    bw: &[u8],
+    red: Option<&[u8]>,
+    sink: &mut S,
+) {
+    let red = red.unwrap_or(&[]);
+    let inner = snapshot_body_len(
+        meta.nonce,
+        meta.width,
+        meta.height,
+        meta.kind,
+        meta.hold,
+        bw.len(),
+        red.len(),
+    );
+    let payload = snapshot_envelope_payload_len(inner);
+    sink.put_slice(&payload.to_le_bytes());
+    buffa::types::put_uint32_field(1, ENVELOPE_VERSION, sink);
+    buffa::types::put_len_delimited_header(ENVELOPE_SNAPSHOT_FIELD, u64::from(inner), sink);
+    write_snapshot_body(meta, bw, red, sink);
+}
+
+/// Write `Snapshot` fields (no envelope) from borrowed slices.
+fn write_snapshot_body<S: EncodeSink>(meta: SnapshotMeta, bw: &[u8], red: &[u8], sink: &mut S) {
+    write_snapshot_scalars(meta, sink);
+    if !bw.is_empty() {
+        buffa::types::put_shared_bytes_field(6, &bw, sink);
+    }
+    if !red.is_empty() {
+        buffa::types::put_shared_bytes_field(7, &red, sink);
+    }
+}
+
+/// Envelope + snapshot tags and scalars, stopping before plane payloads.
+///
+/// Device notifies this (tens of bytes), then the `bw` / `red` slices in
+/// ATT-sized chunks, then [`write_bytes_field_header`] for a trailing
+/// red plane. Does not copy the planes.
+pub fn write_snapshot_preamble<S: EncodeSink>(
+    meta: SnapshotMeta,
+    bw_len: usize,
+    red_len: usize,
+    sink: &mut S,
+) {
+    let inner = snapshot_body_len(
+        meta.nonce,
+        meta.width,
+        meta.height,
+        meta.kind,
+        meta.hold,
+        bw_len,
+        red_len,
+    );
+    let payload = snapshot_envelope_payload_len(inner);
+    sink.put_slice(&payload.to_le_bytes());
+    buffa::types::put_uint32_field(1, ENVELOPE_VERSION, sink);
+    buffa::types::put_len_delimited_header(ENVELOPE_SNAPSHOT_FIELD, u64::from(inner), sink);
+    write_snapshot_scalars(meta, sink);
+    if bw_len != 0 {
+        write_bytes_field_header(6, bw_len, sink);
+    }
+}
+
+/// Tag + length varint for a proto `bytes` field (payload follows).
+pub fn write_bytes_field_header<S: EncodeSink>(field: u32, len: usize, sink: &mut S) {
+    buffa::types::put_len_delimited_header(field, len as u64, sink);
+}
+
+/// Write [`write_snapshot_preamble`] into `buf`. Returns bytes used.
+///
+/// Device stack helper: the preamble is tens of bytes, not a plane.
+///
+/// # Errors
+///
+/// [`FrameError::TooLarge`] when `buf` cannot hold the preamble.
+pub fn snapshot_preamble_to_slice(
+    meta: SnapshotMeta,
+    bw_len: usize,
+    red_len: usize,
+    buf: &mut [u8],
+) -> Result<usize, FrameError> {
+    let mut sink = SliceSink { buf, pos: 0 };
+    write_snapshot_preamble(meta, bw_len, red_len, &mut sink);
+    Ok(sink.pos)
+}
+
+/// Write [`write_bytes_field_header`] into `buf`. Returns bytes used.
+///
+/// # Errors
+///
+/// [`FrameError::TooLarge`] when `buf` cannot hold the header.
+pub fn bytes_field_header_to_slice(
+    field: u32,
+    len: usize,
+    buf: &mut [u8],
+) -> Result<usize, FrameError> {
+    let mut sink = SliceSink { buf, pos: 0 };
+    write_bytes_field_header(field, len, &mut sink);
+    Ok(sink.pos)
+}
+
+/// Sequential write into a caller slice (device stack / host tests).
+struct SliceSink<'a> {
+    buf: &'a mut [u8],
+    pos: usize,
+}
+
+impl SliceSink<'_> {
+    fn put(&mut self, src: &[u8]) {
+        let end = self.pos.saturating_add(src.len());
+        if end > self.buf.len() {
+            // Saturate; caller sized the buffer. Truncation is a bug.
+            return;
+        }
+        self.buf[self.pos..end].copy_from_slice(src);
+        self.pos = end;
+    }
+}
+
+impl EncodeSink for SliceSink<'_> {
+    fn put_u8(&mut self, value: u8) {
+        self.put(&[value]);
+    }
+
+    fn put_slice(&mut self, src: &[u8]) {
+        self.put(src);
+    }
+
+    fn put_u32_le(&mut self, value: u32) {
+        self.put(&value.to_le_bytes());
+    }
+
+    fn put_u64_le(&mut self, value: u64) {
+        self.put(&value.to_le_bytes());
+    }
+
+    fn put_shared(&mut self, bytes: buffa::bytes::Bytes) {
+        self.put(&bytes);
+    }
+}
+
+fn write_snapshot_scalars<S: EncodeSink>(meta: SnapshotMeta, sink: &mut S) {
+    if meta.nonce != 0 {
+        buffa::types::put_fixed64_field(1, meta.nonce, sink);
+    }
+    if meta.width != 0 {
+        buffa::types::put_uint32_field(2, u32::from(meta.width), sink);
+    }
+    if meta.height != 0 {
+        buffa::types::put_uint32_field(3, u32::from(meta.height), sink);
+    }
+    let kind_i = buffa::Enumeration::to_i32(&meta.kind);
+    if kind_i != 0 {
+        buffa::types::put_int32_field(4, kind_i, sink);
+    }
+    if let Some(v) = meta.hold {
+        buffa::types::put_uint32_field(5, v, sink);
+    }
 }

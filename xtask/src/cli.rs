@@ -30,7 +30,8 @@ goes to write-once `original/<serial>/`. Anything else is a named capture. \
 `flash-app` writes factory `app0` only. Never erase.
 
 Host-only (no UART): `detect-connected` without `--probe`, `backup-factory-firmware --import`, \
-`build-fw`, `ci`, `diff-learn-uart`, and `vet-idle-log`.
+`build-fw`, `ci`, `diff-learn-uart`, and `vet-idle-log`. \
+`remote-debug` is live BLE (and UART when auto-PIN scrapes `pair pin=`).
 
 Use `<COMMAND> --help` for flags.";
 
@@ -121,6 +122,9 @@ pub enum Command {
     Ci,
     /// Read UART0 at 115200 via USB CDC
     Monitor(MonitorArgs),
+    /// Live BLE remote-debug (pair then hold; `--mcp` is this subtree only)
+    #[command(long_about = crate::remote_debug::ABOUT)]
+    RemoteDebug(crate::remote_debug::RemoteDebugCli),
 }
 
 /// USB inventory (default) or UART/chip probe.
@@ -438,6 +442,7 @@ impl Cli {
                 Ok(())
             }
             Command::VetIdleLog(args) => run_vet_idle_log(args),
+            Command::RemoteDebug(cli) => crate::remote_debug::run_cli(cli),
             Command::Monitor(args) => monitor(
                 &layout,
                 args.port,
@@ -559,7 +564,7 @@ fn prompt_snapshot_name(evidence: &str) -> Result<Option<String>, Error> {
 }
 
 /// Repository root (parent of the `xtask` package).
-fn repo_root() -> PathBuf {
+pub(crate) fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("xtask lives in the workspace")

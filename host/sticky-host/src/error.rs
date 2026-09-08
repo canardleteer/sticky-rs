@@ -105,6 +105,8 @@ pub enum Error {
     LearnNeedsTty,
     /// `--import` source is unusable.
     Import(String),
+    /// Remote-debug UART scrape or allowlist.
+    RemoteDebug(String),
 }
 
 impl fmt::Display for Error {
@@ -252,6 +254,7 @@ impl fmt::Display for Error {
                 "learn-uart human steps need a terminal; pass --unattended-only or run interactively"
             ),
             Self::Import(reason) => write!(f, "import: {reason}"),
+            Self::RemoteDebug(reason) => write!(f, "remote-debug: {reason}"),
         }
     }
 }

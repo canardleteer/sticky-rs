@@ -376,8 +376,10 @@ not treat a successful scan as a license to write NVS or print a MAC.
 Default `embassy-debug` starts BLE but advertises `sticky-rs` only
 while the pair card is showing. Walking to that page advertises
 as `sticky-rs` and shows a six-digit passkey only after a phone
-starts pairing. Bonds stay in RAM for this boot. The image does
-not write factory NVS and does not print a MAC. The MCU walkthrough
+starts pairing. Walking away stops advertising and, on this
+default image, drops the connection. Bonds stay in RAM for this
+boot. The image does not write factory NVS and does not print a
+MAC. The MCU walkthrough
 is [src/pair.rs](src/pair.rs) (rustdoc on the private helpers too).
 Snapshot first:
 [docs/getting-started.md](../../docs/getting-started.md).
@@ -475,6 +477,106 @@ If BLE never starts, you should see `pair fail=ble_start` (or
 On a physical unit a host BlueZ Connect typed the UART passkey:
 `pair ok`, and the pair card showed `Paired`. A phone Settings
 sit is still a valid second path.
+
+## Remote-debug Test Instructions
+
+Default `embassy-debug` does **not** include remote-debug. This
+feature adds an encrypted GATT after the same DisplayOnly pair:
+synthetic framebuffer taps, product-key edges, and a frozen copy
+of the last composed DRAW planes. Bonds stay in RAM for this
+boot. The image does not write factory NVS and does not print a
+MAC. After `pair ok`, walking off the pair card **keeps** the
+GATT link (advertise still stops). The MCU walkthrough is
+[src/remote_debug.rs](src/remote_debug.rs) and
+[src/pair.rs](src/pair.rs). Snapshot first:
+[docs/getting-started.md](../../docs/getting-started.md).
+
+You can pair from your own phone first (same pair card as
+above). The host desk session is a second path. Do not run
+`monitor` at the same time — `connect` needs that UART to read
+`pair pin=`.
+
+Do not combine with `mic`, `radio`, `charge`, or `sd`.
+
+To perform the test:
+
+### Step 1: Is the port free?
+
+Same as the pair test. Only one `monitor` or `remote-debug`
+auto-PIN at a time. Ctrl-C an old listen. Do not `kill -9`.
+
+Then:
+
+```shell
+cargo xtask detect-connected
+```
+
+You should see a Sticky path. If you do not, and you already killed a
+listen the hard way, unplug the USB-C cable and plug it back in once.
+Run `detect-connected` again.
+
+### Step 2: Build and flash (remote-debug image)
+
+```shell
+. $HOME/export-esp.sh
+cargo xtask build-fw embassy-debug --features remote-debug
+cargo xtask flash-app --image target/xtensa-esp32s3-none-elf/release-fw/embassy-debug.bin --yes
+```
+
+The image is on the chip only after `flash-app` finishes. A successful
+build alone does not flash. Do not start `monitor` after this.
+
+### Step 3: Open the pair card
+
+Press Page Down until the glass shows `BLUETOOTH PAIRING` and
+`Device: sticky-rs`. Pages are splash → shapes → legend → tones
+→ pair. There is no PIN yet.
+
+### Step 4: Connect from the host
+
+In a second terminal (no `monitor`):
+
+```shell
+cargo xtask remote-debug connect
+```
+
+`--pin 000042` skips UART if you already know the six digits.
+`--remember` keeps the BlueZ bond for this unit (factory / USB
+serial in gitignored `developer-data/remote-debug/`; never a MAC).
+
+You should see `connected` on the host. On the glass, the pair
+card should show `Paired`. You can walk to another page; the
+GATT stays up.
+
+### Step 5: Inject and snapshot
+
+```shell
+cargo xtask remote-debug inject-touch --x 400 --y 240
+cargo xtask remote-debug get-snapshot
+cargo xtask remote-debug snapshot-ack
+```
+
+A tap should print `touch … src=syn` on UART if you later listen,
+and the page should react as if you touched that framebuffer
+pixel. `get-snapshot` writes planes under
+`developer-data/remote-debug/snapshots/` (hex nonce in the name).
+A second `get-snapshot` with a different nonce should fail busy
+until you ack or `snapshot-clear`.
+
+### Step 6: Observe and report
+
+- **Pair then hold**: `pair ok` / `Paired`, then walking away
+  does not drop the desk session.
+- **Framebuffer inject**: the tap hits the ink you aimed at, not
+  UART `p0=` glass space.
+- **One frozen snapshot**: first get succeeds; a different nonce
+  is busy until ack or clear.
+- **Fail**: hang, panic, a MAC on UART or in
+  `developer-data/remote-debug/`, or a session that dies when you
+  leave the pair card.
+
+`cargo xtask remote-debug --mcp` is the same session for an MCP
+client. It does not expose `flash-app` or restore.
 
 ## Wifi Test Instructions
 

@@ -236,8 +236,12 @@ image. Later the same evening, operator glass showed
 sits (`mic` / `radio` / `charge` / `sd`) build with
 `--no-default-features`.
 `remote-debug` is **not** exclusive of `pair` (insecure desk
-snapshot + synthetic tap / key mux + `remote-debug-wire` codec;
-not default).
+snapshot + synthetic tap / key mux + `remote-debug-wire` codec +
+encrypted GATT after pair; not default). After `pair ok` that
+image holds the bonded link when walking off the pair card.
+`cargo xtask remote-debug` is a live BLE ask (UART auto-PIN when
+a CH343 is present). `host/remote-debug-host` wraps Linux `bluer`
+(Connect, not Pair).
 `wifi` is **not** exclusive of `pair`. `trouble-host` 0.7 still
 needs the `central` feature so `GAP_SERVICE_ATTRIBUTE_COUNT`
 exists. Offer a phone sit first; a host BlueZ or SoftAP

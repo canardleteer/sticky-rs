@@ -27,9 +27,10 @@ live in
 | `learn-uart-only` | yes | Same session as `learn-uart`, only named groups: `touch`, `buttons`, `vbus`, `imu`, `sd` (positional and/or `--only`). Example: `learn-uart-only touch --image FILE --yes --restore-app0` |
 | `diff-learn-uart` | no | Host-only compare of two YAML reports or factory serials. Default paste uses `UNIT_A` / `UNIT_B`; `--show-serials` prints serials locally |
 | `vet-idle-log` | no | Host-only. `--embassy FILE` or `--simple FILE` from `monitor --output`. Checks unattended tokens (latch, GT911 dance / `0x5D`, idle `imu=` / `gt911 st=`, or simple-debug heartbeat + SHT/RTC). Does not open a UART |
-| `build-fw` | no | Host-only. `cargo +esp build -p <fw> --profile release-fw --target xtensa-esp32s3-none-elf -Zbuild-std=core,alloc --locked` then `espflash save-image` (no port). IMAGE is `simple-debug` or `embassy-debug`. Default embassy-debug includes `pair` + `wifi` (advertise only on the pair card; Wi-Fi idle until a tap). `--features operator` on simple-debug; `--features mic`, `radio`, `pair`, `wifi`, `spi20`, `sd`, `charge`, or `remote-debug` on embassy-debug. Exclusive sits (`mic` / `radio` / `charge` / `sd`) pass `--no-default-features`. `wifi` packs with `pair`. `remote-debug` packs with default `pair` + `wifi` (insecure desk snapshot + synthetic tap / key mux + protobuf codec; not default). ELF and `.bin` under workspace `target/xtensa-esp32s3-none-elf/release-fw/` |
+| `build-fw` | no | Host-only. `cargo +esp build -p <fw> --profile release-fw --target xtensa-esp32s3-none-elf -Zbuild-std=core,alloc --locked` then `espflash save-image` (no port). IMAGE is `simple-debug` or `embassy-debug`. Default embassy-debug includes `pair` + `wifi` (advertise only on the pair card; Wi-Fi idle until a tap). `--features operator` on simple-debug; `--features mic`, `radio`, `pair`, `wifi`, `spi20`, `sd`, `charge`, or `remote-debug` on embassy-debug. Exclusive sits (`mic` / `radio` / `charge` / `sd`) pass `--no-default-features`. `wifi` packs with `pair`. `remote-debug` packs with default `pair` + `wifi` (insecure desk snapshot + synthetic tap / key mux + protobuf codec + encrypted GATT after pair; not default). ELF and `.bin` under workspace `target/xtensa-esp32s3-none-elf/release-fw/` |
 | `ci` | no | Host-only CI gate. `cargo fmt --check --all`; host clippy+test (default-members, `--all-features`, `ssd1677-gray4 --no-default-features`); `cargo +esp` clippy for `simple-debug-fw` (default and `operator`) and `embassy-debug-fw` (default, `mic`, `radio`, `pair`, `spi20`, `sd`, `charge`, and `remote-debug`); then `rumdl check`, `cargo machete`, `cargo audit`. Missing extra tools print `cargo install …` and fail. Does not open a UART and does not refuse leftover `backups/` |
 | `monitor` | yes | UART0 listen. Flags below; not nested subcommands. Pair with `flash-app` / `restore-factory-firmware` / `confirm-factory-firmware` |
+| `remote-debug` | live BLE; UART on auto-PIN | Encrypted GATT after DisplayOnly pair (`--features remote-debug` image). Advertise `sticky-rs` on `scene=pair`. BlueZ **Connect**, not `Pair()`. Default `connect` scrapes a new UART `pair pin=` (takes the UART lock; fails if `monitor` holds it). `--pin` skips UART. `--remember` allowlists factory / CH343 USB serial in gitignored `developer-data/remote-debug/` (never a MAC, never the PIN). After `pair ok` the image holds GATT when walking off the pair card. Leaves: `connect`, `inject-touch`, `inject-button`, `get-snapshot`, `snapshot-ack`, `snapshot-clear`, `status`, `disconnect`. `--mcp` is a long-lived session on **this subtree only** (not `flash-app` / restore). Do not also run `monitor`. Coordinates are framebuffer |
 
 ```shell
 cargo xtask detect-connected
@@ -55,6 +56,8 @@ cargo xtask confirm-factory-firmware
 # host-only: cargo xtask vet-idle-log --embassy idle-embassy.log
 # host-only: cargo xtask vet-idle-log --simple idle-simple.log
 # cargo xtask monitor
+# live BLE (UART lock when auto-PIN): cargo xtask remote-debug connect --remember
+# cargo xtask remote-debug --mcp
 ```
 
 `detect-connected` prints QinHeng `1a86:55d3` Sticky UART nodes and a
@@ -160,7 +163,8 @@ lock file.
 
 Any new `cargo xtask` or `sticky-host` entry point that would open the CH343
 for a reset (DTR/RTS, EN/IO0, ROM stub, write-bin, read-flash, `--probe`) or
-a long-running UART read (`monitor`, `learn-uart`, `learn-uart-only`) **must**
+a long-running UART read (`monitor`, `learn-uart`, `learn-uart-only`,
+`remote-debug` auto-PIN) **must**
 hold that guard for the whole command, **including while any child process
 runs**. Do not add a second lock file, a per-subcommand flock, or a
 “this command is short so skip it” path.

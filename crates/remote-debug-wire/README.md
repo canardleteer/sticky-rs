@@ -23,3 +23,18 @@ space, and not a raw GT911 480×800 sample.
 off. Generated Rust under `src/gen/` is committed so default builds
 stay offline. Rewrite it with `REGEN_PROTO=1 cargo build -p
 remote-debug-wire` (needs `buf` via `buf-tools`).
+
+## BLE GATT (optional transport)
+
+Local 128-bit UUIDs (not SIG, not the pair-card token service):
+
+| Role | UUID |
+| --- | --- |
+| Service | `c81e1000-5c8a-4f0e-9c3a-2e7b1a0d4f11` |
+| RX write (host → device) | `c81e1001-5c8a-4f0e-9c3a-2e7b1a0d4f11` |
+| TX notify (device → host) | `c81e1002-5c8a-4f0e-9c3a-2e7b1a0d4f11` |
+
+Both characteristics require an encrypted link. ATT is not
+self-delimiting: reassemble one u32-LE frame (`FrameAssembler`), then
+`decode_envelope`. Constants live on `GATT_SERVICE_UUID` /
+`GATT_RX_UUID` / `GATT_TX_UUID`.

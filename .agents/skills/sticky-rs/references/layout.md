@@ -6,9 +6,10 @@
 | --- | --- |
 | `crates/*` | Default-members. Host-testable format crates and (when present) `no_std` `embedded-hal` 1.0 drivers |
 | `host/` | Default-members. Host libraries and future host CLIs (not `xtask`) |
-| `host/sticky-host/` | Host library (`publish = true`, not crates.io yet). Detect, factory backup / confirm / restore, `build-fw`, `flash-app`, learn-uart, monitor. Callers pass `Layout`; live methods take the UART lock |
-| `xtask/` | Clap front-end at the repo root (`cargo xtask`). Maps flags to `sticky-host`; `repo_root()` is the parent of this package |
-| `developer-data/` | Gitignored private / personalized files. Sealed dumps under `developer-data/backups/` (`original/<serial>/`, `captures/<unit-id>/<slug>/`). Learn-uart YAML under `uart-inspection-records/<serial>/`. Confirm reports under `confirm-records/<serial>/`. Private scratch notes stay here too. Not in git. Leftover repo-root `backups/` is also ignored; do not use it |
+| `host/sticky-host/` | Host library (`publish = true`, not crates.io yet). Detect, factory backup / confirm / restore, `build-fw`, `flash-app`, learn-uart, monitor, remote-debug UART PIN / allowlist. Callers pass `Layout`; live methods take the UART lock |
+| `host/remote-debug-host/` | Generic BLE central (`publish = true`). No clap, no UART, no Sticky pins. Linux uses `bluer` (Connect, not Pair) |
+| `xtask/` | Clap front-end at the repo root (`cargo xtask`). Maps flags to `sticky-host`; `repo_root()` is the parent of this package. `remote-debug --mcp` is a clap-mcp subtree, not the full CLI |
+| `developer-data/` | Gitignored private / personalized files. Sealed dumps under `developer-data/backups/` (`original/<serial>/`, `captures/<unit-id>/<slug>/`). Learn-uart YAML under `uart-inspection-records/<serial>/`. Confirm reports under `confirm-records/<serial>/`. Remote-debug allowlist and snapshot planes under `remote-debug/`. Private scratch notes stay here too. Not in git. Leftover repo-root `backups/` is also ignored; do not use it |
 | `firmware/*` | Workspace members, not default-members. ELFs in workspace `target/`. [Firmware examples as tutorial code](../../../../firmware/AGENTS.md#firmware-examples-as-tutorial-code) |
 | `docs/` | [SAFETY.md](../../../../docs/SAFETY.md) (symlink into the hardware skill), [getting-started.md](../../../../docs/getting-started.md), [firmware-snapshot-management.md](../../../../docs/firmware-snapshot-management.md), [API-RULES.md](../../../../docs/API-RULES.md), [CRATES.md](../../../../docs/CRATES.md), [ssd1677.md](../../../../docs/ssd1677.md), [DATASHEETS.md](../../../../docs/DATASHEETS.md) (symlink into the hardware skill) |
 | `rust-analyzer.toml` | Excludes `simple-debug-fw` and `embassy-debug-fw` from host check |
@@ -21,8 +22,8 @@ logical-canvas trait (draw + touch + landmarks + hold) plus snapshot /
 tagged-touch companions (`ExpectedFrame`, `TouchSource`; not methods on
 `PanelView`). `remote-debug-wire` is the protobuf codec
 (`sticky.remote.v1.Envelope`, u32 LE length, one frozen snapshot
-slot) mapped onto those companions; it does not own planes or pick a
-transport. Board specifics —
+slot) plus documented GATT UUIDs and ATT reassembly; it does not own
+planes. `remote-debug-host` is the generic Linux central. Board specifics —
 pins, latch, rails, transforms — belong in `seeed-reterminal-sticky`
 (`View` implements `PanelView`). Keep that split.
 
@@ -51,15 +52,18 @@ pins, latch, rails, transforms — belong in `seeed-reterminal-sticky`
 - Host CLIs (`xtask` and any future CLI) use [`clap`](https://docs.rs/clap)
   **derive** (`Parser`, `Subcommand`, `Args`). Do not put clap types in
   `sticky-host`. Do not use clap builder, `pico-args`, or hand-rolled
-  `std::env::args` dispatch. Keep `--help` tidy: one-line `about`,
+  `std::env::args` dispatch except the `main` peek that routes
+  `remote-debug` (including `--mcp`) to that subtree so flash-app /
+  restore never become MCP tools. Keep `--help` tidy: one-line `about`,
   paragraph `long_about` (blank lines; clap wraps each), no Cargo.toml
   essay, `hide_env_values` on `ESPFLASH_PORT`. Device I/O lives in
   `sticky-host` via the [`espflash`](https://crates.io/crates/espflash)
   **library** (`default-features = false`, `serialport`);
   [`cargo-espflash`](https://crates.io/crates/cargo-espflash) is a
   binary-only Cargo plugin wrapping that crate. Do not enable
-  espflash's `cli` feature. `sticky-host` and xtask require rustc 1.88
-  (espflash 4.5); the `no_std` crates stay at workspace MSRV 1.85. Live
+  espflash's `cli` feature. `sticky-host`, `remote-debug-host`, and
+  xtask require rustc 1.88 (espflash 4.5); the `no_std` crates stay
+  at workspace MSRV 1.85. Live
   `sticky-host` methods take [`uart_lock::try_acquire`](xtask.md#uart-session-lock-shared)
   internally. New UART-touching in-repo tools reuse that same lock; do not
   invent another. UART-touching subprocesses go through

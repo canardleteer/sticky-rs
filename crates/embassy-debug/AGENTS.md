@@ -4,7 +4,7 @@ Host-tested UART line format for `firmware/embassy-debug`. This crate is
 a default-member. The Xtensa image is not: do not `cargo test -p
 embassy-debug-fw` on host rustc.
 
-Flash, `monitor`, restore, and live-ask:
+Flash, `monitor`, `remote-debug`, restore, and live-ask:
 [firmware AGENTS.md](../../firmware/embassy-debug/AGENTS.md) and the
 root [AGENTS.md](../../AGENTS.md). Xtensa twin comment bar:
 [Firmware examples as tutorial code](../../firmware/AGENTS.md#firmware-examples-as-tutorial-code).

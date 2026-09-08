@@ -2,8 +2,9 @@
 name: sticky-rs
 description: >-
   Use when working in the sticky-rs repository: cargo xtask, build-fw, ci,
-  flash-app, learn-uart, learn-uart-only, monitor, backup / confirm / restore,
-  the UART session lock, crate layout, clap / espflash host CLI rules, or
+  flash-app, learn-uart, learn-uart-only, monitor, remote-debug,
+  backup / confirm / restore, the UART session lock, crate layout,
+  clap / espflash host CLI rules, or
   this repository's Rust path on the Seeed reTerminal Sticky. Board pins,
   rails, and datasheets live in the sibling seeed-sticky-hardware skill —
   read that first for wiring.
@@ -45,7 +46,8 @@ that live command:
 
 - Live: `detect-connected --probe`, live `backup-factory-firmware`,
   `confirm-factory-firmware`, `restore-factory-firmware`, `flash-app`,
-  `learn-uart`, `learn-uart-only`, `monitor`
+  `learn-uart`, `learn-uart-only`, `monitor`, `remote-debug`,
+  `remote-debug --mcp`
 - Host-only (no UART): `detect-connected` without `--probe`,
   `backup-factory-firmware --import`, `diff-learn-uart`, `vet-idle-log`,
   `build-fw`, `ci`
@@ -56,6 +58,9 @@ compile; `cargo xtask build-fw` first. Host BLE pairing (BlueZ **Connect**
 against advertise name `sticky-rs`, not `bluetoothctl pair`) is a
 separate live ask; see
 [Bluetooth testing options](../../../AGENTS.md#bluetooth-testing-options).
+`remote-debug` / `remote-debug --mcp` is a separate live BLE ask
+(and UART when auto-PIN scrapes `pair pin=`); see
+[Remote-debug testing options](../../../AGENTS.md#remote-debug-testing-options).
 A host SoftAP check (`nmcli` join `sticky-rs-AP` / `curl` on
 `192.168.4.1`) is a separate live ask; see
 [Wi-Fi SoftAP testing options](../../../AGENTS.md#wi-fi-softap-testing-options).
@@ -68,14 +73,17 @@ A device may be attached for unrelated reasons; ignore it.
 | --- | --- |
 | `crates/*` | Default-members. Host-testable, `no_std` / format crates |
 | `host/sticky-host/` | Host library (`publish = true`, not crates.io yet). Live methods take the UART lock; callers pass `Layout` |
-| `xtask/` | Clap front-end at the repo root (`cargo xtask`, `publish = false`) |
-| `developer-data/` | Gitignored private / personalized files. Sealed per-unit originals under `developer-data/backups/`; learn-uart YAML under `uart-inspection-records/<serial>/`; confirm reports under `confirm-records/<serial>/`. Private scratch notes stay here too. Not in git |
+| `host/remote-debug-host/` | Generic BLE central (`publish = true`). No clap, no UART, no Sticky pins. Linux uses `bluer` |
+| `xtask/` | Clap front-end at the repo root (`cargo xtask`, `publish = false`). `remote-debug --mcp` is this subtree only |
+| `developer-data/` | Gitignored private / personalized files. Sealed per-unit originals under `developer-data/backups/`; learn-uart YAML under `uart-inspection-records/<serial>/`; confirm reports under `confirm-records/<serial>/`; remote-debug allowlist and snapshot planes under `remote-debug/`. Private scratch notes stay here too. Not in git |
 | `firmware/*` | Xtensa images. Workspace members, not default-members. `build-fw` looks them up by package name. [Firmware examples as tutorial code](../../../firmware/AGENTS.md#firmware-examples-as-tutorial-code) |
 
 Chip drivers (`bq25616`, `bq27220`, `ssd1677-gray4`) stay MCU-agnostic.
 `panel-view` is the shared canvas trait plus last-compose / tagged-touch
-companions. `remote-debug-wire` is the protobuf codec for an insecure
-desk snapshot / inject (transport-agnostic; UART stays plaintext).
+companions. `remote-debug-wire` is the protobuf codec plus documented
+GATT UUIDs / ATT reassembly for an insecure desk snapshot / inject
+(UART stays plaintext). `remote-debug-host` is the generic Linux
+central.
 Board pins, latch, rails, and
 transforms belong in `seeed-reterminal-sticky`.
 

@@ -27,6 +27,7 @@ pub mod original;
 pub mod output_path;
 pub mod partition_layouts;
 pub mod partitions;
+pub mod remote_debug;
 #[path = "restore.rs"]
 pub mod restore_impl;
 pub mod uart_lock;
@@ -45,6 +46,10 @@ pub use learn_uart_impl::LearnUartArgs;
 pub use manifest::SnapshotKind;
 pub use monitor_impl::MonitorOptions;
 pub use original::{load_manifest, refuse_if_legacy_backups_at_repo_root, Layout};
+pub use remote_debug::{
+    is_remembered, load_allowlist, parse_pair_ok_line, parse_pair_pin_line, remember_unit,
+    scan_pair_uart, usb_serial_from_port, wait_new_pair_pin, write_snapshot_planes, RememberedUnit,
+};
 pub use uart_lock::{try_acquire, UartSession, UART_LOCK_ENV};
 
 /// Full-chip image size (32 MiB).

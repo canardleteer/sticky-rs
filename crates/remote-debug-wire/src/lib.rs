@@ -23,18 +23,25 @@ pub mod proto {
 pub use proto::sticky::remote::v1;
 
 mod frame;
+mod gatt;
 mod map;
+mod reassemble;
 mod slot;
 
 pub use frame::{
-    decode_envelope, encode_body, encode_envelope, encode_snapshot_ack, encode_snapshot_busy,
-    encode_snapshot_clear, encode_snapshot_envelope, framed, unframe, FrameError, ENVELOPE_VERSION,
+    bytes_field_header_to_slice, decode_envelope, encode_body, encode_envelope,
+    encode_snapshot_ack, encode_snapshot_busy, encode_snapshot_clear, encode_snapshot_envelope,
+    framed, snapshot_body_len, snapshot_envelope_payload_len, snapshot_preamble_to_slice, unframe,
+    write_bytes_field_header, write_framed_snapshot, write_snapshot_preamble, FrameError,
+    SnapshotMeta, ENVELOPE_VERSION,
 };
+pub use gatt::{GATT_RX_UUID, GATT_SERVICE_UUID, GATT_TX_UUID};
 pub use map::{
     frame_kind_from_wire, frame_kind_to_wire, hold_from_u32, hold_to_u32, inject_button_gpio,
     inject_touch_sample, product_key_from_gpio, snapshot_expected, MapError, PRODUCT_KEY_OK_GPIO,
     PRODUCT_KEY_PAGE_DOWN_GPIO, PRODUCT_KEY_PAGE_UP_GPIO,
 };
+pub use reassemble::{FrameAssembler, DEVICE_RX_MAX, HOST_RX_MAX};
 pub use slot::{AckOutcome, ClearOutcome, GetOutcome, SnapshotSlot};
 
 #[cfg(test)]
@@ -250,5 +257,56 @@ mod tests {
             panic!("expected SnapshotAck");
         };
         assert_eq!(ack.nonce, 0xdead_beef_cafe);
+    }
+
+    #[test]
+    fn att_reassembly_yields_one_framed_envelope() {
+        let framed = encode_body(GetSnapshot {
+            nonce: 7,
+            ..GetSnapshot::default()
+        });
+        let mut asm = FrameAssembler::device_rx();
+        assert_eq!(asm.push(&framed[..1]).unwrap(), None);
+        assert_eq!(asm.push(&framed[1..3]).unwrap(), None);
+        let got = asm.push(&framed[3..]).unwrap().expect("complete");
+        assert_eq!(got, framed);
+        let env = decode_envelope(&got).expect("decode");
+        let Body::GetSnapshot(get) = env.body.expect("body") else {
+            panic!("expected GetSnapshot");
+        };
+        assert_eq!(get.nonce, 7);
+    }
+
+    #[test]
+    fn att_reassembly_rejects_oversize_prefix() {
+        let mut asm = FrameAssembler::new(8);
+        let mut huge = (1000u32).to_le_bytes().to_vec();
+        huge.extend_from_slice(&[0; 4]);
+        assert_eq!(asm.push(&huge), Err(FrameError::TooLarge));
+    }
+
+    #[test]
+    fn write_framed_snapshot_matches_decode() {
+        let bw = [0x11, 0x22, 0x33, 0x44];
+        let mut streamed = alloc::vec::Vec::new();
+        write_framed_snapshot(
+            SnapshotMeta {
+                nonce: 0x99,
+                width: 8,
+                height: 4,
+                kind: v1::FrameKind::FRAME_KIND_MONO,
+                hold: Some(2),
+            },
+            &bw,
+            None,
+            &mut streamed,
+        );
+        let env = decode_envelope(&streamed).expect("stream");
+        let Body::Snapshot(snap) = env.body.expect("body") else {
+            panic!("expected Snapshot");
+        };
+        assert_eq!(snap.nonce, 0x99);
+        assert_eq!(snap.bw, bw);
+        assert_eq!(snap.hold, Some(2));
     }
 }

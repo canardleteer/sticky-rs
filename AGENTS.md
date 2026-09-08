@@ -54,10 +54,12 @@ run those tools, `probe-rs`, or `cargo xtask` against hardware unless the
 human **explicitly asked to run** that live command on a device in that
 message (`detect-connected --probe`, live `backup-factory-firmware`,
 `confirm-factory-firmware`, `restore-factory-firmware`, `flash-app`,
-`learn-uart`, `learn-uart-only`, or `monitor`). Host-only xtask
+`learn-uart`, `learn-uart-only`, `monitor`, `remote-debug`, or
+`remote-debug --mcp`). Host-only xtask
 (`detect-connected` without `--probe`, `backup-factory-firmware --import`,
 `diff-learn-uart`, `vet-idle-log`, `build-fw`, `ci`) does not open a
-UART.
+UART. `remote-debug` is live BLE; default `connect` also takes the UART
+lock to scrape a new `pair pin=` when a Sticky CH343 is present.
 
 When a live ask is present, the **only** in-repo device I/O is `cargo xtask`.
 `flash-app` does not compile; `cargo xtask build-fw` first. Flag catalog:
@@ -72,8 +74,9 @@ capture. Host-check examples use the static names `idle-embassy.log` and
 purpose. Put per-unit dumps, learn-uart YAML, and any other
 private or personalized files there (`developer-data/backups/` for
 sealed snapshots, `developer-data/uart-inspection-records/` for learn-uart,
-`developer-data/confirm-records/` for confirm reports). Do not use a leftover
-repo-root `backups/`.
+`developer-data/confirm-records/` for confirm reports,
+`developer-data/remote-debug/` for remember-me allowlist and snapshot
+planes). Do not use a leftover repo-root `backups/`.
 
 ## Bluetooth testing options
 
@@ -96,12 +99,36 @@ KeyboardOnly agent `RequestPasskey` without blocking the D-Bus
 loop, then look for `pair ok` and ask the human to confirm the
 same PIN and `Paired` on the pair card. Never a MAC. Stop LE
 discovery before Connect. There is no portable native Rust crate
-that can enter that passkey (`btleplug` is GATT-only). A Linux
-xtask would wrap BlueZ (`bluer` or D-Bus), not `bluetoothctl`.
-Step-by-step:
+that can enter that passkey (`btleplug` is GATT-only). Linux
+`cargo xtask remote-debug` wraps BlueZ via `bluer` (Connect, not
+`bluetoothctl`). Step-by-step:
 [firmware/embassy-debug/AGENTS.md](firmware/embassy-debug/AGENTS.md#bluetooth-pairing-verification-workflow).
 Do not run a host BLE central against the unit unless that live
 ask is present.
+
+## Remote-debug testing options
+
+When testing `--features remote-debug` (encrypted GATT after the
+same DisplayOnly pair), always offer the human the option to pair
+from their own phone first. The host desk session is a separate
+live ask (`cargo xtask remote-debug` or `remote-debug --mcp`).
+Do not also run `monitor` (auto-PIN takes the UART lock).
+
+Advertise still only on `scene=pair`. After `pair ok`, this image
+**holds** the bonded GATT when walking off the pair card. Default
+image (no `remote-debug`) still drops the link on leave. Reconnect
+after a drop means walk back to the pair card. Firmware RAM-bonds
+this boot only; do not write factory NVS. `--remember` keep the
+BlueZ bond for allowlisted factory / CH343 USB serials in
+gitignored `developer-data/remote-debug/` (never a MAC, never the
+PIN). After a device reboot, UART auto-PIN re-pairs and refreshes
+that host bond.
+
+Injects are framebuffer pixels and product keys, not UART `p0=` /
+raw GT911. Snapshot is the last composed DRAW planes (one frozen
+slot). Never a MAC. Step-by-step:
+[firmware/embassy-debug/AGENTS.md](firmware/embassy-debug/AGENTS.md#remote-debug-verification-workflow).
+Do not run the BLE central unless that live ask is present.
 
 ## Wi-Fi SoftAP testing options
 

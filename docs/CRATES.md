@@ -47,7 +47,8 @@ in the lockfile).
 | [`seeed-reterminal-sticky`](../crates/seeed-reterminal-sticky) | No board crate exists for this product. |
 | [`simple-debug`](../crates/simple-debug) | UART heartbeat, GPIO edges, and [`IdleListen`](../crates/simple-debug/src/idle.rs) for unattended `vet-idle-log`. Host-tested because the Xtensa image cannot run `cargo test` on the host compiler. |
 | [`embassy-debug`](../crates/embassy-debug) | Timestamped button / touch / IMU / mic / radio / BLE pair-card / Wi-Fi survey + SoftAP / read-only SD identify / charge-sit lines and [`IdleListen`](../crates/embassy-debug/src/idle.rs) for unattended `vet-idle-log`. `--features remote-debug` appends `src=phys` / `src=syn` on `touch` lines, `src=syn` on synthetic `btn` edges, and `snap` / `touch drop` lines; default image omits those tokens. Host-tested because the Xtensa image cannot run `cargo test` on the host compiler. |
-| [`remote-debug-wire`](../crates/remote-debug-wire) | Transport-agnostic protobuf codec (`Envelope`, inject, one frozen snapshot slot). UART stays plaintext; this crate does not pick SoftAP / BLE / UART framing beyond u32 LE length. Generated `buffa` types are committed so host and firmware clippy stay offline. |
+| [`remote-debug-wire`](../crates/remote-debug-wire) | Transport-agnostic protobuf codec (`Envelope`, inject, one frozen snapshot slot) plus documented GATT UUIDs and ATT reassembly. UART stays plaintext. Generated `buffa` types are committed so host and firmware clippy stay offline. |
+| [`remote-debug-host`](../host/remote-debug-host) | Generic Linux BLE central for those framed envelopes. No clap, no UART, no Sticky pins. Other codebases implement the same GATT UUIDs after their own pairing policy. |
 
 ## Infrastructure
 
@@ -90,9 +91,15 @@ needs the `central` feature so `GAP_SERVICE_ATTRIBUTE_COUNT` exists
 A host pair sit on a physical unit used BlueZ D-Bus **Connect** plus
 a KeyboardOnly `RequestPasskey` (UART `pair pin=` then `pair ok`).
 Do not call BlueZ `Pair()` while the image’s `request_security()` is
-in flight. [`bluer`](https://crates.io/crates/bluer) would wrap that
-on Linux if an xtask lands; it is not in the lockfile. Do not wrap
-`bluetoothctl`.
+in flight. [`bluer`](https://crates.io/crates/bluer) 0.17.4
+(`bluetoothd`) wraps that on Linux in `remote-debug-host` (in the
+lockfile). Do not wrap `bluetoothctl`.
+`cargo xtask remote-debug --mcp` uses
+[`clap-mcp`](https://crates.io/crates/clap-mcp) 0.1.0
+(`output-schema`) on that subtree only — never the full xtask CLI
+(flash-app / restore stay out of MCP). Always-on in xtask
+(`publish = false`). That is infrastructure, not a chip-driver
+verdict.
 `sticky-host` serializes learn-uart YAML with
 [`noyalib`](https://crates.io/crates/noyalib) 0.0.30 (serde, no `unsafe` in
 sticky-host). Operator prompts use [`anstyle`](https://crates.io/crates/anstyle)
@@ -109,4 +116,4 @@ operator TTY in cbreak so `learn-uart` can skip a wait on `s` without Enter
 
 ## Counts
 
-5 adopted from crates.io, 7 explicitly rejected, 7 written here.
+5 adopted from crates.io, 7 explicitly rejected, 9 written here.

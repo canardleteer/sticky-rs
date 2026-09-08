@@ -15,8 +15,12 @@
 //!   (compile_error below).
 //! - **DisplayOnly SMP.** The board shows a passkey; the phone types
 //!   it. Advertise only while [`embassy_debug::Scene::Pair`] is the
-//!   current card. Walking away stops advertising and drops a
-//!   connection. Keys still walk pages. AI Voice is not a confirm.
+//!   current card. Walking away stops advertising. Without
+//!   `--features remote-debug`, it also drops the GATT connection.
+//!   With remote-debug, a paired link is **held** after leave so
+//!   encrypted RX/TX can keep serving framed envelopes. Reconnect
+//!   after a drop means walk back to the pair card. Keys still walk
+//!   pages. AI Voice is not a confirm.
 //! - **RAM bonds this boot.** `HostResources` holds them. Do not write
 //!   factory NVS (RF cal and identity live there).
 //! - **Fixed random address.** Do not read or print the eFuse MAC.
@@ -38,6 +42,8 @@ compile_error!("do not combine pair with radio");
 compile_error!("do not combine pair with charge");
 #[cfg(all(feature = "pair", feature = "sd"))]
 compile_error!("do not combine pair with sd");
+#[cfg(all(feature = "remote-debug", not(feature = "pair")))]
+compile_error!("remote-debug needs pair (encrypted GATT after DisplayOnly SMP)");
 
 use crate::{emit, now_ms};
 
@@ -100,7 +106,9 @@ static PAIR_GATE: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 /// scene change and before the Ferris off-screen.
 ///
 /// `true` only for [`embassy_debug::Scene::Pair`]. A falling edge
-/// cancels an in-flight advertise or drops an accepted connection.
+/// cancels an in-flight advertise. Without remote-debug it also
+/// drops an accepted connection; with remote-debug the paired
+/// GATT stays up until the central disconnects.
 pub fn set_visible(on: bool) {
     let was = PAIR_VISIBLE.swap(on, Ordering::SeqCst);
     if was != on {
@@ -133,8 +141,9 @@ pub fn current_view() -> PairView {
     CURRENT.lock(|cell| *cell.borrow())
 }
 
-/// One connection. `attribute_table_size` is enough for GAP + this
-/// service; raise it if another characteristic is added.
+/// One connection. GAP + pair token is 32. Remote-debug adds an
+/// encrypted write + notify (+ CCCD), so that image uses 64.
+#[cfg(not(feature = "remote-debug"))]
 #[gatt_server(
     connections_max = 1,
     mutex_type = CriticalSectionRawMutex,
@@ -142,6 +151,49 @@ pub fn current_view() -> PairView {
 )]
 struct Server {
     pair: PairService,
+}
+
+/// GAP + pair token + remote-debug RX/TX.
+///
+/// RX is host→device framed envelopes. TX notifies device→host
+/// frames (a snapshot is many ATT payloads). Both
+/// `permissions(encrypted)` so a bond is required. UUIDs match
+/// [`remote_debug_wire::GATT_SERVICE_UUID`] (local 128-bit, not
+/// the pair-card `6b1d0001-…` token).
+#[cfg(feature = "remote-debug")]
+#[gatt_server(
+    connections_max = 1,
+    mutex_type = CriticalSectionRawMutex,
+    attribute_table_size = 64
+)]
+struct Server {
+    pair: PairService,
+    remote: RemoteDebugService,
+}
+
+/// Encrypted remote-debug GATT (local UUIDs; not SIG).
+///
+/// `rx` is written in ATT-sized chunks; [`remote_debug_wire::FrameAssembler`]
+/// reassembles one u32-LE frame. `tx` notifies chunks the same way.
+/// The stored GATT value is a dummy byte; writes and
+/// `notify_raw(..., store=false)` carry the ATT payload.
+/// *The Embedded Rust Book*: do not hold a 48 KiB plane in the table.
+#[cfg(feature = "remote-debug")]
+#[gatt_service(uuid = "c81e1000-5c8a-4f0e-9c3a-2e7b1a0d4f11")]
+struct RemoteDebugService {
+    #[characteristic(
+        uuid = "c81e1001-5c8a-4f0e-9c3a-2e7b1a0d4f11",
+        write,
+        write_without_response,
+        permissions(encrypted)
+    )]
+    rx: u8,
+    #[characteristic(
+        uuid = "c81e1002-5c8a-4f0e-9c3a-2e7b1a0d4f11",
+        notify,
+        permissions(encrypted)
+    )]
+    tx: u8,
 }
 
 /// Local 128-bit service so Settings pairing has a GATT target.
@@ -193,6 +245,14 @@ pub async fn pair_task(bluetooth: BT<'static>) {
     };
     // Keep the derived service in the binary; Settings pairing reads it.
     let _ = &server.pair;
+    #[cfg(feature = "remote-debug")]
+    {
+        debug_assert_eq!(
+            remote_debug_wire::GATT_SERVICE_UUID,
+            "c81e1000-5c8a-4f0e-9c3a-2e7b1a0d4f11"
+        );
+        let _ = &server.remote;
+    }
 
     show(PairView::Idle);
 
@@ -203,7 +263,8 @@ pub async fn pair_task(bluetooth: BT<'static>) {
             show(PairView::Idle);
             match advertise_once(&mut peripheral, &server).await {
                 Ok(()) => {
-                    // Disconnect or the operator left the pair card.
+                    // Disconnect, or (without remote-debug) the operator
+                    // left the pair card. Remote-debug holds GATT after leave.
                     show(PairView::Idle);
                 }
                 Err(why) => {
@@ -274,9 +335,20 @@ where
         .with_attribute_server(server)
         .map_err(|_| PairFailWhy::Pairing)?;
 
-    match select(drive_connection(&gatt), wait_until_visible(false)).await {
-        Either::First(result) => result,
-        Either::Second(()) => Ok(()),
+    // Before accept, leave still cancelled advertise (select above).
+    // After accept: default image drops the link on leave. Remote-debug
+    // keeps the paired GATT so a walk off `scene=pair` does not kill
+    // the desk session. Advertise stays off until the next pair card.
+    #[cfg(not(feature = "remote-debug"))]
+    {
+        return match select(drive_connection(&gatt, server), wait_until_visible(false)).await {
+            Either::First(result) => result,
+            Either::Second(()) => Ok(()),
+        };
+    }
+    #[cfg(feature = "remote-debug")]
+    {
+        drive_connection(&gatt, server).await
     }
 }
 
@@ -285,9 +357,17 @@ where
 /// A clean disconnect returns to idle advertise (not a fail card).
 /// DisplayOnly never needs `PassKeyConfirm` / `PassKeyInput` / OOB;
 /// those arms stay empty on purpose.
+///
+/// With `--features remote-debug`, encrypted writes to RX are
+/// reassembled and passed to [`crate::remote_debug::handle_envelope`].
+/// A `GetSnapshot` arm/retry streams LAST through TX notifies
+/// (*The Embassy Book*: do this on the BLE task, not the display task).
 async fn drive_connection<P: PacketPool>(
     gatt: &GattConnection<'_, '_, P>,
+    #[cfg_attr(not(feature = "remote-debug"), allow(unused_variables))] server: &Server<'_>,
 ) -> Result<(), PairFailWhy> {
+    #[cfg(feature = "remote-debug")]
+    let mut rx_asm = remote_debug_wire::FrameAssembler::device_rx();
     loop {
         match gatt.next().await {
             GattConnectionEvent::PassKeyDisplay(key) => {
@@ -307,8 +387,25 @@ async fn drive_connection<P: PacketPool>(
                 return Ok(());
             }
             GattConnectionEvent::Gatt { event } => {
+                #[cfg(feature = "remote-debug")]
+                let remote_write = match &event {
+                    GattEvent::Write(write) if write.handle() == server.remote.rx.handle => {
+                        let mut chunk = [0u8; 244];
+                        let n = write.with_data(|_, data| {
+                            let n = data.len().min(chunk.len());
+                            chunk[..n].copy_from_slice(&data[..n]);
+                            n
+                        });
+                        Some((chunk, n))
+                    }
+                    _ => None,
+                };
                 if let Ok(reply) = event.accept() {
                     reply.send().await;
+                }
+                #[cfg(feature = "remote-debug")]
+                if let Some((chunk, n)) = remote_write {
+                    on_remote_rx(gatt, server, &mut rx_asm, &chunk[..n]).await;
                 }
             }
             GattConnectionEvent::PassKeyConfirm(_)
@@ -316,6 +413,150 @@ async fn drive_connection<P: PacketPool>(
             | GattConnectionEvent::OobRequest => {}
             _ => {}
         }
+    }
+}
+
+/// Append one ATT write, handle a complete frame, notify a reply.
+///
+/// *The Embedded Rust Book*: RX is a small reassembly buffer
+/// ([`remote_debug_wire::DEVICE_RX_MAX`]). Snapshot TX streams LAST
+/// slices; it does not `Vec` 48 KiB.
+#[cfg(feature = "remote-debug")]
+async fn on_remote_rx<P: PacketPool>(
+    gatt: &GattConnection<'_, '_, P>,
+    server: &Server<'_>,
+    rx_asm: &mut remote_debug_wire::FrameAssembler,
+    chunk: &[u8],
+) {
+    let frame = match rx_asm.push(chunk) {
+        Ok(Some(frame)) => frame,
+        Ok(None) => return,
+        Err(_) => {
+            rx_asm.clear();
+            return;
+        }
+    };
+    match crate::remote_debug::handle_envelope(&frame) {
+        Ok(crate::remote_debug::EnvelopeOutcome::Snapshot) => {
+            notify_armed_snapshot(gatt, server).await;
+        }
+        Ok(crate::remote_debug::EnvelopeOutcome::Busy { armed }) => {
+            let bytes = remote_debug_wire::encode_snapshot_busy(armed);
+            notify_bytes(gatt, &server.remote.tx, &bytes).await;
+        }
+        Ok(crate::remote_debug::EnvelopeOutcome::None) | Err(_) => {}
+    }
+}
+
+/// Stream the frozen LAST planes as ATT notify chunks.
+///
+/// Copies one ATT payload at a time under the snapshot lock, then
+/// awaits notify (*The Embassy Book*: do not hold a critical-section
+/// mutex across an await).
+#[cfg(feature = "remote-debug")]
+async fn notify_armed_snapshot<P: PacketPool>(
+    gatt: &GattConnection<'_, '_, P>,
+    server: &Server<'_>,
+) {
+    let Some(meta) = crate::remote_debug::with_armed_frame(|opt| {
+        opt.map(|(nonce, frame)| {
+            (
+                nonce,
+                frame.width,
+                frame.height,
+                remote_debug_wire::frame_kind_to_wire(frame.kind),
+                frame.hold.map(crate::remote_debug::hold_token),
+                frame.bw.len(),
+                frame.red.map(<[u8]>::len).unwrap_or(0),
+            )
+        })
+    }) else {
+        let bytes = remote_debug_wire::encode_snapshot_busy(0);
+        notify_bytes(gatt, &server.remote.tx, &bytes).await;
+        return;
+    };
+    let (nonce, width, height, kind, hold, bw_len, red_len) = meta;
+    let mut preamble = [0u8; 64];
+    if let Ok(n) = remote_debug_wire::snapshot_preamble_to_slice(
+        remote_debug_wire::SnapshotMeta {
+            nonce,
+            width,
+            height,
+            kind,
+            hold,
+        },
+        bw_len,
+        red_len,
+        &mut preamble,
+    ) {
+        notify_bytes(gatt, &server.remote.tx, &preamble[..n]).await;
+    }
+    notify_plane_chunks(gatt, server, true, bw_len).await;
+    if red_len != 0 {
+        let mut hdr = [0u8; 8];
+        if let Ok(n) = remote_debug_wire::bytes_field_header_to_slice(7, red_len, &mut hdr) {
+            notify_bytes(gatt, &server.remote.tx, &hdr[..n]).await;
+        }
+        notify_plane_chunks(gatt, server, false, red_len).await;
+    }
+}
+
+/// Notify `len` bytes of LAST `bw` (`true`) or `red` (`false`).
+#[cfg(feature = "remote-debug")]
+async fn notify_plane_chunks<P: PacketPool>(
+    gatt: &GattConnection<'_, '_, P>,
+    server: &Server<'_>,
+    bw: bool,
+    len: usize,
+) {
+    let max = notify_payload_max(gatt);
+    let mut off = 0;
+    while off < len {
+        let n = (len - off).min(max);
+        let mut chunk = [0u8; 244];
+        let copied = crate::remote_debug::with_armed_frame(|opt| {
+            let Some((_, frame)) = opt else {
+                return 0;
+            };
+            let src = if bw {
+                frame.bw
+            } else {
+                frame.red.unwrap_or(&[])
+            };
+            if off >= src.len() {
+                return 0;
+            }
+            let n = n.min(src.len() - off);
+            chunk[..n].copy_from_slice(&src[off..off + n]);
+            n
+        });
+        if copied == 0 {
+            return;
+        }
+        notify_bytes(gatt, &server.remote.tx, &chunk[..copied]).await;
+        off += copied;
+    }
+}
+
+/// ATT notify payload size for this link (opcode + handle eat 3 bytes).
+#[cfg(feature = "remote-debug")]
+fn notify_payload_max<P: PacketPool>(gatt: &GattConnection<'_, '_, P>) -> usize {
+    (gatt.raw().att_mtu() as usize)
+        .saturating_sub(3)
+        .clamp(20, 244)
+}
+
+/// Notify `bytes` in ATT-sized slices. `store` is false: do not write
+/// a 48 KiB value into the GATT table.
+#[cfg(feature = "remote-debug")]
+async fn notify_bytes<P: PacketPool>(
+    gatt: &GattConnection<'_, '_, P>,
+    tx: &Characteristic<u8>,
+    bytes: &[u8],
+) {
+    let max = notify_payload_max(gatt);
+    for part in bytes.chunks(max) {
+        let _ = tx.notify_raw(gatt, part, false).await;
     }
 }
 

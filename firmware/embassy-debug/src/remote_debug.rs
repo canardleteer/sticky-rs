@@ -1,9 +1,9 @@
 //! Insecure desk debug: last composed planes and a synthetic tap mux.
 //!
 //! `--features remote-debug` only. The default image does not compile
-//! this module. There is no UART RX parser and no SoftAP / BLE
-//! framebuffer protocol in this change — those callers land later and
-//! must use [`handle_envelope`].
+//! this module. UART stays plaintext (`snap` / `src=syn`). The BLE
+//! listener lives in [`crate::pair`]: encrypted RX write →
+//! [`handle_envelope`], TX notify of a streamed `Snapshot`.
 //!
 //! # What this is
 //!
@@ -235,10 +235,8 @@ fn publish_compose(
 /// `None` before the first paint or after an inconsistent copy.
 /// The `ExpectedFrame` borrows the LAST planes; do not store it
 /// past this call (*The Embassy Book*: the mutex guard ends when
-/// `f` returns). A later SoftAP GET uses this instead of touching
-/// [`REMOTE`] itself.
-///
-/// No caller in this change (no framebuffer protocol yet).
+/// `f` returns). SoftAP GET (later) can use this instead of
+/// touching [`REMOTE`] itself.
 #[allow(dead_code)]
 pub(crate) fn with_expected_frame<R>(
     f: impl FnOnce(Option<ExpectedFrame<'_, PageRotation>>) -> R,
@@ -254,12 +252,9 @@ pub(crate) fn with_expected_frame<R>(
 
 /// Visit the armed pull (same planes as LAST, plus the host nonce).
 ///
-/// `None` when the slot is empty. A later transport encodes
+/// `None` when the slot is empty. [`crate::pair`] encodes
 /// `Snapshot` from these slices — do not `Vec` the 48 KiB planes
 /// (*The Embedded Rust Book*: the implementor owns the buffers).
-///
-/// No caller in this change (no transport listener yet).
-#[allow(dead_code)]
 pub(crate) fn with_armed_frame<R>(
     f: impl FnOnce(Option<(u64, ExpectedFrame<'_, PageRotation>)>) -> R,
 ) -> R {
@@ -352,28 +347,59 @@ pub(crate) fn framebuffer_to_uart_screen(fx: u16, fy: u16) -> Option<(u16, u16)>
     seeed_reterminal_sticky::display::screen_to_framebuffer(fx, fy)
 }
 
+/// What the BLE (or later SoftAP) path should send after a handle.
+///
+/// Inject / Ack / Clear have no envelope reply. Get arms the slot
+/// and asks the transport to stream [`EnvelopeOutcome::Snapshot`]
+/// or a tiny [`EnvelopeOutcome::Busy`].
+#[derive(Clone, Copy)]
+pub(crate) enum EnvelopeOutcome {
+    /// No device→host envelope (inject, ack, clear, ignore).
+    None,
+    /// Stream the frozen LAST planes as a framed `Snapshot`.
+    Snapshot,
+    /// `SnapshotBusy` echoing `armed` (0 when the get was empty/zero).
+    Busy {
+        /// Nonce already holding the slot, or 0.
+        armed: u64,
+    },
+}
+
 /// Decode one framed [`remote_debug_wire::v1::Envelope`] and apply it.
 ///
 /// Injects go to the tap / key mux. Snapshot Get / Ack / Clear
-/// update the frozen slot and emit the `snap` UART line. There is
-/// no listener in this image — a later SoftAP or BLE path calls
-/// this (*The Embassy Book*: keep protocol out of the display task).
+/// update the frozen slot and emit the `snap` UART line.
+/// [`crate::pair`] is the BLE caller (*The Embassy Book*: keep
+/// protocol out of the display task).
 ///
 /// # Errors
 ///
 /// [`FrameError`] when the bytes are not one version-1 envelope.
-#[allow(dead_code)]
-pub(crate) fn handle_envelope(bytes: &[u8]) -> Result<(), FrameError> {
+pub(crate) fn handle_envelope(bytes: &[u8]) -> Result<EnvelopeOutcome, FrameError> {
     let env = decode_envelope(bytes)?;
-    match env.body {
-        Some(Body::InjectTouch(msg)) => handle_inject_touch(&msg),
-        Some(Body::InjectButton(msg)) => handle_inject_button(&msg),
+    let outcome = match env.body {
+        Some(Body::InjectTouch(msg)) => {
+            handle_inject_touch(&msg);
+            EnvelopeOutcome::None
+        }
+        Some(Body::InjectButton(msg)) => {
+            handle_inject_button(&msg);
+            EnvelopeOutcome::None
+        }
         Some(Body::GetSnapshot(msg)) => handle_get(msg.nonce),
-        Some(Body::SnapshotAck(msg)) => handle_ack(msg.nonce),
-        Some(Body::SnapshotClear(_)) => handle_clear(),
-        Some(Body::Snapshot(_) | Body::SnapshotBusy(_) | Body::LogLine(_)) | None => {}
-    }
-    Ok(())
+        Some(Body::SnapshotAck(msg)) => {
+            handle_ack(msg.nonce);
+            EnvelopeOutcome::None
+        }
+        Some(Body::SnapshotClear(_)) => {
+            handle_clear();
+            EnvelopeOutcome::None
+        }
+        Some(Body::Snapshot(_) | Body::SnapshotBusy(_) | Body::LogLine(_)) | None => {
+            EnvelopeOutcome::None
+        }
+    };
+    Ok(outcome)
 }
 
 /// Map `InjectTouch` and queue it, or emit `touch drop src=syn`.
@@ -413,21 +439,27 @@ fn handle_inject_button(msg: &remote_debug_wire::v1::InjectButton) {
     let _ = inject_button(gpio, msg.down);
 }
 
-/// Arm or refuse `GetSnapshot`. Always logs.
-fn handle_get(nonce: u64) {
+/// Arm or refuse `GetSnapshot`. Always logs. Tells the transport
+/// whether to stream LAST or send `SnapshotBusy`.
+fn handle_get(nonce: u64) -> EnvelopeOutcome {
     let outcome = REMOTE.lock(|cell| {
         let mut remote = cell.borrow_mut();
         let last_ready = remote.last.as_ref().is_some_and(|last| last.ready);
         remote.slot.on_get(nonce, last_ready)
     });
-    let (op, n) = match outcome {
-        GetOutcome::Armed => (SnapOp::Get, nonce),
-        GetOutcome::Retry => (SnapOp::Retry, nonce),
-        GetOutcome::Busy { armed } => (SnapOp::Busy { armed }, nonce),
-        GetOutcome::Empty => (SnapOp::Empty, nonce),
-        GetOutcome::Zero => (SnapOp::GetZero, 0),
+    let (op, n, reply) = match outcome {
+        GetOutcome::Armed => (SnapOp::Get, nonce, EnvelopeOutcome::Snapshot),
+        GetOutcome::Retry => (SnapOp::Retry, nonce, EnvelopeOutcome::Snapshot),
+        GetOutcome::Busy { armed } => (
+            SnapOp::Busy { armed },
+            nonce,
+            EnvelopeOutcome::Busy { armed },
+        ),
+        GetOutcome::Empty => (SnapOp::Empty, nonce, EnvelopeOutcome::Busy { armed: 0 }),
+        GetOutcome::Zero => (SnapOp::GetZero, 0, EnvelopeOutcome::Busy { armed: 0 }),
     };
     emit_snap(op, n);
+    reply
 }
 
 /// Release on a matching Ack. Mismatch / zero / stale log and stay.

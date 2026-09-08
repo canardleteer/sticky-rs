@@ -1,0 +1,25 @@
+[package]
+name = "remote-debug-host"
+version = "0.1.0"
+description = "Generic BLE central for remote-debug framed Envelope (Linux BlueZ)"
+readme = "README.md"
+publish = true
+edition.workspace = true
+# Matches xtask / sticky-host. Workspace no_std crates stay 1.85.
+rust-version = "1.88"
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+remote-debug-wire = { path = "../../crates/remote-debug-wire", version = "0.1.0" }
+panel-view = { path = "../../crates/panel-view", version = "0.1.0" }
+futures = "0.3.31"
+tokio = { version = "1.45.1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+uuid = { version = "1.17.0", default-features = false, features = ["std"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+bluer = { version = "0.17.4", features = ["bluetoothd"] }
+
+[lints]
+workspace = true

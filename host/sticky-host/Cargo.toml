@@ -1,7 +1,7 @@
 [package]
 name = "sticky-host"
 version = "0.1.0"
-description = "Programmatic host API for Sticky UART detect, factory backup/confirm/restore, app0 flash-app, learn-uart, and no-reset monitor"
+description = "Programmatic host API for Sticky UART detect, factory backup/confirm/restore, app0 flash-app, learn-uart, no-reset monitor, and remote-debug PIN/allowlist"
 readme = "README.md"
 publish = true
 edition.workspace = true

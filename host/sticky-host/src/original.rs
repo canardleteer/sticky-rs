@@ -86,6 +86,24 @@ impl Layout {
     pub fn learn_uart_in(snapshot_dir: &Path) -> PathBuf {
         snapshot_dir.join("learn-uart")
     }
+
+    /// `developer-data/remote-debug/` (gitignored allowlist + snapshots).
+    #[must_use]
+    pub fn remote_debug_dir(&self) -> PathBuf {
+        self.developer_data_root.join("remote-debug")
+    }
+
+    /// `developer-data/remote-debug/allowlist.yaml` (never a MAC, never a PIN).
+    #[must_use]
+    pub fn remote_debug_allowlist(&self) -> PathBuf {
+        self.remote_debug_dir().join("allowlist.yaml")
+    }
+
+    /// `developer-data/remote-debug/snapshots/` (no serial in the path).
+    #[must_use]
+    pub fn remote_debug_snapshots(&self) -> PathBuf {
+        self.remote_debug_dir().join("snapshots")
+    }
 }
 
 /// Refuse a leftover repo-root `backups/` directory. Do not auto-move it.

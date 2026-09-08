@@ -71,7 +71,9 @@ Live-ask, never-erase, and flash I/O: root
   [README.md](README.md#radio-test-instructions).
 - Pair: default image includes BLE. Advertise `sticky-rs`
   (DisplayOnly passkey) **only while `scene=pair` is showing**.
-  Walking away stops advertising and drops a connection. RAM bonds
+  Walking away stops advertising. Without `--features remote-debug`
+  it also drops the GATT connection; with remote-debug a paired
+  link is **held** after leave. RAM bonds
   this boot only; no factory NVS; no MAC on UART. Packs with
   `wifi`. Do not combine with `mic`, `radio`, `charge`, or `sd`
   (`build-fw` / `ci` pass `--no-default-features` for those sits).
@@ -134,9 +136,13 @@ Live-ask, never-erase, and flash I/O: root
   (`to_screen`); a synthetic tap converts framebuffer → glass with
   the 180° involution (`screen_to_framebuffer`). Codec is
   [`remote-debug-wire`](../../crates/remote-debug-wire) (u32 LE
-  length + `Envelope`). No UART RX parser and no SoftAP / BLE
-  framebuffer protocol in this image. Walkthrough:
-  [src/remote_debug.rs](src/remote_debug.rs).
+  length + `Envelope`). Encrypted GATT RX/TX (local UUIDs, not the
+  pair-card token) after DisplayOnly pair. ATT chunks reassemble
+  one frame; Snapshot streams LAST in ATT-sized notifies. No UART
+  RX parser and no SoftAP framebuffer protocol. Walkthrough:
+  [src/remote_debug.rs](src/remote_debug.rs) and
+  [src/pair.rs](src/pair.rs). How-to:
+  [README.md](README.md#remote-debug-test-instructions).
 - Panel standby: hold Page Up 2 s. `UpdateSequence::STANDBY` then
   `MasterActivation`. The sit stays until Page Up 1 s (resume) or
   Page Up 5 s (MCU sleep). Stock `RESUME` (`0xC0`) and
@@ -225,11 +231,41 @@ Do not print or store a MAC.
 
 On a physical unit the host path completed: UART `pair pin=` then
 `pair ok`, host `Paired` / `Connected`, pair card showed `Paired`.
-`btleplug` cannot enter a DisplayOnly passkey (GATT only). A
-Linux xtask would wrap BlueZ (`bluer` or D-Bus), not
+`btleplug` cannot enter a DisplayOnly passkey (GATT only). Linux
+`cargo xtask remote-debug` wraps BlueZ via `bluer`, not
 `bluetoothctl`. Bonds are RAM this boot only. Do not write
 factory NVS. Do not combine `pair` with `mic`, `radio`, `charge`,
 or `sd`.
+
+## Remote-debug verification workflow
+
+`--features remote-debug` is **not default**. Build with
+`cargo xtask build-fw embassy-debug --features remote-debug`, then
+`flash-app` only when the human asked to flash. Always offer a
+phone pair first (same pair card). Host desk I/O is a separate
+live ask.
+
+1. Walk Page Down to `scene=pair` (`pair advertise sticky-rs`).
+2. Do **not** also run `monitor`. Default `connect` takes the UART
+   lock to scrape a **new** `pair pin=`. `--pin` skips UART.
+3. `cargo xtask remote-debug connect` (or `connect --remember`, or
+   `remote-debug --mcp` then the `connect` tool). BlueZ **Connect**,
+   not `Pair()`. After `pair ok` the image **holds** GATT when
+   walking off the pair card.
+4. Injects are framebuffer (`inject-touch --x --y`), not UART
+   `p0=` / raw GT911. Product keys are `ok` / `page-up` /
+   `page-down`.
+5. `get-snapshot` freezes LAST DRAW planes; `snapshot-ack` or
+   `snapshot-clear` releases the slot. Planes land under
+   gitignored `developer-data/remote-debug/snapshots/` (nonce in
+   the filename; no serial).
+6. `--remember` writes factory / CH343 USB serial into
+   `developer-data/remote-debug/allowlist.yaml`. Never a MAC.
+   Never store the PIN. Unknown units lose the BlueZ bond on
+   disconnect. After a device reboot, UART auto-PIN re-pairs.
+
+Human how-to:
+[README.md](README.md#remote-debug-test-instructions).
 
 ## Wi-Fi survey and SoftAP verification workflow
 

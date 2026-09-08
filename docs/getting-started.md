@@ -153,7 +153,8 @@ Unattended you should see `embassy-debug: latched`, INT-low `0x5d ack`
 `cargo xtask monitor --for 22 --output idle-embassy.log` then
 `cargo xtask vet-idle-log --embassy idle-embassy.log`. Buttons, glass,
 and tilt add `btn` / `touch` / pose lines and a short beep. Page Down
-reaches the four-tone boxes (`scene=tones`). Full sequence and restore:
+reaches the four-tone boxes (`scene=tones`) and later the
+touch-validation card (`scene=targets`). Full sequence and restore:
 [firmware/embassy-debug/AGENTS.md](../firmware/embassy-debug/AGENTS.md).
 `--features remote-debug` is a later desk sit (encrypted GATT after
 the pair card). Build with

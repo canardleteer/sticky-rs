@@ -21,7 +21,7 @@ On the unit:
   stay readable.
 - Default image: AI Voice / Page Up / Page Down (right-edge top /
   middle / bottom) walk splash → shapes → legend → four-tone OTP gray
-  boxes → pair → wifi_survey → wifi_ap. `--features mic`: AI Voice
+  boxes → pair → wifi_survey → wifi_ap → targets. `--features mic`: AI Voice
   dumps PCM and does not play the buzzer or change the page. Page Up
   / Page Down still walk the drawings. `--features radio`: Wi-Fi and
   BLE scan together on the on-board antenna; keys still walk the
@@ -709,6 +709,41 @@ for it. On a physical unit a spare host STA joined
 with `device`, `scene=wifi_ap`, and `wifi` counts
 (`clients=1`, `requests` 1 then 2). After that host left,
 the glass showed `clients=0` and `http=2`.
+
+## Touch validation test instructions
+
+The last card is a looping digitizer sit. It does **not** clear
+to white when you finish. Tilt between marks so UART records
+the same step on every in-plane hold.
+
+### Step 1: Walk to the card
+
+From splash, press Page Down until UART prints `scene=targets`.
+The glass should say `TOUCH VALIDATION` and show a disk (centre
+first).
+
+### Step 2: Tap and slide
+
+1. **Tap the disk.** UART should print `target hit` with
+   `page=` and `expect=` and `d=`. A miss prints `target miss`
+   and stays on that disk.
+2. **Repeat** for the four corner disks.
+3. **Slide along the line** (horizontal, then vertical) from
+   near one edge to the other. UART `span=` is the travel.
+4. After the last slide, UART prints `target loop` and the
+   centre disk returns. Keep going, or Page Down back to
+   splash.
+
+Tilt USB-C to another edge between marks. `target show`
+`page=` should follow that hold (portrait 480×800 or
+landscape 800×480). Do not treat UART `p0=` as the hit.
+
+### What you should see
+
+- **Pass:** `target show` / `hit` / `loop`; the card never
+  goes blank white.
+- **Fail:** hang, panic, or a walk that leaves the card
+  without a key.
 
 ## Charge Test Instructions
 

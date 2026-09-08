@@ -218,7 +218,8 @@ Load a custom image only after a factory original exists, with
 heartbeat of raw levels; host-tested line format in `crates/simple-debug`)
 and `firmware/embassy-debug` (Embassy log task, buttons, GT911 INT-low
 `touch n=5`, IMU every 5 s, `gt911 st=` every 10 s, buzzer, panel
-cards that follow the in-plane hold, host-tested lines and
+cards that follow the in-plane hold, including `scene=targets`
+page-space touch validation, host-tested lines and
 `IdleListen` in `crates/embassy-debug`).
 Default embassy-debug includes `pair` + `wifi`. Advertise
 `sticky-rs` (DisplayOnly passkey, RAM bonds this boot) **only

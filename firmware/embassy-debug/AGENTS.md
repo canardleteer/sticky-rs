@@ -40,9 +40,11 @@ Live-ask, never-erase, and flash I/O: root
   `to_screen` takes the 480×800 sample; USB-down ink corners land on
   800×480. INT-high + init Status-clear stayed at `st=0x00`.
 - Panel: splash, shapes, legend, tones, pair, Wi-Fi survey /
-  SoftAP, and the Ferris off-screen follow the four in-plane IMU
-  holds (portrait 480×800 and landscape 800×480). FaceUp /
-  FaceDown keep the last of those.
+  SoftAP, targets, and the Ferris off-screen follow the four
+  in-plane IMU holds (portrait 480×800 and landscape 800×480).
+  FaceUp / FaceDown keep the last of those. Targets is five
+  page-space dots then two midline slides; `target loop`
+  restarts the walk (no white end card).
   Pair idle is a framed how-to with empty PIN boxes; digits appear
   only after `pair pin=`. Advertise only on that card. Wi-Fi cards
   stay idle until a tap on `[ START SURVEY ]` / `[ START HOTSPOT ]`.
@@ -51,7 +53,8 @@ Live-ask, never-erase, and flash I/O: root
   Do not OR both.
   Legend is a document (keys, sleep / standby / power, OTP), not
   72×72 nub boxes.
-  OTP gray4 splash / legend / tones / pair / Wi-Fi / Ferris-off;
+  OTP gray4 splash / legend / tones / pair / Wi-Fi / targets /
+  Ferris-off;
   OTP 1-bit shapes. No `0x32` LUT, no Lotus `0x21`.
   Default clock is board `SPI_MAX_HZ` (10 MHz). `--features spi20`
   clocks the panel at 20 MHz; UART prints `spi=20000000`.
@@ -181,7 +184,7 @@ cargo xtask monitor
 
 Right-edge keys change the page (`scene=…`): splash (Ferris +
 `sticky-rs`) → shapes → legend → tones → pair → wifi_survey →
-wifi_ap. BLE advertises only on `scene=pair`. Wi-Fi stays idle
+wifi_ap → targets. BLE advertises only on `scene=pair`. Wi-Fi stays idle
 until a tap on those cards. This is not the `learn-uart`
 operator format.
 

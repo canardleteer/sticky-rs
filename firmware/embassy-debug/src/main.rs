@@ -1003,7 +1003,6 @@ async fn touch_task(
             if bits.buffer_ready() {
                 let n = core::cmp::min(bits.touch_count() as usize, MAX_TOUCH_POINTS);
                 let mut mapped = [TouchPoint::default(); MAX_TOUCH_POINTS];
-                #[cfg(feature = "wifi")]
                 let mut fb0 = None;
                 if n > 0 {
                     let mut raw = [0u8; MAX_TOUCH_POINTS * POINT_RECORD_LEN];
@@ -1031,7 +1030,6 @@ async fn touch_task(
                                 x: x as u16,
                                 y: y as u16,
                             };
-                            #[cfg(feature = "wifi")]
                             if i == 0 {
                                 // Pre-rotation canvas for START/STOP. Do
                                 // not hit-test UART `p0=` (`to_screen`).
@@ -1057,6 +1055,9 @@ async fn touch_task(
                         points: mapped,
                         source: TouchSource::Physical,
                     });
+                    if let Some((fx, fy)) = fb0 {
+                        crate::targets::feed(fx, fy, became_contact);
+                    }
                     if became_contact {
                         #[cfg(feature = "wifi")]
                         match fb0 {
@@ -1141,6 +1142,7 @@ fn poll_synthetic() {
         points: mapped,
         source: TouchSource::Synthetic,
     });
+    crate::targets::feed(sample.x, sample.y, true);
     dispatch_first_contact(sample.x, sample.y);
 }
 
@@ -1291,5 +1293,6 @@ mod remote_debug;
 #[cfg(feature = "sd")]
 mod sd;
 mod sleep;
+mod targets;
 #[cfg(feature = "wifi")]
 mod wifi;

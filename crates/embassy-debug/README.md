@@ -41,6 +41,10 @@ embassy-debug: t=1204 wifi_ap state=active ssid=sticky-rs-AP pass=sticky26 ip=19
 embassy-debug: t=1204 wifi_http req=1 path=/
 embassy-debug: t=13 standby
 embassy-debug: t=15 resume
+embassy-debug: t=13 scene=targets
+embassy-debug: t=15 target show id=0 kind=dot page=240,400 r=48
+embassy-debug: t=16 target hit id=0 kind=dot page=238,402 expect=240,400 d=3
+embassy-debug: t=17 target loop
 embassy-debug: t=9 scene=sleeping
 embassy-debug: sleeping
 embassy-debug: t=17 poweroff
@@ -74,6 +78,10 @@ are printed by the default image’s Wi-Fi cards (counts and the fixed
 demo SSID/pass only; never a neighbor SSID, BSSID, or station MAC).
 A host join sit returned JSON `clients=1` then, after that STA
 left, the glass showed `clients=0` and `http=2`.
+The `target show|hit|miss|loop` lines are the touch-validation
+card (`scene=targets`). Marks are page pixels for the current
+IMU hold. Completing the last mark prints `target loop` and
+restarts; there is no white end card.
 The `sd`
 lines are printed only by `--features sd` (read-only identify and FAT
 list; never a CID product serial or file contents). The `ce` lines are

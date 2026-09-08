@@ -51,6 +51,8 @@ Use when cards stay upright in the four in-plane holds.
    Worked example: embassy-debug START is portrait
    `(50, page_h-150, page_w-100, 90)` slop 10; landscape
    `(80, page_h-100, page_w-160, 72)` slop 20.
+   The in-tree sit is `scene=targets` (page-space dots and
+   slides; UART `target show|hit|miss|loop`).
 
 ## What not to do
 

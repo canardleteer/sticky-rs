@@ -3,7 +3,7 @@
 //! # Architecture
 //!
 //! On the unit every equivalent card (splash, shapes, legend, tones, pair,
-//! Wi-Fi survey / SoftAP) stays upright in the four in-plane holds. Deep
+//! Wi-Fi survey / SoftAP, targets) stays upright in the four in-plane holds. Deep
 //! sleep paints Ferris first. FaceUp / FaceDown keep
 //! the last of those. This module never talks SPI: it only fills the two
 //! SSD1677 RAM planes. [`crate::display`] owns ExclusiveDevice, BUSY, and
@@ -23,11 +23,12 @@
 //! bands on the USB-down page).
 //!
 //! Refresh kinds stay with the caller: OTP gray4 for splash / legend /
-//! tones / pair / Wi-Fi / sleep; OTP 1-bit full for shapes. Koch timing
+//! tones / pair / Wi-Fi / targets / sleep; OTP 1-bit full for shapes. Koch timing
 //! is glass only — no UART microsecond token.
 
 use core::fmt::Write;
 
+use embassy_debug::TargetKind;
 use embassy_time::Instant;
 use embedded_graphics::mono_font::ascii::FONT_10X20;
 use embedded_graphics::mono_font::MonoTextStyle;
@@ -290,6 +291,80 @@ pub(crate) fn draw_tones(bw: &mut [u8], red: &mut [u8], rotation: PageRotation) 
             let x = MARGIN_X + u16::try_from(i).unwrap_or(0) * (box_w + GAP);
             fill_rect_gray(bw, red, x, MARGIN_Y, box_w, box_h, *tone, rotation);
             stroke_rect_gray(bw, red, x, MARGIN_Y, box_w, box_h, gray::BLACK, rotation);
+        }
+    }
+}
+
+/// Touch-validation card: one page-space mark at a time.
+///
+/// Dots are a filled disk plus a ring. Slides are a midline bar.
+/// Geometry comes from [`crate::targets::current_mark`] so portrait
+/// 480×800 and landscape 800×480 share fractions, not a fixed table.
+/// Completing the walk does not clear to white — the next paint is
+/// the centre dot again.
+pub(crate) fn draw_targets(bw: &mut [u8], red: &mut [u8], rotation: PageRotation) {
+    clear_gray(bw, red, gray::WHITE, rotation);
+    let (page_w, page_h) = rotation.page_size();
+    let cx = i32::from(page_w) / 2;
+    let mark = crate::targets::current_mark(rotation);
+    let style = MonoTextStyle::new(&FONT_10X20, BinaryColor::On);
+    let _ = Text::with_alignment(
+        "TOUCH VALIDATION",
+        Point::new(cx, 36),
+        style,
+        Alignment::Center,
+    )
+    .draw(&mut GrayInk::new(bw, red, 1, rotation));
+    let hint = match mark.kind {
+        TargetKind::Dot => "Tap the disk",
+        TargetKind::SlideX => "Slide along the line",
+        TargetKind::SlideY => "Slide along the line",
+    };
+    let hint_y = if is_portrait(rotation) {
+        i32::from(page_h.saturating_sub(36))
+    } else {
+        i32::from(page_h.saturating_sub(24))
+    };
+    let _ = Text::with_alignment(hint, Point::new(cx, hint_y), style, Alignment::Center)
+        .draw(&mut GrayInk::new(bw, red, 1, rotation));
+    match mark.kind {
+        TargetKind::Dot => {
+            fill_disk_gray(bw, red, mark.x, mark.y, mark.r, gray::BLACK, rotation);
+            stroke_disk_gray(
+                bw,
+                red,
+                mark.x,
+                mark.y,
+                mark.r.saturating_add(6),
+                gray::DARK_GRAY,
+                rotation,
+            );
+        }
+        TargetKind::SlideX => {
+            let y = mark.y.saturating_sub(6);
+            fill_rect_gray(
+                bw,
+                red,
+                16,
+                y,
+                page_w.saturating_sub(32),
+                12,
+                gray::BLACK,
+                rotation,
+            );
+        }
+        TargetKind::SlideY => {
+            let x = mark.x.saturating_sub(6);
+            fill_rect_gray(
+                bw,
+                red,
+                x,
+                16,
+                12,
+                page_h.saturating_sub(32),
+                gray::BLACK,
+                rotation,
+            );
         }
     }
 }
@@ -1240,6 +1315,74 @@ pub(crate) fn wifi_action_hit(fx: u16, fy: u16, rotation: PageRotation) -> bool 
 fn clear_gray(bw: &mut [u8], red: &mut [u8], tone: u8, rotation: PageRotation) {
     let (page_w, page_h) = rotation.page_size();
     fill_rect_gray(bw, red, 0, 0, page_w, page_h, tone, rotation);
+}
+
+/// Filled disk in page pixels (inclusive radius).
+fn fill_disk_gray(
+    bw: &mut [u8],
+    red: &mut [u8],
+    cx: u16,
+    cy: u16,
+    radius: u16,
+    tone: u8,
+    rotation: PageRotation,
+) {
+    let (page_w, page_h) = rotation.page_size();
+    let r2 = u32::from(radius).saturating_mul(u32::from(radius));
+    let x0 = cx.saturating_sub(radius);
+    let y0 = cy.saturating_sub(radius);
+    let x1 = cx.saturating_add(radius).min(page_w.saturating_sub(1));
+    let y1 = cy.saturating_add(radius).min(page_h.saturating_sub(1));
+    for y in y0..=y1 {
+        for x in x0..=x1 {
+            let dx = i32::from(x) - i32::from(cx);
+            let dy = i32::from(y) - i32::from(cy);
+            let d2 = dx
+                .unsigned_abs()
+                .saturating_mul(dx.unsigned_abs())
+                .saturating_add(dy.unsigned_abs().saturating_mul(dy.unsigned_abs()));
+            if d2 <= r2 {
+                set_gray_page(bw, red, x, y, tone, rotation);
+            }
+        }
+    }
+}
+
+/// One-pixel ring at `radius` (page pixels).
+fn stroke_disk_gray(
+    bw: &mut [u8],
+    red: &mut [u8],
+    cx: u16,
+    cy: u16,
+    radius: u16,
+    tone: u8,
+    rotation: PageRotation,
+) {
+    let (page_w, page_h) = rotation.page_size();
+    if radius == 0 {
+        set_gray_page(bw, red, cx, cy, tone, rotation);
+        return;
+    }
+    let outer2 = u32::from(radius).saturating_mul(u32::from(radius));
+    let inner = radius.saturating_sub(1);
+    let inner2 = u32::from(inner).saturating_mul(u32::from(inner));
+    let x0 = cx.saturating_sub(radius);
+    let y0 = cy.saturating_sub(radius);
+    let x1 = cx.saturating_add(radius).min(page_w.saturating_sub(1));
+    let y1 = cy.saturating_add(radius).min(page_h.saturating_sub(1));
+    for y in y0..=y1 {
+        for x in x0..=x1 {
+            let dx = i32::from(x) - i32::from(cx);
+            let dy = i32::from(y) - i32::from(cy);
+            let d2 = dx
+                .unsigned_abs()
+                .saturating_mul(dx.unsigned_abs())
+                .saturating_add(dy.unsigned_abs().saturating_mul(dy.unsigned_abs()));
+            if d2 <= outer2 && d2 > inner2 {
+                set_gray_page(bw, red, x, y, tone, rotation);
+            }
+        }
+    }
 }
 
 /// Fill a gray4 rectangle in the current page.

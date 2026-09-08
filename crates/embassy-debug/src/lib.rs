@@ -3,7 +3,8 @@
 //! The firmware owns buses, pins, and the Embassy tasks. This crate owns the
 //! **strings** it prints so the log contract can be tested on the host:
 //! timestamped button, touch, GT911 status, IMU, mic-energy, PCM-dump,
-//! radio-scan, BLE pair-card, Wi-Fi survey / SoftAP, read-only SD identify, and charge-sit lines,
+//! radio-scan, BLE pair-card, Wi-Fi survey / SoftAP, touch-validation,
+//! read-only SD identify, and charge-sit lines,
 //! and no factory serial / USB serial / MAC / card product-serial fields.
 //! `--features remote-debug` adds `snap` / `touch drop src=syn` and
 //! `src=` on `touch` / synthetic `btn` edges.
@@ -107,8 +108,15 @@ pub const GIT_CAPACITY: usize = 80;
 pub const LATCHED_CAPACITY: usize = 32;
 
 mod idle;
+mod target;
 
 pub use idle::IdleListen;
+pub use target::{
+    dist_px, dot_hit, format_target, next_target_id, slide_axis_value, slide_complete,
+    slide_on_line, slide_page_len, target_mark, TargetKind, TargetLine, TargetMark, TargetVerb,
+    TARGET_INSET_PX, TARGET_LAST_ID, TARGET_RADIUS_PX, TARGET_SLIDE_END_INSET, TARGET_SLIDE_X_ID,
+    TARGET_SLIDE_Y_ID, TARGET_SLOP_PX,
+};
 
 /// Why a format into a caller buffer failed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -198,6 +206,11 @@ pub enum Scene {
     /// Composed in the current in-plane page.
     #[cfg(feature = "wifi")]
     WifiAp,
+    /// Touch-validation walk: five page-space dots, then two midline
+    /// slides. Completing the last mark prints `target loop` and
+    /// restarts; there is no white end card. Keys still leave.
+    /// Composed in the current in-plane page.
+    Targets,
 }
 
 /// Why a `--features pair` attempt did not finish.
@@ -245,29 +258,37 @@ impl PairFailWhy {
 impl Scene {
     /// Cycle order for Page Up / Page Down.
     #[cfg(all(not(feature = "pair"), not(feature = "wifi")))]
-    pub const ALL: [Self; 4] = [Self::Splash, Self::Shapes, Self::Legend, Self::Tones];
-    /// Cycle order when only the pair card is compiled in.
-    #[cfg(all(feature = "pair", not(feature = "wifi")))]
     pub const ALL: [Self; 5] = [
         Self::Splash,
         Self::Shapes,
         Self::Legend,
         Self::Tones,
-        Self::Pair,
+        Self::Targets,
     ];
-    /// Cycle order when only the Wi-Fi cards are compiled in.
-    #[cfg(all(not(feature = "pair"), feature = "wifi"))]
+    /// Cycle order when only the pair card is compiled in.
+    #[cfg(all(feature = "pair", not(feature = "wifi")))]
     pub const ALL: [Self; 6] = [
         Self::Splash,
         Self::Shapes,
         Self::Legend,
         Self::Tones,
+        Self::Pair,
+        Self::Targets,
+    ];
+    /// Cycle order when only the Wi-Fi cards are compiled in.
+    #[cfg(all(not(feature = "pair"), feature = "wifi"))]
+    pub const ALL: [Self; 7] = [
+        Self::Splash,
+        Self::Shapes,
+        Self::Legend,
+        Self::Tones,
         Self::WifiSurvey,
         Self::WifiAp,
+        Self::Targets,
     ];
     /// Default embassy-debug walk (`pair` + `wifi`).
     #[cfg(all(feature = "pair", feature = "wifi"))]
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::Splash,
         Self::Shapes,
         Self::Legend,
@@ -275,6 +296,7 @@ impl Scene {
         Self::Pair,
         Self::WifiSurvey,
         Self::WifiAp,
+        Self::Targets,
     ];
 
     /// Token written after `scene=`.
@@ -292,6 +314,7 @@ impl Scene {
             Self::WifiSurvey => "wifi_survey",
             #[cfg(feature = "wifi")]
             Self::WifiAp => "wifi_ap",
+            Self::Targets => "targets",
         }
     }
 
@@ -310,6 +333,7 @@ impl Scene {
             Self::WifiSurvey => 5,
             #[cfg(feature = "wifi")]
             Self::WifiAp => 6,
+            Self::Targets => 7,
         }
     }
 
@@ -328,6 +352,7 @@ impl Scene {
             5 => Some(Self::WifiSurvey),
             #[cfg(feature = "wifi")]
             6 => Some(Self::WifiAp),
+            7 => Some(Self::Targets),
             _ => None,
         }
     }
@@ -346,7 +371,8 @@ impl Scene {
             #[cfg(feature = "wifi")]
             Self::WifiSurvey => Self::WifiAp,
             #[cfg(feature = "wifi")]
-            Self::WifiAp => Self::Splash,
+            Self::WifiAp => Self::Targets,
+            Self::Targets => Self::Splash,
         }
     }
 
@@ -355,7 +381,7 @@ impl Scene {
     #[must_use]
     pub const fn prev(self) -> Self {
         match self {
-            Self::Splash => Self::before_splash(),
+            Self::Splash => Self::Targets,
             Self::Shapes => Self::Splash,
             Self::Legend => Self::Shapes,
             Self::Tones => Self::Legend,
@@ -365,6 +391,7 @@ impl Scene {
             Self::WifiSurvey => Self::before_wifi_survey(),
             #[cfg(feature = "wifi")]
             Self::WifiAp => Self::WifiSurvey,
+            Self::Targets => Self::before_targets(),
         }
     }
 
@@ -379,7 +406,7 @@ impl Scene {
         }
         #[cfg(all(not(feature = "pair"), not(feature = "wifi")))]
         {
-            Self::Splash
+            Self::Targets
         }
     }
 
@@ -391,11 +418,11 @@ impl Scene {
         }
         #[cfg(not(feature = "wifi"))]
         {
-            Self::Splash
+            Self::Targets
         }
     }
 
-    const fn before_splash() -> Self {
+    const fn before_targets() -> Self {
         #[cfg(feature = "wifi")]
         {
             Self::WifiAp
@@ -800,6 +827,29 @@ pub enum Event {
         /// Milliseconds since boot.
         t_ms: u32,
     },
+    /// Touch-validation mark (`target show|hit|miss|loop`).
+    ///
+    /// Page pixels for the current IMU hold. Never a MAC.
+    Target {
+        /// Milliseconds since boot.
+        t_ms: u32,
+        /// `show` / `hit` / `miss` / `loop`.
+        verb: TargetVerb,
+        /// Walk index (`0..=6`). Unused on `loop`.
+        id: u8,
+        /// Dot or slide axis.
+        kind: TargetKind,
+        /// Tap (or last slide sample) in page pixels.
+        page_x: u16,
+        /// Tap (or last slide sample) in page pixels.
+        page_y: u16,
+        /// Painted mark centre.
+        expect_x: u16,
+        /// Painted mark centre.
+        expect_y: u16,
+        /// `r=` on show, `d=` on a dot, `span=` on a slide.
+        metric: u16,
+    },
 }
 
 /// Writes `embassy-debug: latched` into `buf` without a trailing newline.
@@ -1044,6 +1094,30 @@ pub fn format_event<'a>(event: &Event, buf: &'a mut [u8]) -> Result<&'a str, For
         Event::TouchDrop { t_ms } => write_into(
             buf,
             format_args!("{LOG_PREFIX}: t={t_ms} touch drop src=syn"),
+        ),
+        Event::Target {
+            t_ms,
+            verb,
+            id,
+            kind,
+            page_x,
+            page_y,
+            expect_x,
+            expect_y,
+            metric,
+        } => format_target(
+            TargetLine {
+                t_ms,
+                verb,
+                id,
+                kind,
+                page_x,
+                page_y,
+                expect_x,
+                expect_y,
+                metric,
+            },
+            buf,
         ),
     }
 }
@@ -1365,7 +1439,10 @@ fn append_src_token<'a>(
     write_into(buf, format_args!("{prefix} src={token}"))
 }
 
-fn write_into<'a>(buf: &'a mut [u8], args: fmt::Arguments<'_>) -> Result<&'a str, FormatError> {
+pub(crate) fn write_into<'a>(
+    buf: &'a mut [u8],
+    args: fmt::Arguments<'_>,
+) -> Result<&'a str, FormatError> {
     let mut tmp = [0u8; LINE_CAPACITY];
     let pos = {
         let mut writer = SliceWriter {
@@ -1899,16 +1976,22 @@ mod tests {
     fn scene_wraps_in_both_directions() {
         assert_eq!(Scene::Splash.next(), Scene::Shapes);
         assert_eq!(Scene::Legend.next(), Scene::Tones);
-        #[cfg(not(feature = "pair"))]
-        assert_eq!(Scene::Tones.next(), Scene::Splash);
-        #[cfg(not(feature = "pair"))]
-        assert_eq!(Scene::Splash.prev(), Scene::Tones);
+        #[cfg(all(not(feature = "pair"), not(feature = "wifi")))]
+        assert_eq!(Scene::Tones.next(), Scene::Targets);
+        #[cfg(all(not(feature = "pair"), not(feature = "wifi")))]
+        assert_eq!(Scene::Targets.next(), Scene::Splash);
+        #[cfg(all(not(feature = "pair"), not(feature = "wifi")))]
+        assert_eq!(Scene::Splash.prev(), Scene::Targets);
         #[cfg(all(feature = "pair", not(feature = "wifi")))]
         assert_eq!(Scene::Tones.next(), Scene::Pair);
         #[cfg(all(feature = "pair", not(feature = "wifi")))]
-        assert_eq!(Scene::Pair.next(), Scene::Splash);
+        assert_eq!(Scene::Pair.next(), Scene::Targets);
         #[cfg(all(feature = "pair", not(feature = "wifi")))]
-        assert_eq!(Scene::Splash.prev(), Scene::Pair);
+        assert_eq!(Scene::Targets.next(), Scene::Splash);
+        #[cfg(all(feature = "pair", not(feature = "wifi")))]
+        assert_eq!(Scene::Splash.prev(), Scene::Targets);
+        #[cfg(all(feature = "pair", not(feature = "wifi")))]
+        assert_eq!(Scene::Targets.prev(), Scene::Pair);
         #[cfg(all(feature = "pair", not(feature = "wifi")))]
         assert_eq!(Scene::Pair.prev(), Scene::Tones);
         #[cfg(all(feature = "pair", feature = "wifi"))]
@@ -1918,15 +2001,23 @@ mod tests {
         #[cfg(all(feature = "pair", feature = "wifi"))]
         assert_eq!(Scene::WifiSurvey.next(), Scene::WifiAp);
         #[cfg(all(feature = "pair", feature = "wifi"))]
-        assert_eq!(Scene::WifiAp.next(), Scene::Splash);
+        assert_eq!(Scene::WifiAp.next(), Scene::Targets);
         #[cfg(all(feature = "pair", feature = "wifi"))]
-        assert_eq!(Scene::Splash.prev(), Scene::WifiAp);
+        assert_eq!(Scene::Targets.next(), Scene::Splash);
+        #[cfg(all(feature = "pair", feature = "wifi"))]
+        assert_eq!(Scene::Splash.prev(), Scene::Targets);
+        #[cfg(all(feature = "pair", feature = "wifi"))]
+        assert_eq!(Scene::Targets.prev(), Scene::WifiAp);
         #[cfg(all(feature = "pair", feature = "wifi"))]
         assert_eq!(Scene::WifiSurvey.prev(), Scene::Pair);
         #[cfg(all(not(feature = "pair"), feature = "wifi"))]
         assert_eq!(Scene::Tones.next(), Scene::WifiSurvey);
         #[cfg(all(not(feature = "pair"), feature = "wifi"))]
-        assert_eq!(Scene::WifiAp.next(), Scene::Splash);
+        assert_eq!(Scene::WifiAp.next(), Scene::Targets);
+        #[cfg(all(not(feature = "pair"), feature = "wifi"))]
+        assert_eq!(Scene::Targets.next(), Scene::Splash);
+        #[cfg(all(not(feature = "pair"), feature = "wifi"))]
+        assert_eq!(Scene::Splash.prev(), Scene::Targets);
         assert_eq!(
             line(&Event::Scene {
                 t_ms: 9,
@@ -1940,6 +2031,27 @@ mod tests {
                 scene: Scene::Tones,
             }),
             "embassy-debug: t=11 scene=tones"
+        );
+        assert_eq!(
+            line(&Event::Scene {
+                t_ms: 13,
+                scene: Scene::Targets,
+            }),
+            "embassy-debug: t=13 scene=targets"
+        );
+        assert_eq!(
+            line(&Event::Target {
+                t_ms: 15,
+                verb: TargetVerb::Loop,
+                id: 0,
+                kind: TargetKind::Dot,
+                page_x: 0,
+                page_y: 0,
+                expect_x: 0,
+                expect_y: 0,
+                metric: 0,
+            }),
+            "embassy-debug: t=15 target loop"
         );
     }
 

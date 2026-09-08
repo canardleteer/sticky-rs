@@ -12,10 +12,16 @@ description: >-
 
 # sticky-rs
 
-Host tools and Rust software path for **this repository**. Board wiring,
+Host tools and Rust software path for **sticky-rs** (and the sundries-sticky
+xtask subset that reuses sticky-host / remote-debug-host). Board wiring,
 enclosure, and datasheets are
 [`seeed-sticky-hardware`](../seeed-sticky-hardware/SKILL.md). Read that
 skill first for pins and rails. Do not mix a stack’s APIs into the pin map.
+
+**sundries-sticky differences:** advertise name `sundries-sticky`; build with
+`cargo xtask build-fw --features remote-debug`; flash via sticky-rs
+`flash-app`. Never open `/dev/ttyACM*` for app UART — use CDC listen (see
+root [AGENTS.md](../../../AGENTS.md#ch343-uart-do-not-break-acm)).
 
 This repository is **host-verified by default**. Landing xtask source is not
 permission to open a port. Do not open a UART unless the human **explicitly

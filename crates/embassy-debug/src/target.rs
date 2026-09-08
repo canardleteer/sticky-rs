@@ -408,6 +408,25 @@ mod tests {
                 dot_hit(page.x, page.y, c).is_some(),
                 "{rotation:?} draw/touch round-trip missed the disk"
             );
+            let corner = target_mark(1, w, h);
+            assert_eq!((corner.x, corner.y), (TARGET_INSET_PX, TARGET_INSET_PX));
+            if matches!(rotation, PageRotation::Portrait0) {
+                // 2026-09-08 sit: visible top-left `p0=73,399`.
+                let tap = seeed_reterminal_sticky::display::screen_to_framebuffer(73, 399)
+                    .expect("on panel");
+                let page = view
+                    .map_touch_point(seeed_reterminal_sticky::FramebufferPoint {
+                        x: tap.0,
+                        y: tap.1,
+                    })
+                    .expect("page");
+                assert!(
+                    dot_hit(page.x, page.y, corner).is_some(),
+                    "Portrait0 visible top-left missed ({},{})",
+                    page.x,
+                    page.y
+                );
+            }
         }
     }
 

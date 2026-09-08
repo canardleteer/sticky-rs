@@ -90,8 +90,10 @@ Wi-Fi survey / SoftAP, and the sleep card in the IMU page (480×800 or
 keep the last in-plane page. Gray4 `set_gray` writes
 `(W-1-x, H-1-y)` of the canvas. Portrait
 `page_to_framebuffer` already includes a 180-ish map, so
-`framebuffer_to_page` on `to_framebuffer` matches ink. Landscape
-is mirror-X only (LTR Latin); ink is that OTP 180.
+`framebuffer_to_page` on `to_framebuffer` matches the compose
+canvas. Portrait gray4 hit-test still flips Y (page mirror X;
+2026-09-08 `scene=targets` top-left miss). Landscape is
+mirror-X only (LTR Latin); ink is that OTP 180.
 `gray4_touch_framebuffer` applies the 180° on both landscape
 holds. Do not OR both canvases. Do not hit-test UART `p0=` /
 `to_screen`.

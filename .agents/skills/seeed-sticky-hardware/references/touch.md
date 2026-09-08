@@ -183,8 +183,8 @@ Gray4 embassy-debug ink is the **pre-rotation canvas**
 (`View::map_draw` / `page_to_framebuffer`, same space as
 `to_framebuffer` / steps 1–2). `View::native` is that canvas with
 no extra rotation. IMU-page hit-test uses `View::from_hold` then
-`map_touch_framebuffer` (gray4 OTP 180° on both landscape holds), not
-UART `p0=` / `to_screen`. A first Wi-Fi-card sit
+`map_touch_framebuffer` (portrait flip Y / page mirror X; gray4 OTP
+180° on both landscape holds), not UART `p0=` / `to_screen`. A first Wi-Fi-card sit
 (2026-09-04) printed `scene=wifi_survey` / `scene=wifi_ap` and
 START taps (`p0=679,189` while `imu=Portrait0`) with no
 `wifi_survey` / `wifi_ap` line: those glass coords mapped to the
@@ -203,7 +203,12 @@ visible `p0=339,77` / `page=339,402 hit=1` started SoftAP,
 ghost `p0=341,409` / `page=341,70 hit=0`). Do not OR both: a
 2026-09-04 `wifi_ap` sit toggled
 the empty opposite side. Do not apply the Landscape0 180°
-on portrait: that is the `p0=679,189` miss. Prefer the raw
+on portrait: that is the `p0=679,189` miss. Portrait still
+flips Y: a 2026-09-08 `scene=targets` `imu=Portrait0` sit
+tapped the visible top-left disk (`p0=73,399`) and printed
+`page=399,73 expect=80,80` until that flip. Same-day reflash
+completed the Portrait0 walk (`d=5` on that disk, both slides,
+`target loop`). Prefer the raw
 GT911 sample through
 `to_framebuffer`, not an undo of UART `p0=`. 2026-08-30,
 default embassy-debug

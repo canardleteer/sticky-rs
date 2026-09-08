@@ -50,7 +50,8 @@ Live-ask, never-erase, and flash I/O: root
   also advertises on splash after a software reset). Wi-Fi cards
   stay idle until a tap on `[ START SURVEY ]` / `[ START HOTSPOT ]`.
   Landscape0 START uses only the OTP `set_gray` 180° of the
-  canvas. Landscape180 and portrait invert the tap canvas.
+  canvas. Landscape180 uses that same OTP 180°. Portrait
+  flips Y (page mirror X).
   Do not OR both.
   Legend is a document (keys, sleep / standby / power, OTP), not
   72×72 nub boxes.

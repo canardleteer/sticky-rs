@@ -45,8 +45,9 @@ Use when cards stay upright in the four in-plane holds.
 2. **Map ink with `map_draw` / `map_draw_point`.**
    Gray4 `set_gray` then writes `(W-1-x, H-1-y)`.
 3. **Hit-test with `hit_framebuffer`.**
-   Pass `to_framebuffer`, not `p0=`. Landscape holds use only
-   the OTP 180°. Do not OR the empty opposite side.
+   Pass `to_framebuffer`, not `p0=`. Portrait holds flip Y
+   (page-space mirror X on the 480-wide page). Landscape holds
+   use only the OTP 180°. Do not OR the empty opposite side.
 4. **Place the strip with `HitRect`.**
    Worked example: embassy-debug START is portrait
    `(50, page_h-150, page_w-100, 90)` slop 10; landscape
@@ -68,3 +69,16 @@ A 2026-09-04 sit printed `p0=679,189` while `imu=Portrait0` and
 `touch n=1` with no radio. Those glass digits are not START.
 Undo 180° (`FramebufferPoint` `(120, 290)`) then page ≈
 `(189, 679)`, which is the strip.
+
+## Note (targets top-left miss)
+
+A 2026-09-08 `scene=targets` sit, `imu=Portrait0`, tapped the
+visible top-left disk (`p0=73,399`) and printed
+`page=399,73 expect=80,80` (miss, ~320 px). That is a page
+mirror X. The centre disk still scored (`page=225,399
+expect=240,400`) because it sits on the midline. Wi-Fi START
+is wide enough that the same mirror still hit the strip.
+Portrait gray4 hit-test now flips Y. Same-day reflash,
+`imu=Portrait0`: all five dots hit (top-left `page=76,76
+expect=80,80 d=5`), then `slide_x span=397`, `slide_y span=717`,
+`target loop`. Other in-plane holds are not in that listen.

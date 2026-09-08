@@ -154,7 +154,8 @@ radio; deep sleep and latch power-off do. On a physical unit
 `p0=` / `to_screen`) or the radio never starts. Landscape0 uses
 only the OTP `set_gray` 180° of that canvas; Landscape180 uses
 the same OTP 180° (USB-C left; 2026-09-05 visible START hit,
-ghost miss). Portrait inverts the tap canvas.
+ghost miss). Portrait flips Y (page mirror X; 2026-09-08
+`scene=targets` top-left miss).
 Do not OR both (empty opposite
 side toggled on a 2026-09-04 `wifi_ap` sit). SoftAP join /
 `GET /` JSON is **host-verified** (2026-09-04): spare STA joined

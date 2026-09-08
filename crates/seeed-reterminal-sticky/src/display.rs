@@ -93,7 +93,8 @@ pub const fn page_to_framebuffer(px: u16, py: u16, rotation: PageRotation) -> Op
 /// not [`crate::touch::to_screen`] (that already undoes the panel 180°
 /// transmit). Gray4 `set_gray` then writes `(WIDTH-1-x, HEIGHT-1-y)`.
 /// Portrait [`page_to_framebuffer`] already includes a 180-ish map, so
-/// this inverse matches ink. Landscape holds are not a full 180°
+/// this inverse matches the compose canvas. Gray4 hit-test still
+/// applies [`gray4_touch_framebuffer`] first (portrait flip Y). Landscape holds are not a full 180°
 /// in [`page_to_framebuffer`]; the ink the operator sees is the OTP
 /// `set_gray` 180° of that canvas ([`gray4_touch_framebuffer`]). Do
 /// not OR both canvases: that toggles the empty opposite side.
@@ -131,13 +132,17 @@ pub const fn screen_to_framebuffer(sx: u16, sy: u16) -> Option<(u16, u16)> {
 
 /// Canvas to invert for a gray4 page hit-test.
 ///
-/// Pass [`crate::touch::to_framebuffer`]. Portrait holds invert that
-/// canvas as-is. Both landscape holds are not a full 180° in
-/// [`page_to_framebuffer`] (L0 mirror-X, L180 flip-Y), so the ink the
-/// operator sees is the OTP `set_gray` 180° of that canvas. Do not OR
-/// both: a 2026-09-04 `wifi_ap` sit toggled from the empty opposite
-/// side. A 2026-09-05 USB-C-left sit fired SoftAP from the USB-C-right
-/// strip until L180 used this same OTP 180°.
+/// Pass [`crate::touch::to_framebuffer`]. Every hold flips Y; landscape
+/// also flips X (OTP `set_gray` 180°). Portrait flip Y is a page-space
+/// mirror X on the 480-wide page: a 2026-09-08 `scene=targets`
+/// `imu=Portrait0` sit, tap visible top-left, printed `p0=73,399` /
+/// `page=399,73` / `expect=80,80` until this flip (Wi-Fi START is wide
+/// enough that the same mirror still hit). Do not apply the landscape
+/// full 180° on portrait — that is the 2026-09-04 `p0=679,189` miss.
+/// Do not OR both landscape canvases: a 2026-09-04 `wifi_ap` sit
+/// toggled from the empty opposite side. A 2026-09-05 USB-C-left sit
+/// fired SoftAP from the USB-C-right strip until L180 used this same
+/// OTP 180°.
 #[must_use]
 pub const fn gray4_touch_framebuffer(
     fx: u16,
@@ -149,7 +154,7 @@ pub const fn gray4_touch_framebuffer(
     }
     Some(match rotation {
         PageRotation::Landscape0 | PageRotation::Landscape180 => (WIDTH - 1 - fx, HEIGHT - 1 - fy),
-        PageRotation::Portrait0 | PageRotation::Portrait180 => (fx, fy),
+        PageRotation::Portrait0 | PageRotation::Portrait180 => (fx, HEIGHT - 1 - fy),
     })
 }
 
@@ -548,6 +553,32 @@ mod tests {
         assert!(
             !in_wifi_action(px0, py0, PageRotation::Portrait0, 10),
             "portrait must not treat landscape otp 180 as START ({px0},{py0})"
+        );
+    }
+
+    /// 2026-09-08 `scene=targets`, `imu=Portrait0`. Tap the visible
+    /// top-left disk: UART `p0=73,399` printed `page=399,73`
+    /// `expect=80,80` (miss, page mirror X) until portrait gray4
+    /// flipped Y. Centre (`expect=240,400`) still hits because it
+    /// sits on the midline.
+    #[test]
+    fn portrait0_visible_top_left_is_page_top_left() {
+        let (fx, fy) = screen_to_framebuffer(73, 399).expect("on panel");
+        assert_eq!((fx, fy), (726, 80));
+        assert_eq!(
+            framebuffer_to_page(fx, fy, PageRotation::Portrait0),
+            Some((399, 73)),
+            "compose inverse alone is the recorded miss"
+        );
+        let (px, py) = gray4_wifi_page(fx, fy, PageRotation::Portrait0);
+        assert!(
+            (70..90).contains(&px) && (60..90).contains(&py),
+            "visible top-left must be page (80,80), got ({px},{py})"
+        );
+        let (cx, cy) = gray4_wifi_page(400, 254, PageRotation::Portrait0);
+        assert!(
+            (230..270).contains(&cx) && (380..420).contains(&cy),
+            "centre disk sit p0=399,225 must stay near (240,400), got ({cx},{cy})"
         );
     }
 

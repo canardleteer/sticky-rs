@@ -9,8 +9,8 @@
 //! | Preference | `map_draw` | Extra gray4 hit-test |
 //! | --- | --- | --- |
 //! | **[`ViewOrigin::Native`] (default)** | `(x, y)` | none |
-//! | [`PageRotation::Portrait0`] (USB-C bottom) | swap + 180-ish | none |
-//! | [`PageRotation::Portrait180`] | swap | none |
+//! | [`PageRotation::Portrait0`] (USB-C bottom) | swap + 180-ish | flip Y (page mirror X) |
+//! | [`PageRotation::Portrait180`] | swap | flip Y (page mirror X) |
 //! | [`PageRotation::Landscape0`] (USB-C right) | mirror X | OTP 180° |
 //! | [`PageRotation::Landscape180`] (USB-C left) | flip Y | OTP 180° |
 //!
@@ -232,7 +232,8 @@ impl View {
     /// Native then returns that canvas. A hold also applies
     /// [`gray4_touch_framebuffer`](crate::display::gray4_touch_framebuffer)
     /// then [`framebuffer_to_page`](crate::display::framebuffer_to_page) so
-    /// Landscape0 uses only the OTP 180°.
+    /// portrait flips Y (page mirror X) and Landscape0 uses only the
+    /// OTP 180°.
     #[inline]
     #[must_use]
     pub fn map_touch_raw(self, cx: u32, cy: u32) -> Option<(u16, u16)> {

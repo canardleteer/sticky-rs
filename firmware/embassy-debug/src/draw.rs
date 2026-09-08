@@ -1299,7 +1299,7 @@ fn wifi_action_hit_rect(rotation: PageRotation) -> HitRect {
 /// Those glass digits type as [`seeed_reterminal_sticky::GlassPoint`];
 /// this helper takes a canvas pair and hands it to
 /// [`View::hit_framebuffer`]. Both landscape holds use only the OTP
-/// [`set_gray`] 180°; portrait invert the tap canvas. Do not OR both
+/// [`set_gray`] 180°; portrait flip Y (page mirror X). Do not OR both
 /// (empty opposite side toggled on a 2026-09-04 `wifi_ap` sit;
 /// USB-C-left fired the USB-C-right strip on 2026-09-05 until
 /// Landscape180 used the same OTP 180°).

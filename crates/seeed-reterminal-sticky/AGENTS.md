@@ -3,7 +3,10 @@
 Board types only: pins, latch, rails, transforms, read-only SD
 identify. Chip registers live in driver crates; UART / I2C / SPI live
 in the firmware HAL. Do not turn this crate into an `esp-hal` wrapper.
-`touch::to_screen` takes a GT911 **480×800** sample.
+`touch::to_screen` takes a GT911 **480×800** sample. Four spaces
+(`DigitizerSample`, `FramebufferPoint`, `GlassPoint`,
+`PagePoint`) plus `HitRect` live here, not on `panel-view`.
+UART `p0=` is `GlassPoint`.
 
 - GPIO0 (sensor SCL) and GPIO3 (touch SDA) are straps. Never assign
   them to the SPI controller.

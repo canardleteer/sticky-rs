@@ -20,11 +20,14 @@ Chip drivers (`bq25616`, `bq27220`, `ssd1677-gray4`) are MCU-agnostic and
 carry no `esp-hal` dependency. `panel-view` is the board-agnostic
 logical-canvas trait (draw + touch + landmarks + hold) plus snapshot /
 tagged-touch companions (`ExpectedFrame`, `TouchSource`; not methods on
-`PanelView`). `remote-debug-wire` is the protobuf codec
+`PanelView`). Do not put `HitRect` or the four point types on
+`PanelView` this pass. `remote-debug-wire` is the protobuf codec
 (`sticky.remote.v1.Envelope`, u32 LE length, one frozen snapshot
 slot) plus documented GATT UUIDs and ATT reassembly; it does not own
 planes. `remote-debug-host` is the generic Linux central. Board specifics —
-pins, latch, rails, transforms — belong in `seeed-reterminal-sticky`
+pins, latch, rails, transforms, and typed spaces
+(`DigitizerSample`, `FramebufferPoint`, `GlassPoint`,
+`PagePoint`, `HitRect`) — belong in `seeed-reterminal-sticky`
 (`View` implements `PanelView`). Keep that split.
 
 ## Working rules (this repository)

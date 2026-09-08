@@ -37,6 +37,8 @@ use embedded_graphics::text::{Alignment, Text};
 use seeed_reterminal_sticky::display::{self, PageRotation};
 use seeed_reterminal_sticky::view::View;
 use seeed_reterminal_sticky::PanelView;
+#[cfg(feature = "wifi")]
+use seeed_reterminal_sticky::{FramebufferPoint, HitRect};
 use ssd1677_gray4::planes::{gray, write_mono, PlaneMapping};
 
 /// Enclosure-relative canvas for the current IMU hold.
@@ -52,12 +54,6 @@ fn hold_view(rotation: PageRotation) -> View {
 /// Logical pixel → panel RAM via [`PanelView::map_draw`].
 fn map_draw<V: PanelView>(view: &V, x: u16, y: u16) -> Option<(u16, u16)> {
     view.map_draw(x, y)
-}
-
-/// Framebuffer tap → logical page via [`PanelView::map_touch_framebuffer`].
-#[cfg(feature = "wifi")]
-fn map_touch<V: PanelView>(view: &V, fx: u16, fy: u16) -> Option<(u16, u16)> {
-    view.map_touch_framebuffer(fx, fy)
 }
 
 /// Packed 1-bit plane: `0xff` is white paper (no ink).
@@ -1166,6 +1162,10 @@ fn is_portrait(rotation: PageRotation) -> bool {
 }
 
 /// START/STOP button in **page** pixels (same space as the card draw).
+///
+/// Portrait: near the USB-C short edge of the 480×800 page.
+/// Landscape: near the bottom of the 800×480 page. Hit-test grows
+/// this box by [`wifi_action_slop`] through [`wifi_action_hit_rect`].
 #[cfg(feature = "wifi")]
 pub(crate) fn wifi_action_rect(rotation: PageRotation) -> (u16, u16, u16, u16) {
     let (page_w, page_h) = rotation.page_size();
@@ -1189,7 +1189,8 @@ pub(crate) fn wifi_action_rect(rotation: PageRotation) -> (u16, u16, u16, u16) {
 /// Extra page pixels around [`wifi_action_rect`] for a fat finger.
 ///
 /// Landscape holds get a wider pad: the button is shorter and the
-/// long-edge hold is easier to miss.
+/// long-edge hold is easier to miss. Lives on [`HitRect::slop`] so
+/// the host crate and this image share one box.
 #[cfg(feature = "wifi")]
 fn wifi_action_slop(rotation: PageRotation) -> u16 {
     if is_portrait(rotation) {
@@ -1199,34 +1200,40 @@ fn wifi_action_slop(rotation: PageRotation) -> u16 {
     }
 }
 
-/// True when a tap in **page** pixels lands in the START/STOP strip.
+/// START/STOP strip as a public-crate [`HitRect`] in **page** pixels.
+///
+/// Same origin as the card draw ([`wifi_action_rect`]). Native is not
+/// used here: embassy-debug opts into [`View::from_hold`], so the
+/// rectangle is 480×800 (portrait) or 800×480 (landscape).
 #[cfg(feature = "wifi")]
-fn wifi_page_in_action(px: u16, py: u16, rotation: PageRotation) -> bool {
+fn wifi_action_hit_rect(rotation: PageRotation) -> HitRect {
     let (x, y, w, h) = wifi_action_rect(rotation);
-    let slop = wifi_action_slop(rotation);
-    let x0 = x.saturating_sub(slop);
-    let y0 = y.saturating_sub(slop);
-    let x1 = x.saturating_add(w).saturating_add(slop);
-    let y1 = y.saturating_add(h).saturating_add(slop);
-    px >= x0 && px < x1 && py >= y0 && py < y1
+    HitRect {
+        x,
+        y,
+        w,
+        h,
+        slop: wifi_action_slop(rotation),
+    }
 }
 
-/// True when a **pre-rotation framebuffer** tap lands in the START/STOP button.
+/// True when a **pre-rotation framebuffer** tap lands in START/STOP.
 ///
 /// Pass [`seeed_reterminal_sticky::touch::to_framebuffer`] (raw GT911),
 /// not UART `p0=` / [`seeed_reterminal_sticky::touch::to_screen`].
-/// [`hold_view`] then [`PanelView::map_touch_framebuffer`]:
-/// both landscape holds use only the OTP [`set_gray`] 180°;
-/// portrait invert the tap canvas. Do not OR both
+/// Those glass digits type as [`seeed_reterminal_sticky::GlassPoint`];
+/// this helper takes a canvas pair and hands it to
+/// [`View::hit_framebuffer`]. Both landscape holds use only the OTP
+/// [`set_gray`] 180°; portrait invert the tap canvas. Do not OR both
 /// (empty opposite side toggled on a 2026-09-04 `wifi_ap` sit;
 /// USB-C-left fired the USB-C-right strip on 2026-09-05 until
 /// Landscape180 used the same OTP 180°).
 #[cfg(feature = "wifi")]
 pub(crate) fn wifi_action_hit(fx: u16, fy: u16, rotation: PageRotation) -> bool {
-    let Some((px, py)) = map_touch(&hold_view(rotation), fx, fy) else {
-        return false;
-    };
-    wifi_page_in_action(px, py, rotation)
+    hold_view(rotation).hit_framebuffer(
+        FramebufferPoint { x: fx, y: fy },
+        wifi_action_hit_rect(rotation),
+    )
 }
 
 /// Fill the current page with one OTP gray tone.

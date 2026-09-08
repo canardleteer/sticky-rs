@@ -5,6 +5,9 @@
 //! [`view`] canvas, and the enclosure's orientation mapping. Chip register knowledge lives in the
 //! device driver crates, and MCU knowledge lives in the firmware — so this
 //! crate depends on `embedded-hal` 1.0 only and is fully host-testable.
+//! Four named coordinate spaces live in [`coords`]: mix a
+//! [`coords::GlassPoint`] (UART `p0=`) into a gray4 hit-test and the
+//! first sit misses.
 //!
 //! It is deliberately thin. It is not a second abstraction layer over
 //! `esp-hal`. The crate README maps schematic Rev 01 plus Seeed /
@@ -54,6 +57,7 @@
 #[cfg(test)]
 extern crate std;
 
+pub mod coords;
 pub mod display;
 pub mod imu;
 pub mod pins;
@@ -63,6 +67,7 @@ pub mod sd;
 pub mod touch;
 pub mod view;
 
+pub use crate::coords::{DigitizerSample, FramebufferPoint, GlassPoint, HitRect, PagePoint};
 pub use crate::power::{Latch, Latched};
 pub use crate::rails::{EpdRail, MicRail, PanelParked, SdRail, TouchRail};
 pub use panel_view::{

@@ -24,7 +24,10 @@
 //! - Gray4 `set_gray` internal 180° (already inside the driver)
 //!
 //! UART `p0=` stays glass ([`crate::touch::to_screen`]). This type maps
-//! ink and hit-test, not that token.
+//! ink and hit-test, not that token. Prefer
+//! [`crate::coords::FramebufferPoint`] and [`crate::coords::HitRect`]
+//! (`map_draw_point` / `hit_framebuffer`) so a
+//! [`crate::coords::GlassPoint`] cannot compile as a tap.
 //!
 //! Existing [`page_to_framebuffer`](crate::display::page_to_framebuffer) /
 //! [`gray4_touch_framebuffer`](crate::display::gray4_touch_framebuffer)
@@ -34,6 +37,7 @@
 //! [`panel_view::PanelCapture`]: this type is `Copy` remap-only.
 //! Last compose lives in firmware (or a host stub).
 
+use crate::coords::{DigitizerSample, FramebufferPoint, HitRect, PagePoint};
 use crate::display::{
     framebuffer_to_page, gray4_touch_framebuffer, page_to_framebuffer, PageRotation, HEIGHT,
     PAGE_HEIGHT, PAGE_WIDTH, WIDTH,
@@ -236,6 +240,16 @@ impl View {
         self.map_touch_framebuffer(fx as u16, fy as u16)
     }
 
+    /// [`PagePoint`] → pre-rotation [`FramebufferPoint`].
+    #[inline]
+    #[must_use]
+    pub const fn map_draw_point(self, point: PagePoint) -> Option<FramebufferPoint> {
+        match self.map_draw(point.x, point.y) {
+            Some((x, y)) => Some(FramebufferPoint { x, y }),
+            None => None,
+        }
+    }
+
     /// Pre-rotation framebuffer tap → logical page.
     ///
     /// Pass [`crate::touch::to_framebuffer`], not UART `p0=` /
@@ -255,6 +269,50 @@ impl View {
                 Some((hx, hy)) => framebuffer_to_page(hx, hy, rotation),
                 None => None,
             },
+        }
+    }
+
+    /// [`FramebufferPoint`] → logical [`PagePoint`].
+    ///
+    /// A [`crate::coords::GlassPoint`] will not compile here.
+    #[inline]
+    #[must_use]
+    pub const fn map_touch_point(self, point: FramebufferPoint) -> Option<PagePoint> {
+        match self.map_touch_framebuffer(point.x, point.y) {
+            Some((x, y)) => Some(PagePoint { x, y }),
+            None => None,
+        }
+    }
+
+    /// Raw GT911 sample → logical [`PagePoint`].
+    #[inline]
+    #[must_use]
+    pub fn map_touch_sample(self, sample: DigitizerSample) -> Option<PagePoint> {
+        self.map_touch_raw(sample.x, sample.y)
+            .map(|(x, y)| PagePoint { x, y })
+    }
+
+    /// True when a raw sample lands in `rect`.
+    ///
+    /// `rect` is page pixels. Native treats that as the 800×480 canvas.
+    #[inline]
+    #[must_use]
+    pub fn hit_raw(self, sample: DigitizerSample, rect: HitRect) -> bool {
+        match self.map_touch_sample(sample) {
+            Some(page) => rect.contains(page),
+            None => false,
+        }
+    }
+
+    /// True when a framebuffer tap lands in `rect`.
+    ///
+    /// Pass [`FramebufferPoint`], not UART `p0=`.
+    #[inline]
+    #[must_use]
+    pub const fn hit_framebuffer(self, point: FramebufferPoint, rect: HitRect) -> bool {
+        match self.map_touch_point(point) {
+            Some(page) => rect.contains(page),
+            None => false,
         }
     }
 
@@ -536,5 +594,38 @@ mod tests {
         view.set_hold(PageRotation::Portrait0);
         assert_eq!(view, View::from_hold(PageRotation::Portrait0));
         assert!(!view.is_native());
+    }
+
+    /// UART `p0=679,189` while `imu=Portrait0` is glass, not START.
+    ///
+    /// Treating those digits as a framebuffer tap misses the strip.
+    /// [`GlassPoint::to_framebuffer`] lands on page ≈ `(189, 679)`.
+    #[test]
+    fn glass_as_framebuffer_misses_portrait0_start() {
+        use crate::coords::{FramebufferPoint, GlassPoint, HitRect};
+
+        let view = View::from_hold(PageRotation::Portrait0);
+        let start = HitRect {
+            x: 50,
+            y: PAGE_HEIGHT.saturating_sub(150),
+            w: PAGE_WIDTH.saturating_sub(100),
+            h: 90,
+            slop: 10,
+        };
+        let glass = GlassPoint { x: 679, y: 189 };
+        let wrong = FramebufferPoint {
+            x: glass.x,
+            y: glass.y,
+        };
+        assert!(
+            !view.hit_framebuffer(wrong, start),
+            "glass digits used as canvas must miss START"
+        );
+        let fb = glass.to_framebuffer().expect("on panel");
+        assert_eq!(fb, FramebufferPoint { x: 120, y: 290 });
+        assert!(view.hit_framebuffer(fb, start), "undo 180° must hit START");
+        let page = view.map_touch_point(fb).expect("in page");
+        assert!((50..430).contains(&page.x));
+        assert!((650..740).contains(&page.y));
     }
 }

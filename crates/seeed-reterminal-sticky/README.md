@@ -6,7 +6,12 @@ SSD1677 e-paper, GT911, CH343P UART).
 This crate holds what is true about the *board* — pin numbers, the power latch,
 rail settle times, panel geometry and OTP refresh modes, the touch transform,
 the enclosure's orientation mapping, and a thin `view::View`
-canvas — and nothing else. `View` implements `panel-view`'s
+canvas — and nothing else. Four named spaces
+(`DigitizerSample`, `FramebufferPoint`, `GlassPoint`,
+`PagePoint`) plus `HitRect` keep UART `p0=` from compiling as a
+gray4 hit-test. First-time recipe:
+[draw-and-touch.md][draw-and-touch].
+`View` implements `panel-view`'s
 `PanelView` trait for shared UI (later PaperMono). `View::native`
 is the zero-cost 800×480 panel RAM identity; the four
 `PageRotation` holds are opt-in. It does not own SPI. Chip registers live in
@@ -51,7 +56,7 @@ part is present or that the crate encoding is correct.
 | --- | --- | --- | --- |
 | 3.97" 800×480 mono e-paper (SSD1677, four-gray via dual planes + panel OTP) | `display`: geometry, `SPI_MAX_HZ` (10 MHz, mode 0), `RefreshKind::{Full, Partial, Gray4}`, `controller_config()` (OTP, `lut: None`), `page_to_framebuffer` / `framebuffer_to_page` / `gray4_touch_framebuffer`. `view::View`: uniform canvas; **default `View::native` is the 800×480 panel RAM identity** (no rotation math). The four `PageRotation` holds are opt-in. Native is not official `begin(800, 480)` / Landscape0. | [`ssd1677-gray4`](https://github.com/canardleteer/sticky-rs/tree/main/crates/ssd1677-gray4) for opcodes. Shared SPI with the card (`pins::SPI_SCLK` / `SPI_MOSI` / `SPI_MISO`, `pins::EPD_CS`). This crate does **not** ship a waveform LUT. Landscape0 gray4 hit-test uses `gray4_touch_framebuffer` (OTP 180 only; do not OR the empty opposite side). embassy-debug opts into `View::from_hold`. | yes |
 | Panel 3.3 V rail | `EpdRail` on GPIO47; no unconditional `disable` | After the controller deep-sleep command, pass `PanelParked::after_deep_sleep_command()` into `disable_after_panel_sleep`. | yes |
-| GT911 capacitive touch (portrait 480×800 digitizer under landscape panel) | `TouchRail` (GPIO42), reset timings and addresses in `touch`, `touch::Register`, `touch::Command`, `touch::StatusWrite` / `StatusBits`, `touch::SlaveAddress`, `touch::StatusHeartbeat` / `STATUS_HEARTBEAT`, `touch::to_screen` / `to_framebuffer`, `view::View::map_touch_raw` / `map_touch_framebuffer` | Dedicated I2C: `pins::TOUCH_I2C_*` (schematic). Rev.09 §6.1: INT=0 → `SlaveAddress::PairBaBb`, bus ≤ `I2C_MAX_HZ`, `Register::Points`, no init Status/Command write. Crate `init()` still writes `Command::ReadCoordinates`. Neither writes config RAM. This FPC delivers **5** contacts (`touch n=5`, `st=0x85`). INT-high + init Status-clear ACKed `Pair28_29` and stayed `st=0x00`. Do not silently flip `addresses::GT911_PRIMARY` (`0x14`). Read-only `gt911 st=` cadence is `STATUS_HEARTBEAT` (`EverySecs(10)` or `Off`). `to_screen` takes the **480×800** sample (not panel 800×480); USB-down ink corners land on 800×480. UART `p0=` is glass. IMU-page Wi-Fi START uses `View::from_hold` then `map_touch_framebuffer` (not UART `p0=`). | yes |
+| GT911 capacitive touch (portrait 480×800 digitizer under landscape panel) | `TouchRail` (GPIO42), reset timings and addresses in `touch`, `touch::Register`, `touch::Command`, `touch::StatusWrite` / `StatusBits`, `touch::SlaveAddress`, `touch::StatusHeartbeat` / `STATUS_HEARTBEAT`, `touch::to_screen` / `to_framebuffer`, typed spaces `DigitizerSample` / `FramebufferPoint` / `GlassPoint` / `PagePoint` / `HitRect`, `view::View::map_touch_raw` / `map_touch_framebuffer` / `hit_raw` / `hit_framebuffer` | Dedicated I2C: `pins::TOUCH_I2C_*` (schematic). Rev.09 §6.1: INT=0 → `SlaveAddress::PairBaBb`, bus ≤ `I2C_MAX_HZ`, `Register::Points`, no init Status/Command write. Crate `init()` still writes `Command::ReadCoordinates`. Neither writes config RAM. This FPC delivers **5** contacts (`touch n=5`, `st=0x85`). INT-high + init Status-clear ACKed `Pair28_29` and stayed `st=0x00`. Do not silently flip `addresses::GT911_PRIMARY` (`0x14`). Read-only `gt911 st=` cadence is `STATUS_HEARTBEAT` (`EverySecs(10)` or `Off`). `to_screen` takes the **480×800** sample (not panel 800×480); USB-down ink corners land on 800×480. UART `p0=` is `GlassPoint`. IMU-page Wi-Fi START uses `View::from_hold` then `hit_framebuffer` (not UART `p0=`). | yes |
 
 ### Sensors (sensor I2C, 400 kHz)
 
@@ -129,3 +134,5 @@ Map:
   also USB-Serial-JTAG D−/D+; notes from elsewhere say to disable that pad
   after deep-sleep wake before attaching I2S. That sequence is untested
   here.
+
+[draw-and-touch]: https://github.com/canardleteer/sticky-rs/blob/main/.agents/skills/seeed-sticky-hardware/references/draw-and-touch.md

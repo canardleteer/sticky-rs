@@ -144,6 +144,10 @@ is module programming, not an MCU guess.
 
 ## Coordinate transform (on a physical unit)
 
+First-time recipe (which space to draw and hit-test):
+[draw-and-touch.md](draw-and-touch.md). Keep the four-step
+algebra here.
+
 The GT911 sample `(cx, cy)` is **portrait 480×800**, not panel 800×480.
 A host map that scaled **raw** `cx` as if the range were 800 compressed
 the keys axis: glass corners next to the keys printed `y≈195`

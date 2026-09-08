@@ -28,10 +28,17 @@ copy of that gate is the root `AGENTS.md`.
    monitor flags, UART session lock, `ESPFLASH_PORT`, no Cargo runner.
    Snapshot how-to:
    [firmware-snapshot-management.md](../../../docs/firmware-snapshot-management.md).
-2. **Rust firmware** — [references/rust.md](references/rust.md). `esp-hal`
+2. **Draw and hit-test** —
+   [draw-and-touch.md](../seeed-sticky-hardware/references/draw-and-touch.md)
+   (board facts) plus this crate’s
+   `DigitizerSample` / `FramebufferPoint` / `GlassPoint` /
+   `PagePoint`, `HitRect`, and `View::hit_raw` /
+   `View::hit_framebuffer`. Remote-debug inject is
+   `FramebufferPoint`, not UART `p0=`.
+3. **Rust firmware** — [references/rust.md](references/rust.md). `esp-hal`
    vs `esp-idf-hal`, `build-fw` then `flash-app`, crate verdicts. In-tree
    Xtensa images live under `firmware/`.
-3. **Layout** — [references/layout.md](references/layout.md). Workspace
+4. **Layout** — [references/layout.md](references/layout.md). Workspace
    paths, clap/espflash/MSRV, lockfiles, crate README URLs.
 
 Hardware facts and source precedence:
@@ -80,12 +87,13 @@ A device may be attached for unrelated reasons; ignore it.
 
 Chip drivers (`bq25616`, `bq27220`, `ssd1677-gray4`) stay MCU-agnostic.
 `panel-view` is the shared canvas trait plus last-compose / tagged-touch
-companions. `remote-debug-wire` is the protobuf codec plus documented
-GATT UUIDs / ATT reassembly for an insecure desk snapshot / inject
-(UART stays plaintext). `remote-debug-host` is the generic Linux
-central.
-Board pins, latch, rails, and
-transforms belong in `seeed-reterminal-sticky`.
+companions (remap only; no `HitRect`). `remote-debug-wire` is the
+protobuf codec plus documented GATT UUIDs / ATT reassembly for an
+insecure desk snapshot / inject (UART stays plaintext).
+`remote-debug-host` is the generic Linux central. Board pins,
+latch, rails, and typed spaces
+(`DigitizerSample`, `FramebufferPoint`, `GlassPoint`,
+`PagePoint`, `HitRect`) belong in `seeed-reterminal-sticky`.
 
 Never `bq27xxx` (wrong gauge family). Never a generic SSD1677 four-gray LUT.
 Never commit a MAC, serial number, USB serial string, NVS blob, or flash

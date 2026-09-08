@@ -38,26 +38,32 @@ path here.
    keys, holes, USB-C, and the SD slot sit. Vendored Seeed diagram:
    [resources/enclosure/appearance_en.png](resources/enclosure/appearance_en.png).
    The glass is the panel, not a key.
-5. **Pin map and rails** — remaining hardware pages (not available from ROM
+5. **Draw and hit-test the first time** —
+   [references/draw-and-touch.md](references/draw-and-touch.md).
+   Native 800×480 or IMU page. Four spaces
+   (`DigitizerSample`, `FramebufferPoint`, `GlassPoint`,
+   `PagePoint`) plus `HitRect`. Sit UART stays in
+   [touch.md](references/touch.md).
+6. **Pin map and rails** — remaining hardware pages (not available from ROM
    `board-info`; they come from firmware that has run on this product).
-6. **Official docs and firmware catalog** —
+7. **Official docs and firmware catalog** —
    [references/catalog.md](references/catalog.md).
-7. **Vendor datasheets** — [resources/datasheets.md](resources/datasheets.md).
+8. **Vendor datasheets** — [resources/datasheets.md](resources/datasheets.md).
    Registers, opcodes, timings for parts confirmed on this model. **Vendor
    the local cache** when that work needs a sheet (see
    [Vendor datasheets](#vendor-datasheets-local-cache)).
-8. **Vendor C++ evidence** —
+9. **Vendor C++ evidence** —
    [references/cpp-platformio.md](references/cpp-platformio.md). Sequences
    from ESP-IDF / PlatformIO trees that ran on a physical unit
    (third-party unless the vendor published them).
-9. **Measurement backlog** — remaining open nets and confirmation recipes
-   live in
-   [resources/not-yet-confirmed.md](resources/not-yet-confirmed.md).
-10. **External skills and sources** — including
-   [varo6/reTerminal-sticky-skill](https://github.com/varo6/reTerminal-sticky-skill)
-   and ESPHome audio confirmed on a physical unit in
-   [sira-fiinikkusu/reterminal-sticky-voice-companion](https://github.com/sira-fiinikkusu/reterminal-sticky-voice-companion)
-   — [resources/external.md](resources/external.md).
+10. **Measurement backlog** — remaining open nets and confirmation recipes
+    live in
+    [resources/not-yet-confirmed.md](resources/not-yet-confirmed.md).
+11. **External skills and sources** — including
+    [varo6/reTerminal-sticky-skill](https://github.com/varo6/reTerminal-sticky-skill)
+    and ESPHome audio confirmed on a physical unit in
+    [sira-fiinikkusu/reterminal-sticky-voice-companion](https://github.com/sira-fiinikkusu/reterminal-sticky-voice-companion)
+    — [resources/external.md](resources/external.md).
 
 Do not mix a stack’s APIs into the pin map. Do not commit another person’s
 MAC, serial number, USB serial string, NVS, or flash image.
@@ -119,7 +125,7 @@ populate it rather than guessing.
 | RAM | Internal SRAM + **8 MB in-package octal PSRAM** at 3.3 V (confirmed `esptool flash-id`, `AP_3v3`) |
 | Flash | **32 MB** external quad SPI, Winbond W25Q256-class (`ef 4019`; eFuse quad, 3.3 V) |
 | Display | 3.97" 800×480, 235 ppi **mono** E-Ink film; 4-gray is synthesized (dual plane + panel OTP), **SSD1677**-compatible SPI |
-| Touch | **GT911** on its own I2C; sensor reports **480×800** (portrait); UART `p0=` is `to_screen` (glass, after the panel 180°). `view::View::native` is the zero-cost 800×480 panel RAM canvas. IMU-page hit-test uses `View::from_hold` + `map_touch_framebuffer` (gray4 canvas). Both landscape holds use only the OTP `set_gray` 180° of that canvas; do not OR the empty opposite side. **5** simultaneous contacts on this FPC (Rev.09 §1). INT low at RST → `0x5D` (Rev.09 §6.1; [touch.md](references/touch.md#on-a-physical-unit-embassy-debug)). Wi-Fi START sit: [touch.md](references/touch.md#coordinate-transform-on-a-physical-unit) |
+| Touch | **GT911** on its own I2C; sensor reports **480×800** (portrait); UART `p0=` is `to_screen` (glass, after the panel 180°). First-time draw / hit-test: [draw-and-touch.md](references/draw-and-touch.md) (`DigitizerSample` / `FramebufferPoint` / `GlassPoint` / `PagePoint` + `HitRect`). `view::View::native` is the zero-cost 800×480 panel RAM canvas. IMU-page hit-test uses `View::from_hold` + `hit_framebuffer` (gray4 canvas). Both landscape holds use only the OTP `set_gray` 180° of that canvas; do not OR the empty opposite side. **5** simultaneous contacts on this FPC (Rev.09 §1). INT low at RST → `0x5D` (Rev.09 §6.1; [touch.md](references/touch.md#on-a-physical-unit-embassy-debug)). Sit algebra: [touch.md](references/touch.md#coordinate-transform-on-a-physical-unit) |
 | USB debug | WCH **CH343P** on UART0 (`1a86:55d3`), not native USB-Serial/JTAG; udev by-id uses `_` before the USB serial |
 | Battery | 750 mAh 1S Li-ion, **BQ27220** gauge, **BQ25616** charger. STAT (GPIO40) low while `/CE` enabled, high after park + settle ([power-and-sleep.md](references/power-and-sleep.md)). Default images park `/CE` |
 | Audio | PDM MEMS **MSM261DDB020** (GPIO19/20, EN 38 / TPS22916; hole on bottom edge); **no loudspeaker** (FUET-5018 on GPIO48). On a physical unit: 16 kHz / left energy is live; GPIO48 1 kHz dump shows a ~16-sample period; a phone tone through the hole shows ~36–40 samples in a buzzer-off dump. Not high-fidelity ([sensors.md](references/sensors.md#pdm-microphone)) |
@@ -230,6 +236,7 @@ Factory firmware also ACKs the PDM microphone and SD slot.
 | Where keys, holes, USB-C, and the SD slot sit | [references/enclosure.md](references/enclosure.md) |
 | GPIO, I2C, SPI, part numbers | [references/pin-map.md](references/pin-map.md) |
 | Latch, charger, deep-sleep rails | [references/power-and-sleep.md](references/power-and-sleep.md) |
+| Draw a button and hit-test it the first time | [references/draw-and-touch.md](references/draw-and-touch.md) |
 | Panel, orientation, framebuffer | [references/display.md](references/display.md) |
 | GT911 address and coordinate map | [references/touch.md](references/touch.md) |
 | IMU axes, RTC, gauge, SHT40, mic | [references/sensors.md](references/sensors.md) |

@@ -58,6 +58,11 @@ rotated TX) fit in octal PSRAM. Keep SPI DMA bounce buffers in internal RAM.
 
 ## Orientation (on a physical unit)
 
+First-time draw and hit-test:
+[draw-and-touch.md](draw-and-touch.md). Native 800×480 or IMU
+page. Sit tokens stay on this page and
+[touch.md](touch.md#coordinate-transform-on-a-physical-unit).
+
 Working mapping:
 
 1. Draw in normal 800×480 coordinates.

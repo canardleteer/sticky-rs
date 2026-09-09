@@ -154,6 +154,10 @@ Pin `Cargo.lock`. PSRAM, LEDC, I2S/PDM, and some sleep APIs have lived behind
 `esp-hal` `unstable`. `firmware/simple-debug`
 is blocking `esp-hal` only — no Embassy, no RTOS. `firmware/embassy-debug`
 is the Embassy image (`esp-rtos` + executor); the panel is always on.
+`--features remote-debug` maps in-package octal PSRAM (80 MHz) for
+the 96 KiB LAST carve only. DRAW/TX and the BLE / Wi-Fi heap stay
+in internal RAM. Do not add the rest of PSRAM to the global
+allocator (S3 atomics are wrong there).
 
 SPI: construct the bus with **only** SCLK/MOSI/MISO and the CS pins in the
 [pin map](../../seeed-sticky-hardware/references/pin-map.md). Do not attach
@@ -222,7 +226,7 @@ cards that follow the in-plane hold, including `scene=targets`
 page-space touch validation, host-tested lines and
 `IdleListen` in `crates/embassy-debug`).
 Default embassy-debug includes `pair` + `wifi`. Advertise
-`sticky-rs` (DisplayOnly passkey, RAM bonds this boot) **only
+`sticky-rs` (DisplayOnly passkey, RAM bond this connection) **only
 while the pair card is showing**. UART tokens are `pair pin=`,
 `pair ok`, and `pair fail=` — never a MAC or eFuse. Pairing
 success is **confirmed on a physical unit** (host BlueZ Connect,
@@ -244,14 +248,25 @@ snapshot + synthetic tap / key mux + `remote-debug-wire` codec +
 encrypted GATT after pair; not default). After `pair ok` that
 image holds the bonded link when walking off the pair card.
 A `Reboot` envelope software-resets the **MCU** (not the host);
-after `CoreSw` that image advertises on splash. UART reprints
+that image advertises from splash on every boot. UART reprints
 `pair pin=` every 5 s on splash or the pair card until `pair ok`.
 `cargo xtask remote-debug` is a live BLE ask (UART auto-PIN when
-a CH343 is present). `host/remote-debug-host` wraps Linux `bluer`
-(Connect, not Pair).
+a CH343 is present: QinHeng TTY, or usbfs still sees a unique
+`1a86:55d3` after `cdc-acm` was left detached). A Unix-socket
+broker in `sticky-host` owns
+the `Session` (`connect` auto-starts a detached serve). CLI
+leaves and `--mcp` are clients.
+`host/remote-debug-host` wraps Linux `bluer` (Connect, not Pair).
+A leftover BlueZ object after `disconnect` still has an LTK; the
+next Connect can drop before `PassKeyDisplay` (no UART `pair pin=`).
+Connect forgets cached objects named `sticky-rs`, skips a name
+match with no RSSI (ghost after `disconnect`), tries each host
+adapter, waits for the ACL, and retries once after
+`remove_device` (never a MAC).
 `wifi` is **not** exclusive of `pair`. `trouble-host` 0.7 still
 needs the `central` feature so `GAP_SERVICE_ATTRIBUTE_COUNT`
-exists. Offer a phone sit first; a host BlueZ or SoftAP
+exists. A phone sit is optional; do not ask for one when the
+human already asked for host BlueZ or SoftAP. A host
 self-diagnostic is allowed only when the human asked for that
 live sit. Connect only — do not call BlueZ `Pair()` /
 `bluetoothctl pair` (SMP Security Request race). `btleplug`

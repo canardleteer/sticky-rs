@@ -802,8 +802,8 @@ impl ::buffa::HasMessageView for super::super::Envelope {
     type View<'a> = EnvelopeView<'a>;
     type ViewHandle = EnvelopeOwnedView;
 }
-/// Pre-rotation framebuffer tap (native 800×480 on the Sticky).
-/// Not UART p0= / glass space, not a raw GT911 480×800 sample.
+/// Pre-rotation framebuffer tap (native 800×480 on the Sticky),
+/// or page pixels when space=PAGE. Not UART p0= / glass, not raw GT911.
 #[derive(Clone, Debug, Default)]
 pub struct InjectTouchView<'a> {
     /// Field 1: `x`
@@ -814,6 +814,10 @@ pub struct InjectTouchView<'a> {
     pub slot: ::core::option::Option<u32>,
     /// Field 4: `source`
     pub source: ::buffa::EnumValue<super::super::TouchSource>,
+    /// Field 5: `phase`
+    pub phase: ::buffa::EnumValue<super::super::TouchPhase>,
+    /// Field 6: `space`
+    pub space: ::buffa::EnumValue<super::super::TouchSpace>,
     pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
 }
 impl<'a> ::buffa::MessageView<'a> for InjectTouchView<'a> {
@@ -876,6 +880,24 @@ impl<'a> ::buffa::MessageView<'a> for InjectTouchView<'a> {
                     ::buffa::types::decode_int32(&mut cur)?,
                 );
             }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.phase = ::buffa::EnumValue::from(
+                    ::buffa::types::decode_int32(&mut cur)?,
+                );
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.space = ::buffa::EnumValue::from(
+                    ::buffa::types::decode_int32(&mut cur)?,
+                );
+            }
             _ => {
                 ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
                 let span_len = before_tag.len() - cur.len();
@@ -902,6 +924,8 @@ impl<'a> ::buffa::MessageView<'a> for InjectTouchView<'a> {
             y: self.y,
             slot: self.slot,
             source: self.source,
+            phase: self.phase,
+            space: self.space,
             __buffa_unknown_fields: self.__buffa_unknown_fields.to_owned()?.into(),
             ..::core::default::Default::default()
         })
@@ -924,6 +948,18 @@ impl<'a> ::buffa::ViewEncode<'a> for InjectTouchView<'a> {
         }
         {
             let val = self.source.to_i32();
+            if val != 0 {
+                size += 1u64 + ::buffa::types::int32_encoded_len(val) as u64;
+            }
+        }
+        {
+            let val = self.phase.to_i32();
+            if val != 0 {
+                size += 1u64 + ::buffa::types::int32_encoded_len(val) as u64;
+            }
+        }
+        {
+            let val = self.space.to_i32();
             if val != 0 {
                 size += 1u64 + ::buffa::types::int32_encoded_len(val) as u64;
             }
@@ -952,6 +988,18 @@ impl<'a> ::buffa::ViewEncode<'a> for InjectTouchView<'a> {
             let val = self.source.to_i32();
             if val != 0 {
                 ::buffa::types::put_int32_field(4u32, val, buf);
+            }
+        }
+        {
+            let val = self.phase.to_i32();
+            if val != 0 {
+                ::buffa::types::put_int32_field(5u32, val, buf);
+            }
+        }
+        {
+            let val = self.space.to_i32();
+            if val != 0 {
+                ::buffa::types::put_int32_field(6u32, val, buf);
             }
         }
         self.__buffa_unknown_fields.write_to(buf);
@@ -1064,6 +1112,16 @@ impl InjectTouchOwnedView {
     #[must_use]
     pub fn source(&self) -> ::buffa::EnumValue<super::super::TouchSource> {
         self.0.reborrow().source
+    }
+    /// Field 5: `phase`
+    #[must_use]
+    pub fn phase(&self) -> ::buffa::EnumValue<super::super::TouchPhase> {
+        self.0.reborrow().phase
+    }
+    /// Field 6: `space`
+    #[must_use]
+    pub fn space(&self) -> ::buffa::EnumValue<super::super::TouchSpace> {
+        self.0.reborrow().space
     }
 }
 impl ::core::convert::From<::buffa::OwnedView<InjectTouchView<'static>>>
@@ -1566,6 +1624,20 @@ pub struct SnapshotView<'a> {
     pub bw: &'a [u8],
     /// Field 7: `red`
     pub red: &'a [u8],
+    /// embassy-debug Scene::persist_byte (splash=0 … targets=7).
+    ///
+    /// Field 8: `scene`
+    pub scene: ::core::option::Option<u32>,
+    /// targets::STEP 0..=6 when scene is targets.
+    ///
+    /// Field 9: `target_step`
+    pub target_step: ::core::option::Option<u32>,
+    /// Field 10: `target_kind`
+    pub target_kind: ::buffa::EnumValue<super::super::TargetKind>,
+    /// Field 11: `target_expect_x`
+    pub target_expect_x: ::core::option::Option<u32>,
+    /// Field 12: `target_expect_y`
+    pub target_expect_y: ::core::option::Option<u32>,
     pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
 }
 impl<'a> ::buffa::MessageView<'a> for SnapshotView<'a> {
@@ -1649,6 +1721,43 @@ impl<'a> ::buffa::MessageView<'a> for SnapshotView<'a> {
                 )?;
                 view.red = ::buffa::types::borrow_bytes(&mut cur)?;
             }
+            8u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.scene = Some(::buffa::types::decode_uint32(&mut cur)?);
+            }
+            9u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.target_step = Some(::buffa::types::decode_uint32(&mut cur)?);
+            }
+            10u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.target_kind = ::buffa::EnumValue::from(
+                    ::buffa::types::decode_int32(&mut cur)?,
+                );
+            }
+            11u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.target_expect_x = Some(::buffa::types::decode_uint32(&mut cur)?);
+            }
+            12u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.target_expect_y = Some(::buffa::types::decode_uint32(&mut cur)?);
+            }
             _ => {
                 ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
                 let span_len = before_tag.len() - cur.len();
@@ -1678,6 +1787,11 @@ impl<'a> ::buffa::MessageView<'a> for SnapshotView<'a> {
             hold: self.hold,
             bw: (self.bw).to_vec(),
             red: (self.red).to_vec(),
+            scene: self.scene,
+            target_step: self.target_step,
+            target_kind: self.target_kind,
+            target_expect_x: self.target_expect_x,
+            target_expect_y: self.target_expect_y,
             __buffa_unknown_fields: self.__buffa_unknown_fields.to_owned()?.into(),
             ..::core::default::Default::default()
         })
@@ -1713,6 +1827,24 @@ impl<'a> ::buffa::ViewEncode<'a> for SnapshotView<'a> {
         if !self.red.is_empty() {
             size += 1u64 + ::buffa::types::bytes_encoded_len(&self.red) as u64;
         }
+        if let Some(v) = self.scene {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(v) as u64;
+        }
+        if let Some(v) = self.target_step {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(v) as u64;
+        }
+        {
+            let val = self.target_kind.to_i32();
+            if val != 0 {
+                size += 1u64 + ::buffa::types::int32_encoded_len(val) as u64;
+            }
+        }
+        if let Some(v) = self.target_expect_x {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(v) as u64;
+        }
+        if let Some(v) = self.target_expect_y {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(v) as u64;
+        }
         size += self.__buffa_unknown_fields.encoded_len() as u64;
         ::buffa::saturate_size(size)
     }
@@ -1747,6 +1879,24 @@ impl<'a> ::buffa::ViewEncode<'a> for SnapshotView<'a> {
         }
         if !self.red.is_empty() {
             ::buffa::types::put_shared_bytes_field(7u32, &self.red, buf);
+        }
+        if let Some(v) = self.scene {
+            ::buffa::types::put_uint32_field(8u32, v, buf);
+        }
+        if let Some(v) = self.target_step {
+            ::buffa::types::put_uint32_field(9u32, v, buf);
+        }
+        {
+            let val = self.target_kind.to_i32();
+            if val != 0 {
+                ::buffa::types::put_int32_field(10u32, val, buf);
+            }
+        }
+        if let Some(v) = self.target_expect_x {
+            ::buffa::types::put_uint32_field(11u32, v, buf);
+        }
+        if let Some(v) = self.target_expect_y {
+            ::buffa::types::put_uint32_field(12u32, v, buf);
         }
         self.__buffa_unknown_fields.write_to(buf);
     }
@@ -1873,6 +2023,35 @@ impl SnapshotOwnedView {
     #[must_use]
     pub fn red(&self) -> &'_ [u8] {
         self.0.reborrow().red
+    }
+    /// embassy-debug Scene::persist_byte (splash=0 … targets=7).
+    ///
+    /// Field 8: `scene`
+    #[must_use]
+    pub fn scene(&self) -> ::core::option::Option<u32> {
+        self.0.reborrow().scene
+    }
+    /// targets::STEP 0..=6 when scene is targets.
+    ///
+    /// Field 9: `target_step`
+    #[must_use]
+    pub fn target_step(&self) -> ::core::option::Option<u32> {
+        self.0.reborrow().target_step
+    }
+    /// Field 10: `target_kind`
+    #[must_use]
+    pub fn target_kind(&self) -> ::buffa::EnumValue<super::super::TargetKind> {
+        self.0.reborrow().target_kind
+    }
+    /// Field 11: `target_expect_x`
+    #[must_use]
+    pub fn target_expect_x(&self) -> ::core::option::Option<u32> {
+        self.0.reborrow().target_expect_x
+    }
+    /// Field 12: `target_expect_y`
+    #[must_use]
+    pub fn target_expect_y(&self) -> ::core::option::Option<u32> {
+        self.0.reborrow().target_expect_y
     }
 }
 impl ::core::convert::From<::buffa::OwnedView<SnapshotView<'static>>>

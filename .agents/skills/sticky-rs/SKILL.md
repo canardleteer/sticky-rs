@@ -32,6 +32,10 @@ copy of that gate is the root `AGENTS.md`.
 
 1. **xtask** — [references/xtask.md](references/xtask.md). Command catalog,
    monitor flags, UART session lock, `ESPFLASH_PORT`, no Cargo runner.
+   stdio MCP (`cargo xtask remote-debug --mcp`):
+   [references/mcp-interactions.md](references/mcp-interactions.md)
+   ([Pickup](references/mcp-interactions.md#pickup-next-sit) for the
+   next desk sit).
    Snapshot how-to:
    [firmware-snapshot-management.md](../../../docs/firmware-snapshot-management.md).
 2. **Draw and hit-test** —
@@ -85,7 +89,7 @@ A device may be attached for unrelated reasons; ignore it.
 | Path | Role |
 | --- | --- |
 | `crates/*` | Default-members. Host-testable, `no_std` / format crates |
-| `host/sticky-host/` | Host library (`publish = true`, not crates.io yet). Live methods take the UART lock; callers pass `Layout` |
+| `host/sticky-host/` | Host library (`publish = true`, not crates.io yet). Live methods take the UART lock; callers pass `Layout`. Remote-debug Unix-socket broker lives here |
 | `host/remote-debug-host/` | Generic BLE central (`publish = true`). No clap, no UART, no Sticky pins. Linux uses `bluer` |
 | `xtask/` | Clap front-end at the repo root (`cargo xtask`, `publish = false`). `remote-debug --mcp` is this subtree only |
 | `developer-data/` | Gitignored private / personalized files. Sealed per-unit originals under `developer-data/backups/`; learn-uart YAML under `uart-inspection-records/<serial>/`; confirm reports under `confirm-records/<serial>/`; remote-debug allowlist and snapshot planes under `remote-debug/`. Private scratch notes stay here too. Not in git |

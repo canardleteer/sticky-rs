@@ -204,6 +204,214 @@ impl ::buffa::Enumeration for FrameKind {
         &[Self::FRAME_KIND_UNSPECIFIED, Self::FRAME_KIND_MONO, Self::FRAME_KIND_GRAY4]
     }
 }
+/// Finger phase. Unset is a tap (DOWN). MOVE does not re-edge dots.
+#[allow(non_camel_case_types)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[repr(i32)]
+pub enum TouchPhase {
+    TOUCH_PHASE_UNSPECIFIED = 0i32,
+    TOUCH_PHASE_DOWN = 1i32,
+    TOUCH_PHASE_MOVE = 2i32,
+    TOUCH_PHASE_UP = 3i32,
+}
+impl TouchPhase {
+    ///Idiomatic alias for [`Self::TOUCH_PHASE_UNSPECIFIED`]; `Debug` prints the variant name.
+    #[allow(non_upper_case_globals)]
+    pub const Unspecified: Self = Self::TOUCH_PHASE_UNSPECIFIED;
+    ///Idiomatic alias for [`Self::TOUCH_PHASE_DOWN`]; `Debug` prints the variant name.
+    #[allow(non_upper_case_globals)]
+    pub const Down: Self = Self::TOUCH_PHASE_DOWN;
+    ///Idiomatic alias for [`Self::TOUCH_PHASE_MOVE`]; `Debug` prints the variant name.
+    #[allow(non_upper_case_globals)]
+    pub const Move: Self = Self::TOUCH_PHASE_MOVE;
+    ///Idiomatic alias for [`Self::TOUCH_PHASE_UP`]; `Debug` prints the variant name.
+    #[allow(non_upper_case_globals)]
+    pub const Up: Self = Self::TOUCH_PHASE_UP;
+}
+impl ::core::default::Default for TouchPhase {
+    fn default() -> Self {
+        Self::TOUCH_PHASE_UNSPECIFIED
+    }
+}
+impl ::buffa::Enumeration for TouchPhase {
+    fn from_i32(value: i32) -> ::core::option::Option<Self> {
+        match value {
+            0i32 => ::core::option::Option::Some(Self::TOUCH_PHASE_UNSPECIFIED),
+            1i32 => ::core::option::Option::Some(Self::TOUCH_PHASE_DOWN),
+            2i32 => ::core::option::Option::Some(Self::TOUCH_PHASE_MOVE),
+            3i32 => ::core::option::Option::Some(Self::TOUCH_PHASE_UP),
+            _ => ::core::option::Option::None,
+        }
+    }
+    fn to_i32(&self) -> i32 {
+        *self as i32
+    }
+    fn proto_name(&self) -> &'static str {
+        match self {
+            Self::TOUCH_PHASE_UNSPECIFIED => "TOUCH_PHASE_UNSPECIFIED",
+            Self::TOUCH_PHASE_DOWN => "TOUCH_PHASE_DOWN",
+            Self::TOUCH_PHASE_MOVE => "TOUCH_PHASE_MOVE",
+            Self::TOUCH_PHASE_UP => "TOUCH_PHASE_UP",
+        }
+    }
+    fn from_proto_name(name: &str) -> ::core::option::Option<Self> {
+        match name {
+            "TOUCH_PHASE_UNSPECIFIED" => {
+                ::core::option::Option::Some(Self::TOUCH_PHASE_UNSPECIFIED)
+            }
+            "TOUCH_PHASE_DOWN" => ::core::option::Option::Some(Self::TOUCH_PHASE_DOWN),
+            "TOUCH_PHASE_MOVE" => ::core::option::Option::Some(Self::TOUCH_PHASE_MOVE),
+            "TOUCH_PHASE_UP" => ::core::option::Option::Some(Self::TOUCH_PHASE_UP),
+            _ => ::core::option::Option::None,
+        }
+    }
+    fn values() -> &'static [Self] {
+        &[
+            Self::TOUCH_PHASE_UNSPECIFIED,
+            Self::TOUCH_PHASE_DOWN,
+            Self::TOUCH_PHASE_MOVE,
+            Self::TOUCH_PHASE_UP,
+        ]
+    }
+}
+/// Coordinate space of InjectTouch x/y. Unset is framebuffer.
+#[allow(non_camel_case_types)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[repr(i32)]
+pub enum TouchSpace {
+    TOUCH_SPACE_UNSPECIFIED = 0i32,
+    TOUCH_SPACE_FRAMEBUFFER = 1i32,
+    TOUCH_SPACE_PAGE = 2i32,
+}
+impl TouchSpace {
+    ///Idiomatic alias for [`Self::TOUCH_SPACE_UNSPECIFIED`]; `Debug` prints the variant name.
+    #[allow(non_upper_case_globals)]
+    pub const Unspecified: Self = Self::TOUCH_SPACE_UNSPECIFIED;
+    ///Idiomatic alias for [`Self::TOUCH_SPACE_FRAMEBUFFER`]; `Debug` prints the variant name.
+    #[allow(non_upper_case_globals)]
+    pub const Framebuffer: Self = Self::TOUCH_SPACE_FRAMEBUFFER;
+    ///Idiomatic alias for [`Self::TOUCH_SPACE_PAGE`]; `Debug` prints the variant name.
+    #[allow(non_upper_case_globals)]
+    pub const Page: Self = Self::TOUCH_SPACE_PAGE;
+}
+impl ::core::default::Default for TouchSpace {
+    fn default() -> Self {
+        Self::TOUCH_SPACE_UNSPECIFIED
+    }
+}
+impl ::buffa::Enumeration for TouchSpace {
+    fn from_i32(value: i32) -> ::core::option::Option<Self> {
+        match value {
+            0i32 => ::core::option::Option::Some(Self::TOUCH_SPACE_UNSPECIFIED),
+            1i32 => ::core::option::Option::Some(Self::TOUCH_SPACE_FRAMEBUFFER),
+            2i32 => ::core::option::Option::Some(Self::TOUCH_SPACE_PAGE),
+            _ => ::core::option::Option::None,
+        }
+    }
+    fn to_i32(&self) -> i32 {
+        *self as i32
+    }
+    fn proto_name(&self) -> &'static str {
+        match self {
+            Self::TOUCH_SPACE_UNSPECIFIED => "TOUCH_SPACE_UNSPECIFIED",
+            Self::TOUCH_SPACE_FRAMEBUFFER => "TOUCH_SPACE_FRAMEBUFFER",
+            Self::TOUCH_SPACE_PAGE => "TOUCH_SPACE_PAGE",
+        }
+    }
+    fn from_proto_name(name: &str) -> ::core::option::Option<Self> {
+        match name {
+            "TOUCH_SPACE_UNSPECIFIED" => {
+                ::core::option::Option::Some(Self::TOUCH_SPACE_UNSPECIFIED)
+            }
+            "TOUCH_SPACE_FRAMEBUFFER" => {
+                ::core::option::Option::Some(Self::TOUCH_SPACE_FRAMEBUFFER)
+            }
+            "TOUCH_SPACE_PAGE" => ::core::option::Option::Some(Self::TOUCH_SPACE_PAGE),
+            _ => ::core::option::Option::None,
+        }
+    }
+    fn values() -> &'static [Self] {
+        &[
+            Self::TOUCH_SPACE_UNSPECIFIED,
+            Self::TOUCH_SPACE_FRAMEBUFFER,
+            Self::TOUCH_SPACE_PAGE,
+        ]
+    }
+}
+/// Targets walk mark. Unset when the card is not targets.
+#[allow(non_camel_case_types)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[repr(i32)]
+pub enum TargetKind {
+    TARGET_KIND_UNSPECIFIED = 0i32,
+    TARGET_KIND_DOT = 1i32,
+    TARGET_KIND_SLIDE_X = 2i32,
+    TARGET_KIND_SLIDE_Y = 3i32,
+}
+impl TargetKind {
+    ///Idiomatic alias for [`Self::TARGET_KIND_UNSPECIFIED`]; `Debug` prints the variant name.
+    #[allow(non_upper_case_globals)]
+    pub const Unspecified: Self = Self::TARGET_KIND_UNSPECIFIED;
+    ///Idiomatic alias for [`Self::TARGET_KIND_DOT`]; `Debug` prints the variant name.
+    #[allow(non_upper_case_globals)]
+    pub const Dot: Self = Self::TARGET_KIND_DOT;
+    ///Idiomatic alias for [`Self::TARGET_KIND_SLIDE_X`]; `Debug` prints the variant name.
+    #[allow(non_upper_case_globals)]
+    pub const SlideX: Self = Self::TARGET_KIND_SLIDE_X;
+    ///Idiomatic alias for [`Self::TARGET_KIND_SLIDE_Y`]; `Debug` prints the variant name.
+    #[allow(non_upper_case_globals)]
+    pub const SlideY: Self = Self::TARGET_KIND_SLIDE_Y;
+}
+impl ::core::default::Default for TargetKind {
+    fn default() -> Self {
+        Self::TARGET_KIND_UNSPECIFIED
+    }
+}
+impl ::buffa::Enumeration for TargetKind {
+    fn from_i32(value: i32) -> ::core::option::Option<Self> {
+        match value {
+            0i32 => ::core::option::Option::Some(Self::TARGET_KIND_UNSPECIFIED),
+            1i32 => ::core::option::Option::Some(Self::TARGET_KIND_DOT),
+            2i32 => ::core::option::Option::Some(Self::TARGET_KIND_SLIDE_X),
+            3i32 => ::core::option::Option::Some(Self::TARGET_KIND_SLIDE_Y),
+            _ => ::core::option::Option::None,
+        }
+    }
+    fn to_i32(&self) -> i32 {
+        *self as i32
+    }
+    fn proto_name(&self) -> &'static str {
+        match self {
+            Self::TARGET_KIND_UNSPECIFIED => "TARGET_KIND_UNSPECIFIED",
+            Self::TARGET_KIND_DOT => "TARGET_KIND_DOT",
+            Self::TARGET_KIND_SLIDE_X => "TARGET_KIND_SLIDE_X",
+            Self::TARGET_KIND_SLIDE_Y => "TARGET_KIND_SLIDE_Y",
+        }
+    }
+    fn from_proto_name(name: &str) -> ::core::option::Option<Self> {
+        match name {
+            "TARGET_KIND_UNSPECIFIED" => {
+                ::core::option::Option::Some(Self::TARGET_KIND_UNSPECIFIED)
+            }
+            "TARGET_KIND_DOT" => ::core::option::Option::Some(Self::TARGET_KIND_DOT),
+            "TARGET_KIND_SLIDE_X" => {
+                ::core::option::Option::Some(Self::TARGET_KIND_SLIDE_X)
+            }
+            "TARGET_KIND_SLIDE_Y" => {
+                ::core::option::Option::Some(Self::TARGET_KIND_SLIDE_Y)
+            }
+            _ => ::core::option::Option::None,
+        }
+    }
+    fn values() -> &'static [Self] {
+        &[
+            Self::TARGET_KIND_UNSPECIFIED,
+            Self::TARGET_KIND_DOT,
+            Self::TARGET_KIND_SLIDE_X,
+            Self::TARGET_KIND_SLIDE_Y,
+        ]
+    }
+}
 /// One framed message. `version` is ENVELOPE_VERSION (1).
 #[derive(Clone, PartialEq, Default)]
 pub struct Envelope {
@@ -682,8 +890,8 @@ pub mod envelope {
     #[doc(inline)]
     pub use super::__buffa::view::oneof::envelope::Body as BodyView;
 }
-/// Pre-rotation framebuffer tap (native 800×480 on the Sticky).
-/// Not UART p0= / glass space, not a raw GT911 480×800 sample.
+/// Pre-rotation framebuffer tap (native 800×480 on the Sticky),
+/// or page pixels when space=PAGE. Not UART p0= / glass, not raw GT911.
 #[derive(Clone, PartialEq, Default)]
 pub struct InjectTouch {
     /// Field 1: `x`
@@ -694,6 +902,10 @@ pub struct InjectTouch {
     pub slot: ::core::option::Option<u32>,
     /// Field 4: `source`
     pub source: ::buffa::EnumValue<TouchSource>,
+    /// Field 5: `phase`
+    pub phase: ::buffa::EnumValue<TouchPhase>,
+    /// Field 6: `space`
+    pub space: ::buffa::EnumValue<TouchSpace>,
     #[doc(hidden)]
     pub __buffa_unknown_fields: ::buffa::UnknownFields,
 }
@@ -704,6 +916,8 @@ impl ::core::fmt::Debug for InjectTouch {
             .field("y", &self.y)
             .field("slot", &self.slot)
             .field("source", &self.source)
+            .field("phase", &self.phase)
+            .field("space", &self.space)
             .finish()
     }
 }
@@ -758,6 +972,18 @@ impl ::buffa::Message for InjectTouch {
                 size += 1u64 + ::buffa::types::int32_encoded_len(val) as u64;
             }
         }
+        {
+            let val = self.phase.to_i32();
+            if val != 0 {
+                size += 1u64 + ::buffa::types::int32_encoded_len(val) as u64;
+            }
+        }
+        {
+            let val = self.space.to_i32();
+            if val != 0 {
+                size += 1u64 + ::buffa::types::int32_encoded_len(val) as u64;
+            }
+        }
         size += self.__buffa_unknown_fields.encoded_len() as u64;
         ::buffa::saturate_size(size)
     }
@@ -781,6 +1007,18 @@ impl ::buffa::Message for InjectTouch {
             let val = self.source.to_i32();
             if val != 0 {
                 ::buffa::types::put_int32_field(4u32, val, buf);
+            }
+        }
+        {
+            let val = self.phase.to_i32();
+            if val != 0 {
+                ::buffa::types::put_int32_field(5u32, val, buf);
+            }
+        }
+        {
+            let val = self.space.to_i32();
+            if val != 0 {
+                ::buffa::types::put_int32_field(6u32, val, buf);
             }
         }
         self.__buffa_unknown_fields.write_to(buf);
@@ -828,6 +1066,24 @@ impl ::buffa::Message for InjectTouch {
                     ::buffa::types::decode_int32(buf)?,
                 );
             }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.phase = ::buffa::EnumValue::from(
+                    ::buffa::types::decode_int32(buf)?,
+                );
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.space = ::buffa::EnumValue::from(
+                    ::buffa::types::decode_int32(buf)?,
+                );
+            }
             _ => {
                 self.__buffa_unknown_fields
                     .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
@@ -840,6 +1096,8 @@ impl ::buffa::Message for InjectTouch {
         self.y = 0u32;
         self.slot = ::core::option::Option::None;
         self.source = ::buffa::EnumValue::from(0);
+        self.phase = ::buffa::EnumValue::from(0);
+        self.space = ::buffa::EnumValue::from(0);
         self.__buffa_unknown_fields.clear();
     }
 }
@@ -1092,6 +1350,20 @@ pub struct Snapshot {
     pub bw: ::buffa::alloc::vec::Vec<u8>,
     /// Field 7: `red`
     pub red: ::buffa::alloc::vec::Vec<u8>,
+    /// embassy-debug Scene::persist_byte (splash=0 … targets=7).
+    ///
+    /// Field 8: `scene`
+    pub scene: ::core::option::Option<u32>,
+    /// targets::STEP 0..=6 when scene is targets.
+    ///
+    /// Field 9: `target_step`
+    pub target_step: ::core::option::Option<u32>,
+    /// Field 10: `target_kind`
+    pub target_kind: ::buffa::EnumValue<TargetKind>,
+    /// Field 11: `target_expect_x`
+    pub target_expect_x: ::core::option::Option<u32>,
+    /// Field 12: `target_expect_y`
+    pub target_expect_y: ::core::option::Option<u32>,
     #[doc(hidden)]
     pub __buffa_unknown_fields: ::buffa::UnknownFields,
 }
@@ -1105,6 +1377,11 @@ impl ::core::fmt::Debug for Snapshot {
             .field("hold", &self.hold)
             .field("bw", &self.bw)
             .field("red", &self.red)
+            .field("scene", &self.scene)
+            .field("target_step", &self.target_step)
+            .field("target_kind", &self.target_kind)
+            .field("target_expect_x", &self.target_expect_x)
+            .field("target_expect_y", &self.target_expect_y)
             .finish()
     }
 }
@@ -1121,6 +1398,34 @@ impl Snapshot {
     ///Sets [`Self::hold`] to `Some(value)`, consuming and returning `self`.
     pub fn with_hold(mut self, value: u32) -> Self {
         self.hold = Some(value);
+        self
+    }
+    #[must_use = "with_* setters return `self` by value; assign or chain the result"]
+    #[inline]
+    ///Sets [`Self::scene`] to `Some(value)`, consuming and returning `self`.
+    pub fn with_scene(mut self, value: u32) -> Self {
+        self.scene = Some(value);
+        self
+    }
+    #[must_use = "with_* setters return `self` by value; assign or chain the result"]
+    #[inline]
+    ///Sets [`Self::target_step`] to `Some(value)`, consuming and returning `self`.
+    pub fn with_target_step(mut self, value: u32) -> Self {
+        self.target_step = Some(value);
+        self
+    }
+    #[must_use = "with_* setters return `self` by value; assign or chain the result"]
+    #[inline]
+    ///Sets [`Self::target_expect_x`] to `Some(value)`, consuming and returning `self`.
+    pub fn with_target_expect_x(mut self, value: u32) -> Self {
+        self.target_expect_x = Some(value);
+        self
+    }
+    #[must_use = "with_* setters return `self` by value; assign or chain the result"]
+    #[inline]
+    ///Sets [`Self::target_expect_y`] to `Some(value)`, consuming and returning `self`.
+    pub fn with_target_expect_y(mut self, value: u32) -> Self {
+        self.target_expect_y = Some(value);
         self
     }
 }
@@ -1168,6 +1473,24 @@ impl ::buffa::Message for Snapshot {
         if !self.red.is_empty() {
             size += 1u64 + ::buffa::types::bytes_encoded_len(&self.red) as u64;
         }
+        if let Some(v) = self.scene {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(v) as u64;
+        }
+        if let Some(v) = self.target_step {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(v) as u64;
+        }
+        {
+            let val = self.target_kind.to_i32();
+            if val != 0 {
+                size += 1u64 + ::buffa::types::int32_encoded_len(val) as u64;
+            }
+        }
+        if let Some(v) = self.target_expect_x {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(v) as u64;
+        }
+        if let Some(v) = self.target_expect_y {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(v) as u64;
+        }
         size += self.__buffa_unknown_fields.encoded_len() as u64;
         ::buffa::saturate_size(size)
     }
@@ -1201,6 +1524,24 @@ impl ::buffa::Message for Snapshot {
         }
         if !self.red.is_empty() {
             ::buffa::types::put_shared_bytes_field(7u32, &self.red, buf);
+        }
+        if let Some(v) = self.scene {
+            ::buffa::types::put_uint32_field(8u32, v, buf);
+        }
+        if let Some(v) = self.target_step {
+            ::buffa::types::put_uint32_field(9u32, v, buf);
+        }
+        {
+            let val = self.target_kind.to_i32();
+            if val != 0 {
+                ::buffa::types::put_int32_field(10u32, val, buf);
+            }
+        }
+        if let Some(v) = self.target_expect_x {
+            ::buffa::types::put_uint32_field(11u32, v, buf);
+        }
+        if let Some(v) = self.target_expect_y {
+            ::buffa::types::put_uint32_field(12u32, v, buf);
         }
         self.__buffa_unknown_fields.write_to(buf);
     }
@@ -1266,6 +1607,51 @@ impl ::buffa::Message for Snapshot {
                 )?;
                 ::buffa::types::merge_bytes(&mut self.red, buf)?;
             }
+            8u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.scene = ::core::option::Option::Some(
+                    ::buffa::types::decode_uint32(buf)?,
+                );
+            }
+            9u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.target_step = ::core::option::Option::Some(
+                    ::buffa::types::decode_uint32(buf)?,
+                );
+            }
+            10u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.target_kind = ::buffa::EnumValue::from(
+                    ::buffa::types::decode_int32(buf)?,
+                );
+            }
+            11u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.target_expect_x = ::core::option::Option::Some(
+                    ::buffa::types::decode_uint32(buf)?,
+                );
+            }
+            12u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.target_expect_y = ::core::option::Option::Some(
+                    ::buffa::types::decode_uint32(buf)?,
+                );
+            }
             _ => {
                 self.__buffa_unknown_fields
                     .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
@@ -1281,6 +1667,11 @@ impl ::buffa::Message for Snapshot {
         self.hold = ::core::option::Option::None;
         self.bw.clear();
         self.red.clear();
+        self.scene = ::core::option::Option::None;
+        self.target_step = ::core::option::Option::None;
+        self.target_kind = ::buffa::EnumValue::from(0);
+        self.target_expect_x = ::core::option::Option::None;
+        self.target_expect_y = ::core::option::Option::None;
         self.__buffa_unknown_fields.clear();
     }
 }

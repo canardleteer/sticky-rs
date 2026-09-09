@@ -103,8 +103,9 @@ pub struct PanelParts {
 /// shapes. Page Up 2 s enters panel standby and stays there until
 /// Page Up 1 s (resume) or Page Up 5 s (MCU sleep). Page Down 5 s
 /// paints Ferris, parks the panel, and drops the latch. `PAGE_ROTATION`
-/// always redraws the current scene. BLE advertises only while
-/// `Scene::Pair` is showing.
+/// always redraws the current scene. Default BLE advertises only while
+/// `Scene::Pair` is showing; `--features remote-debug` also advertises
+/// on splash.
 #[embassy_executor::task]
 pub async fn display_task(
     parts: PanelParts,

@@ -6,7 +6,7 @@
 | --- | --- |
 | `crates/*` | Default-members. Host-testable format crates and (when present) `no_std` `embedded-hal` 1.0 drivers |
 | `host/` | Default-members. Host libraries and future host CLIs (not `xtask`) |
-| `host/sticky-host/` | Host library (`publish = true`, not crates.io yet). Detect, factory backup / confirm / restore, `build-fw`, `flash-app`, learn-uart, monitor, remote-debug UART PIN / allowlist. Callers pass `Layout`; live methods take the UART lock |
+| `host/sticky-host/` | Host library (`publish = true`, not crates.io yet). Detect, factory backup / confirm / restore, `build-fw`, `flash-app`, learn-uart, monitor, remote-debug UART PIN / allowlist / Unix-socket broker (`connect` auto-starts a detached `serve` and returns `pairing`; log next to the socket). Callers pass `Layout`; live methods take the UART lock |
 | `host/remote-debug-host/` | Generic BLE central (`publish = true`). No clap, no UART, no Sticky pins. Linux uses `bluer` (Connect, not Pair) |
 | `xtask/` | Clap front-end at the repo root (`cargo xtask`). Maps flags to `sticky-host`; `repo_root()` is the parent of this package. `remote-debug --mcp` is a clap-mcp subtree, not the full CLI |
 | `developer-data/` | Gitignored private / personalized files. Sealed dumps under `developer-data/backups/` (`original/<serial>/`, `captures/<unit-id>/<slug>/`). Learn-uart YAML under `uart-inspection-records/<serial>/`. Confirm reports under `confirm-records/<serial>/`. Remote-debug allowlist and snapshot planes under `remote-debug/`. Private scratch notes stay here too. Not in git. Leftover repo-root `backups/` is also ignored; do not use it |

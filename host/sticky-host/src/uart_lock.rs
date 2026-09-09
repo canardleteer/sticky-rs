@@ -48,20 +48,54 @@ pub struct UartSession {
     _file: Option<File>,
 }
 
-/// Directory for advisory UART lock files.
+/// Directory for advisory UART lock files (and the remote-debug socket).
 ///
 /// Prefers `$XDG_RUNTIME_DIR/sticky-rs` when that variable is an absolute
-/// path (per-user, usually mode 0700). Otherwise `$TMPDIR/sticky-rs`
+/// path (per-user, usually mode 0700). If it is unset, prefers a writable
+/// `/run/user/<uid>/sticky-rs` so a stdio MCP process without the
+/// variable still shares the desk CLI socket. Otherwise `$TMPDIR/sticky-rs`
 /// (`std::env::temp_dir()`). Tests inject a directory via [`try_acquire_in`].
 pub fn default_lock_dir() -> PathBuf {
     lock_dir_from(std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from))
 }
 
 fn lock_dir_from(xdg_runtime: Option<PathBuf>) -> PathBuf {
+    lock_dir_from_parts(xdg_runtime, linux_user_runtime_dir())
+}
+
+fn lock_dir_from_parts(xdg_runtime: Option<PathBuf>, user_runtime: Option<PathBuf>) -> PathBuf {
     match xdg_runtime {
         Some(path) if path.is_absolute() => path.join("sticky-rs"),
-        _ => std::env::temp_dir().join("sticky-rs"),
+        _ => match user_runtime {
+            Some(path) if path.is_absolute() => path.join("sticky-rs"),
+            _ => std::env::temp_dir().join("sticky-rs"),
+        },
     }
+}
+
+/// `/run/user/<uid>` when that directory exists and we can create `sticky-rs`.
+fn linux_user_runtime_dir() -> Option<PathBuf> {
+    let uid = current_uid()?;
+    let path = PathBuf::from(format!("/run/user/{uid}"));
+    if !path.is_absolute() || !path.is_dir() {
+        return None;
+    }
+    let sticky = path.join("sticky-rs");
+    fs::create_dir_all(&sticky).ok()?;
+    Some(path)
+}
+
+fn current_uid() -> Option<u32> {
+    uid_from_status(&fs::read_to_string("/proc/self/status").ok()?)
+}
+
+fn uid_from_status(text: &str) -> Option<u32> {
+    for line in text.lines() {
+        if let Some(rest) = line.strip_prefix("Uid:") {
+            return rest.split_whitespace().next()?.parse().ok();
+        }
+    }
+    None
 }
 
 /// Acquire an exclusive UART session for `port`, or refuse without waiting.
@@ -303,17 +337,36 @@ mod tests {
     }
 
     #[test]
-    fn lock_dir_prefers_absolute_xdg_runtime() {
-        let xdg = PathBuf::from("/run/user/1000");
+    fn lock_dir_prefers_absolute_xdg_then_user_runtime() {
         assert_eq!(
-            lock_dir_from(Some(xdg)),
+            lock_dir_from_parts(Some(PathBuf::from("/run/user/1000")), None),
             PathBuf::from("/run/user/1000/sticky-rs")
         );
         assert_eq!(
-            lock_dir_from(Some(PathBuf::from("relative"))),
+            lock_dir_from_parts(
+                Some(PathBuf::from("relative")),
+                Some(PathBuf::from("/run/user/42"))
+            ),
+            PathBuf::from("/run/user/42/sticky-rs")
+        );
+        let injected = tempfile::tempdir().unwrap();
+        assert_eq!(
+            lock_dir_from_parts(None, Some(injected.path().to_path_buf())),
+            injected.path().join("sticky-rs")
+        );
+        assert_eq!(
+            lock_dir_from_parts(None, None),
             std::env::temp_dir().join("sticky-rs")
         );
-        assert_eq!(lock_dir_from(None), std::env::temp_dir().join("sticky-rs"));
+    }
+
+    #[test]
+    fn uid_from_status_reads_first_field() {
+        assert_eq!(
+            uid_from_status("Uid:\t1000\t1000\t1000\t1000\n"),
+            Some(1000)
+        );
+        assert_eq!(uid_from_status(""), None);
     }
 
     #[test]

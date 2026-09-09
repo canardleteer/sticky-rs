@@ -42,7 +42,10 @@ On the unit:
   Do not combine `charge` with `sd` or `wifi`.
   `--features remote-debug` is insecure desk debug (last composed
   DRAW snapshot plus a synthetic tap / key mux). It is not in the
-  default image. UART `touch` lines then append `src=phys` /
+  default image. BLE advertises `sticky-rs` from splash so a host
+  can Connect without walking; UART prints `pair pin=` and
+  reprints it every 5 s on splash or the pair card until
+  `pair ok`. UART `touch` lines then append `src=phys` /
   `src=syn`; synthetic keys print `btn … src=syn`; snapshot ops
   print `snap …`. The codec is `remote-debug-wire` (protobuf
   envelope). There is no UART tap parser and no SoftAP / BLE
@@ -493,8 +496,9 @@ GATT link (advertise still stops). The MCU walkthrough is
 
 You can pair from your own phone first (same pair card as
 above). The host desk session is a second path. Do not run
-`monitor` at the same time — `connect` needs that UART to read
-`pair pin=`.
+`monitor` while `connect` scrapes `pair pin=` (that scrape takes
+the UART lock, then releases it). A Unix-socket broker owns the
+GATT session so later commands can run from any terminal.
 
 Do not combine with `mic`, `radio`, `charge`, or `sd`.
 
@@ -526,44 +530,69 @@ cargo xtask flash-app --image target/xtensa-esp32s3-none-elf/release-fw/embassy-
 The image is on the chip only after `flash-app` finishes. A successful
 build alone does not flash. Do not start `monitor` after this.
 
-### Step 3: Open the pair card
+### Step 3: Stay on splash
 
-Press Page Down until the glass shows `BLUETOOTH PAIRING` and
-`Device: sticky-rs`. Pages are splash → shapes → legend → tones
-→ pair. There is no PIN yet.
+Leave Ferris on the glass. This image advertises `sticky-rs` from
+splash (cold boot or after `reboot`). You do not need Page Down
+to `scene=pair` unless you want the phone how-to card. There is
+no PIN yet.
 
 ### Step 4: Connect from the host
 
-In a second terminal (no `monitor`):
+No `monitor` during auto-PIN. `connect` starts a detached broker
+if needed and returns `pairing`. Run `status` until you see
+`connected`. GATT stays up.
 
 ```shell
 cargo xtask remote-debug connect
+cargo xtask remote-debug status
 ```
 
-`--pin 000042` skips UART if you already know the six digits.
-`--remember` keeps the BlueZ bond for this unit (factory / USB
-serial in gitignored `developer-data/remote-debug/`; never a MAC).
+You should see `pairing` from `connect`, then `connected` from
+`status`. `--pin 000042` skips UART if you
+already know the six digits. `--remember` keeps the BlueZ bond
+for this unit (factory / USB serial in gitignored
+`developer-data/remote-debug/`; never a MAC).
 
-You should see `connected` on the host. UART may print
-`pair pin=` more than once (every 5 s on splash or the pair
-card until `pair ok`) if the first line was missed. On the
-glass, the pair card should show `Paired`. You can walk to
-another page; the GATT stays up.
+Optional live log (blocks until `disconnect` or Ctrl-C):
+
+```shell
+cargo xtask remote-debug serve
+```
+
+Or tail `$XDG_RUNTIME_DIR/sticky-rs/remote-debug-sticky-rs.log`.
+
+UART may print `pair pin=` more than once (every 5 s on splash
+or the pair card until `pair ok`) if the first line was missed.
+On the glass, the pair card should show `Paired`. You can walk
+to another page; the GATT stays up.
 
 ### Step 5: Inject and snapshot
 
+From any terminal (the broker queues if two run at once):
+
 ```shell
 cargo xtask remote-debug inject-touch --x 400 --y 240
+cargo xtask remote-debug inject-button --key page-down
+# wait for the panel (~2–3 s) before the next inject or snapshot
 cargo xtask remote-debug get-snapshot
 cargo xtask remote-debug snapshot-ack
 ```
 
 A tap should print `touch … src=syn` on UART if you later listen,
 and the page should react as if you touched that framebuffer
-pixel. `get-snapshot` writes planes under
-`developer-data/remote-debug/snapshots/` (hex nonce in the name).
-A second `get-snapshot` with a different nonce should fail busy
-until you ack or `snapshot-clear`.
+pixel. `inject-button --key page-down` (default `--down`) is a
+short press: splash → shapes → legend → tones → pair → Wi-Fi
+cards → targets. Do not tap START on a Wi-Fi card unless you
+mean to start the radio.
+
+`get-snapshot` writes `snap-<hex>.bw` and `.red` under
+`developer-data/remote-debug/snapshots/` (hex nonce in the
+name). Those planes are the last composed DRAW (pre-rotation
+800×480), not a live glass photo. A second `get-snapshot` with
+a different nonce should fail busy until you ack or
+`snapshot-clear`. If a get fails (`frame: Version` used to mean
+the host reassembled ATT notifies backwards), clear then retry.
 
 ### Step 6: Optional — reboot the device
 
@@ -575,8 +604,9 @@ This resets the **board**, not your computer. The GATT session
 drops. By default the host Connects again and scrapes a new
 `pair pin=`. `--no-reconnect` only kicks the MCU.
 
-After that reset the image advertises on splash (no need to walk
-to the pair card). You should see `connected` again.
+After that reset the image advertises on splash again (same as a
+cold boot; no need to walk
+to the pair card). Run `status` until you see `connected` again.
 
 ### Step 7: Observe and report
 
@@ -591,8 +621,20 @@ to the pair card). You should see `connected` again.
   leave the pair card. After `reboot`, a leftover BlueZ bond
   without a new PIN is a fail (the MCU forgot the keys).
 
-`cargo xtask remote-debug --mcp` is the same session for an MCP
-client. It does not expose `flash-app` or restore.
+When you are done:
+
+```shell
+cargo xtask remote-debug disconnect
+```
+
+That is the only GATT close besides stopping a foreground
+`serve` (Ctrl-C). A client hangup does not drop the link. The
+next sit starts again at Step 4.
+
+`cargo xtask remote-debug --mcp` is the same RPC client for an
+MCP attach (`connect` / `status` / inject / snapshot /
+`disconnect`). The broker owns the session. It does not expose
+`flash-app` or restore.
 
 ## Wifi Test Instructions
 
@@ -753,6 +795,16 @@ first).
 Tilt USB-C to another edge between marks. `target show`
 `page=` should follow that hold (portrait 480×800 or
 landscape 800×480). Do not treat UART `p0=` as the hit.
+
+A desk host with `--features remote-debug` can do the same
+walk without UART: `get-snapshot` reports `scene` and
+`target_step`; `inject-touch --page --x --y` taps expect;
+slides use `--phase down` / `move` / `up`. Tap the snapshot
+`expect` (a portrait hold still looks landscape in the
+framebuffer PNG). `status` `last_log` is the latest Target /
+Scene line; after the last slide you should see the centre
+disk again (`target_step=0`). UART still prints `target loop`
+just before that show.
 
 ### What you should see
 

@@ -47,7 +47,7 @@ Live-ask, never-erase, and flash I/O: root
   restarts the walk (no white end card).
   Pair idle is a framed how-to with empty PIN boxes; digits appear
   only after `pair pin=`. Advertise only on that card (remote-debug
-  also advertises on splash after a software reset). Wi-Fi cards
+  also advertises on splash from every boot). Wi-Fi cards
   stay idle until a tap on `[ START SURVEY ]` / `[ START HOTSPOT ]`.
   Landscape0 START uses only the OTP `set_gray` 180° of the
   canvas. Landscape180 uses that same OTP 180°. Portrait
@@ -78,8 +78,9 @@ Live-ask, never-erase, and flash I/O: root
   (DisplayOnly passkey) **only while `scene=pair` is showing**.
   Walking away stops advertising. Without `--features remote-debug`
   it also drops the GATT connection; with remote-debug a paired
-  link is **held** after leave. RAM bonds
-  this boot only; no factory NVS; no MAC on UART. Packs with
+  link is **held** after leave. RAM bonds last
+  for this connection; a drop forgets that LTK so the next
+  Connect is a new DisplayOnly PIN. No factory NVS; no MAC on UART. Packs with
   `wifi`. Do not combine with `mic`, `radio`, `charge`, or `sd`
   (`build-fw` / `ci` pass `--no-default-features` for those sits).
   Pairing success is confirmed on a physical unit (host BlueZ
@@ -186,7 +187,8 @@ cargo xtask monitor
 
 Right-edge keys change the page (`scene=…`): splash (Ferris +
 `sticky-rs`) → shapes → legend → tones → pair → wifi_survey →
-wifi_ap → targets. BLE advertises only on `scene=pair`. Wi-Fi stays idle
+wifi_ap → targets. Default BLE advertises only on `scene=pair`
+(`--features remote-debug` also on splash). Wi-Fi stays idle
 until a tap on those cards. This is not the `learn-uart`
 operator format.
 
@@ -222,9 +224,11 @@ Do not print or store a MAC.
      the eFuse MAC. Stop discovery before Connect.
    - **Connect only.** Do not call BlueZ `Device1.Pair()` or
      `bluetoothctl pair`. The image’s `request_security()` already
-     sends SMP Security Request (`0x0B`). A concurrent `Pair()`
+     sends SMP Security Request (`0x0B`) after accept (retries if
+     the ACL is not Connected yet; UART `pair fail=pairing` if it
+     never starts). A concurrent `Pair()`
      makes Linux log `unexpected SMP command 0x0b` and return
-     `AuthenticationCanceled`.
+     `AuthenticationCanceled`. A drop forgets the RAM LTK.
    - Wait for a **new** UART `pair pin=` after that Connect (do
      not reuse digits from an earlier attempt).
    - Submit those six digits through a KeyboardOnly agent
@@ -238,7 +242,8 @@ On a physical unit the host path completed: UART `pair pin=` then
 `pair ok`, host `Paired` / `Connected`, pair card showed `Paired`.
 `btleplug` cannot enter a DisplayOnly passkey (GATT only). Linux
 `cargo xtask remote-debug` wraps BlueZ via `bluer`, not
-`bluetoothctl`. Bonds are RAM this boot only. Do not write
+`bluetoothctl`. Bonds are RAM this connection; a drop
+forgets that LTK. Do not write
 factory NVS. Do not combine `pair` with `mic`, `radio`, `charge`,
 or `sd`.
 
@@ -246,29 +251,48 @@ or `sd`.
 
 `--features remote-debug` is **not default**. Build with
 `cargo xtask build-fw embassy-debug --features remote-debug`, then
-`flash-app` only when the human asked to flash. Always offer a
-phone pair first (same pair card). Host desk I/O is a separate
-live ask.
+`flash-app` only when the human asked to flash. LAST planes are a
+96 KiB octal PSRAM carve (two `.bss` copies overflow `dram_seg`).
+UART `remote psram last=96000` after latch means the carve is
+live. A phone pair is optional; do not treat it as a sit step when
+the human asked for host `connect`. Host desk I/O is a
+separate live ask. stdio MCP how-to:
+[mcp-interactions.md](../../.agents/skills/sticky-rs/references/mcp-interactions.md).
 
-1. Walk Page Down to `scene=pair` (`pair advertise sticky-rs`),
-   unless the unit just took a remote-debug software reset (then
-   it advertises on splash).
-2. Do **not** also run `monitor`. Default `connect` takes the UART
-   lock to scrape a **new** `pair pin=`. The image reprints that
-   line every 5 s on splash or the pair card until `pair ok`.
-   `--pin` skips UART.
-3. `cargo xtask remote-debug connect` (or `connect --remember`, or
-   `remote-debug --mcp` then the `connect` tool). BlueZ **Connect**,
-   not `Pair()`. After `pair ok` the image **holds** GATT when
-   walking off the pair card. `reboot` resets the **embedded MCU**
-   (not the host) and re-pairs unless `--no-reconnect`.
-4. Injects are framebuffer (`inject-touch --x --y`), not UART
-   `p0=` / raw GT911. Product keys are `ok` / `page-up` /
-   `page-down`.
-5. `get-snapshot` freezes LAST DRAW planes; `snapshot-ack` or
-   `snapshot-clear` releases the slot. Planes land under
-   gitignored `developer-data/remote-debug/snapshots/` (nonce in
-   the filename; no serial).
+1. Stay on splash (`pair advertise sticky-rs` from boot). Walking
+   to `scene=pair` is optional (phone how-to card). After a drop
+   this image advertises again without a walk.
+2. Do **not** also run `monitor` during auto-PIN. Default
+   `connect` takes the UART lock only while scraping a **new**
+   `pair pin=`. The image reprints that line every 5 s on splash
+   or the pair card until `pair ok`. `--pin` skips UART.
+3. `cargo xtask remote-debug connect` (optional `--remember`).
+   BlueZ **Connect**, not `Pair()`. `connect` starts a detached
+   broker if needed and returns `pairing`. Poll `status` until
+   `connected` or `pair failed`. Later inject / snapshot
+   leaves are RPC from any terminal or `--mcp`. `serve` is an
+   optional foreground log. After `pair ok` the image **holds**
+   GATT when walking off the pair card. `reboot` resets the
+   **embedded MCU** (not the host) and re-pairs unless
+   `--no-reconnect`. `disconnect` (or serve Ctrl-C) is the only
+   host-side GATT close.
+4. Injects are framebuffer (`inject-touch --x --y`) or page
+   (`--page`) via the gray4 hit-test inverse, not UART `p0=` /
+   raw GT911. `--phase` `down` / `move` / `up` (unset = tap)
+   so slides can span both insets. Product keys are `ok` /
+   `page-up` / `page-down` (`down` true = short press). Wait
+   for compose before the next inject or snapshot.
+5. `get-snapshot` freezes LAST DRAW plus `scene` /
+   `target_step` / expect page (`snap-<hex>.bw` / `.red` /
+   framebuffer `.png`). Tap `--page` at that expect — a
+   portrait hold still looks landscape in the framebuffer
+   PNG. `status` `last_log` is the latest Target / Scene
+   UART line (never a PIN); `target loop` is overwritten by
+   the following `target show id=0`. `snapshot-ack` or
+   `snapshot-clear` releases the slot. A failed get can leave
+   the slot armed (`SnapshotBusy` until clear). Planes land
+   under gitignored `developer-data/remote-debug/snapshots/`
+   (nonce in the filename; no serial).
 6. `--remember` writes factory / CH343 USB serial into
    `developer-data/remote-debug/allowlist.yaml`. Never a MAC.
    Never store the PIN. Unknown units lose the BlueZ bond on

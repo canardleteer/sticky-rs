@@ -103,7 +103,8 @@ pub fn wait_new_pair_pin<R: Read>(
         }
     }
     Err(Error::RemoteDebug(
-        "no new pair pin= on UART (walk to scene=pair, or pass --pin)".into(),
+        "no new pair pin= on UART (remote-debug: stay on splash; else scene=pair; or pass --pin)"
+            .into(),
     ))
 }
 
@@ -208,7 +209,119 @@ pub fn write_snapshot_planes(
     if let Some(red) = red {
         fs::write(stem.with_extension("red"), red)?;
     }
+    if let Ok(png) = framebuffer_png(bw, red, 800, 480) {
+        fs::write(stem.with_extension("png"), png)?;
+    }
     Ok(stem)
+}
+
+/// Uncompressed RGB PNG in inject/framebuffer space (MSB-first 1-bit).
+///
+/// Ink is black; red-plane bits paint red. Same origin as `inject-touch`.
+fn framebuffer_png(
+    bw: &[u8],
+    red: Option<&[u8]>,
+    width: u32,
+    height: u32,
+) -> Result<Vec<u8>, Error> {
+    if width == 0 || height == 0 || !width.is_multiple_of(8) {
+        return Err(Error::RemoteDebug("png size".into()));
+    }
+    let stride = (width / 8) as usize;
+    let need = stride.saturating_mul(height as usize);
+    if bw.len() < need {
+        return Err(Error::RemoteDebug("png plane".into()));
+    }
+    let mut raw = Vec::with_capacity(((width * 3 + 1) * height) as usize);
+    for y in 0..height as usize {
+        raw.push(0);
+        for x in 0..width as usize {
+            let byte = bw[y * stride + x / 8];
+            let bit = (byte >> (7 - (x % 8))) & 1;
+            let rbit = red
+                .and_then(|plane| plane.get(y * stride + x / 8))
+                .map(|b| (b >> (7 - (x % 8))) & 1)
+                .unwrap_or(0);
+            let (r, g, b) = if rbit != 0 {
+                (180, 40, 40)
+            } else if bit != 0 {
+                (20, 20, 20)
+            } else {
+                (250, 250, 250)
+            };
+            raw.extend_from_slice(&[r, g, b]);
+        }
+    }
+    Ok(encode_rgb_png(width, height, &raw))
+}
+
+fn encode_rgb_png(width: u32, height: u32, raw: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    out.extend_from_slice(&[137, 80, 78, 71, 13, 10, 26, 10]);
+    let mut ihdr = Vec::new();
+    ihdr.extend_from_slice(&width.to_be_bytes());
+    ihdr.extend_from_slice(&height.to_be_bytes());
+    ihdr.extend_from_slice(&[8, 2, 0, 0, 0]);
+    put_png_chunk(&mut out, *b"IHDR", &ihdr);
+    put_png_chunk(&mut out, *b"IDAT", &zlib_store(raw));
+    put_png_chunk(&mut out, *b"IEND", &[]);
+    out
+}
+
+fn put_png_chunk(out: &mut Vec<u8>, ty: [u8; 4], data: &[u8]) {
+    out.extend_from_slice(&(data.len() as u32).to_be_bytes());
+    out.extend_from_slice(&ty);
+    out.extend_from_slice(data);
+    let mut crc = crc32_init();
+    crc = crc32_update(crc, &ty);
+    crc = crc32_update(crc, data);
+    out.extend_from_slice(&crc32_finish(crc).to_be_bytes());
+}
+
+fn zlib_store(data: &[u8]) -> Vec<u8> {
+    let mut out = vec![0x78, 0x01];
+    let mut off = 0;
+    while off < data.len() {
+        let n = (data.len() - off).min(65535);
+        let last = off + n == data.len();
+        out.push(u8::from(last));
+        let len = n as u16;
+        out.extend_from_slice(&len.to_le_bytes());
+        out.extend_from_slice(&(!len).to_le_bytes());
+        out.extend_from_slice(&data[off..off + n]);
+        off += n;
+    }
+    out.extend_from_slice(&adler32(data).to_be_bytes());
+    out
+}
+
+fn adler32(data: &[u8]) -> u32 {
+    let mut s1 = 1u32;
+    let mut s2 = 0u32;
+    for &b in data {
+        s1 = (s1 + u32::from(b)) % 65521;
+        s2 = (s2 + s1) % 65521;
+    }
+    (s2 << 16) | s1
+}
+
+fn crc32_init() -> u32 {
+    0xffff_ffff
+}
+
+fn crc32_update(mut crc: u32, data: &[u8]) -> u32 {
+    for &b in data {
+        crc ^= u32::from(b);
+        for _ in 0..8 {
+            let mask = if crc & 1 == 1 { 0xedb8_8320 } else { 0 };
+            crc = (crc >> 1) ^ mask;
+        }
+    }
+    crc
+}
+
+fn crc32_finish(crc: u32) -> u32 {
+    !crc
 }
 
 #[cfg(test)]
@@ -228,6 +341,14 @@ mod tests {
             scan_pair_uart("embassy-debug: t=1 pair pin=000001\nembassy-debug: t=2 pair ok\n");
         assert_eq!(pins, [1]);
         assert!(ok);
+    }
+
+    #[test]
+    fn framebuffer_png_writes_signature() {
+        let bw = [0xF0u8, 0x00, 0x0F, 0x00];
+        let png = framebuffer_png(&bw, None, 8, 4).expect("png");
+        assert_eq!(&png[..8], &[137, 80, 78, 71, 13, 10, 26, 10]);
+        assert!(png.len() > 32);
     }
 
     #[test]

@@ -92,6 +92,10 @@ impl Transport for FakeTransport {
             .ok_or(Error::Io("no notify".into()))
     }
 
+    fn try_read_chunk(&mut self) -> Option<Vec<u8>> {
+        self.inbound.pop_front()
+    }
+
     fn disconnect(&mut self, keep_bond: bool) -> Result<(), Error> {
         self.connected = false;
         self.disconnects += 1;

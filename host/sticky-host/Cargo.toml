@@ -1,7 +1,7 @@
 [package]
 name = "sticky-host"
 version = "0.1.0"
-description = "Programmatic host API for Sticky UART detect, factory backup/confirm/restore, app0 flash-app, learn-uart, no-reset monitor, and remote-debug PIN/allowlist"
+description = "Programmatic host API for Sticky UART detect, factory backup/confirm/restore, app0 flash-app, learn-uart, no-reset monitor, and remote-debug PIN/allowlist/broker"
 readme = "README.md"
 publish = true
 edition.workspace = true
@@ -31,6 +31,9 @@ serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
 noyalib = "0.0.30"
 simple-debug = { path = "../../crates/simple-debug", version = "0.1.0" }
+remote-debug-host = { path = "../remote-debug-host", version = "0.1.0" }
+remote-debug-wire = { path = "../../crates/remote-debug-wire", version = "0.1.0" }
+panel-view = { path = "../../crates/panel-view", version = "0.1.0" }
 # Enumeration needs libudev; we only open ESPFLASH_PORT. Same as espflash.
 serialport = { version = "4.7.2", default-features = false }
 sha2 = "0.10.9"

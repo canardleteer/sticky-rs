@@ -126,6 +126,8 @@ pub(crate) fn now_ms() -> u32 {
 
 /// Push an event toward the log task. Overflow increments [`DROPPED`].
 pub(crate) fn emit(event: Event) {
+    #[cfg(feature = "remote-debug")]
+    crate::remote_debug::queue_log_line(&event);
     if EVENTS.try_send(event).is_err() {
         DROPPED.fetch_add(1, Ordering::Relaxed);
     }
@@ -407,7 +409,7 @@ fn spawn_tasks(spawner: &Spawner, parts: SpawnParts, start: Scene, rotation: Pag
 /// Ferris + `sticky-rs` (or the restored card after a deep-sleep wake),
 /// and a right-edge key changes the drawing. Page Up 5 s paints
 /// Ferris and sleeps. Page Down 5 s drops the latch. BLE
-/// advertises only on the pair card.
+/// advertises only on the pair card (remote-debug also on splash).
 #[esp_hal::main]
 async fn main(spawner: Spawner) {
     let peripherals = esp_hal::init(esp_hal::Config::default());
@@ -438,6 +440,12 @@ async fn main(spawner: Spawner) {
             println!("{line}");
         }
     }
+
+    // LAST planes in octal PSRAM (96 KiB). After latch so the board
+    // rail is held; before compose so splash can publish. Internal
+    // heap stays BLE / Wi-Fi only.
+    #[cfg(feature = "remote-debug")]
+    crate::remote_debug::map_last_planes(peripherals.PSRAM);
 
     #[cfg_attr(not(feature = "charge"), allow(unused_mut))]
     let mut parked = park_charger_and_unused(
@@ -1127,13 +1135,21 @@ fn dispatch_first_contact(fx: u16, fy: u16) {
 /// point so the UART token matches a finger at that ink.
 #[cfg(feature = "remote-debug")]
 fn poll_synthetic() {
-    let Some(sample) = crate::remote_debug::take_synthetic() else {
+    use remote_debug_wire::v1::TouchPhase;
+
+    let Some(touch) = crate::remote_debug::take_synthetic() else {
         return;
     };
+    let sample = touch.sample;
     let Some((sx, sy)) = crate::remote_debug::framebuffer_to_uart_screen(sample.x, sample.y) else {
         crate::remote_debug::emit_touch_drop();
         return;
     };
+    let down = matches!(
+        touch.phase,
+        TouchPhase::TOUCH_PHASE_DOWN | TouchPhase::TOUCH_PHASE_UNSPECIFIED
+    );
+    let move_or_down = down || matches!(touch.phase, TouchPhase::TOUCH_PHASE_MOVE);
     let mut mapped = [TouchPoint::default(); MAX_TOUCH_POINTS];
     mapped[0] = TouchPoint { x: sx, y: sy };
     emit(Event::Touch {
@@ -1142,8 +1158,12 @@ fn poll_synthetic() {
         points: mapped,
         source: TouchSource::Synthetic,
     });
-    crate::targets::feed(sample.x, sample.y, true);
-    dispatch_first_contact(sample.x, sample.y);
+    if move_or_down {
+        crate::targets::feed(sample.x, sample.y, down);
+    }
+    if down {
+        dispatch_first_contact(sample.x, sample.y);
+    }
 }
 
 /// Tilt the card: the current page follows in-plane pose; UART about every

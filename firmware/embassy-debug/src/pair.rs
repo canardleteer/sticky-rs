@@ -14,20 +14,23 @@
 //!   (`coex`). Do not combine with `mic`, `radio`, `charge`, or `sd`
 //!   (compile_error below).
 //! - **DisplayOnly SMP.** The board shows a passkey; the phone types
-//!   it. Advertise only while [`embassy_debug::Scene::Pair`] is the
-//!   current card. Walking away stops advertising. Without
-//!   `--features remote-debug`, it also drops the GATT connection.
-//!   With remote-debug, a paired link is **held** after leave so
-//!   encrypted RX/TX can keep serving framed envelopes. After a
-//!   `CoreSw` software reset on that image, advertise starts on
-//!   splash so a desk host can Connect without walking to the pair
-//!   card. Reconnect after any other drop means walk back to the
-//!   pair card (or wait for that post-reset advertise). Keys still
-//!   walk pages. AI Voice is not a confirm.
-//! - **RAM bonds this boot.** `HostResources` holds them. Do not write
-//!   factory NVS (RF cal and identity live there). A `Reboot`
-//!   envelope software-resets the **MCU**, not the host; the next
-//!   pairing is a new DisplayOnly PIN.
+//!   it. Without `--features remote-debug`, advertise only while
+//!   [`embassy_debug::Scene::Pair`] is the current card; walking
+//!   away stops it and drops the GATT connection. With remote-debug,
+//!   advertise starts on **splash** (cold boot, POWERON, or
+//!   `CoreSw`) so a desk host can Connect without walking. UART
+//!   prints `pair pin=` on `PassKeyDisplay` and reprints every 5 s
+//!   on splash or the pair card until `pair ok`. A paired link is
+//!   **held** after leave. After a drop, this image advertises
+//!   again immediately (no pair-card gate). Keys still walk pages.
+//!   AI Voice is not a confirm.
+//! - **RAM bonds this connection.** `HostResources` holds them. Do not
+//!   write factory NVS (RF cal and identity live there). A drop
+//!   without a live host LTK must **forget** that RAM bond or the
+//!   next Connect encrypts with a stale key and never shows
+//!   `PassKeyDisplay` (no UART `pair pin=`). A `Reboot` envelope
+//!   software-resets the **MCU**, not the host; the next pairing is
+//!   a new DisplayOnly PIN.
 //! - **Fixed random address.** Do not read or print the eFuse MAC.
 //!   `runner.run()` seeds the security CSPRNG from controller `LeRand`
 //!   (not the crate’s zero seed).
@@ -60,21 +63,43 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use bt_hci::cmd::le::{LeSetAdvData, LeSetAdvEnable, LeSetAdvParams, LeSetScanResponseData};
 use bt_hci::controller::ControllerCmdSync;
 use embassy_debug::{Event, PairFailWhy, Scene, PAIR_ADV_NAME, PAIR_FAIL_HOLD_MS};
-use embassy_futures::select::{select, Either};
+use embassy_futures::select::{select, select3, Either, Either3};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::blocking_mutex::Mutex;
 use embassy_sync::signal::Signal;
 use embassy_time::{Duration, Timer};
 use esp_hal::peripherals::BT;
-#[cfg(feature = "remote-debug")]
-use esp_hal::rtc_cntl::{reset_reason, SocResetReason};
-#[cfg(feature = "remote-debug")]
-use esp_hal::system::Cpu;
 use esp_println::println;
 use esp_radio::ble::controller::BleConnector;
 use trouble_host::prelude::*;
 
 const LOG: &str = "embassy-debug";
+
+/// Live BLE links `HostResources` can hold.
+///
+/// One desk GATT plus the previous drop while the controller
+/// tears the ACL down. `CONNS = 1` raced a rapid host reconnect
+/// (advertise started before the slot was free).
+const BLE_CONNS: usize = 2;
+
+/// L2CAP channels on that host: SMP + one ATT.
+const BLE_CHANNELS: usize = 2;
+
+/// After `accept`, wait for `ConnectionState::Connected` before SMP.
+///
+/// `set_bondable` / `request_security` error if the slot is not
+/// Connected yet (*The Embassy Book*: yield; do not busy-spin).
+const SMP_AFTER_ACCEPT_MS: u64 = 80;
+
+/// How many times we retry bondable + Security Request.
+const SMP_START_TRIES: u8 = 5;
+
+/// Gap between SMP start tries.
+const SMP_START_GAP_MS: u64 = 40;
+
+/// After `Disconnected`, wait before the next advertise so `CONNS`
+/// can free. Not a sleep of the MCU.
+const AFTER_DROP_MS: u64 = 120;
 
 /// What the pair card should paint.
 ///
@@ -152,7 +177,7 @@ pub fn set_scene(scene: Scene) {
 /// Scene the display last painted.
 #[cfg(feature = "remote-debug")]
 #[must_use]
-fn current_scene() -> Option<Scene> {
+pub(crate) fn current_scene() -> Option<Scene> {
     Scene::from_persist_byte(UI_SCENE.load(Ordering::Acquire))
 }
 
@@ -252,15 +277,16 @@ struct PairService {
     token: u8,
 }
 
-/// Bring up the BLE host; advertise while the pair card is showing.
+/// Bring up the BLE host; advertise while the pair card is showing
+/// (default image) or from splash on (`--features remote-debug`).
 ///
-/// On the unit: walking to `scene=pair` prints
-/// `pair advertise sticky-rs; no NVS; no MAC` and starts connectable
-/// advertise. Leaving that card stops it, except after a remote-debug
-/// `CoreSw` software reset (advertise starts on splash so a desk
-/// host can Connect). In the MCU: controller → trouble-host runner
-/// + gated accept loop. The runner must stay polled or `LeRand`
-/// never seeds SMP.
+/// On the unit: default image prints
+/// `pair advertise sticky-rs; no NVS; no MAC` when walking to
+/// `scene=pair` and stops ADV on leave. Remote-debug prints that
+/// line on splash (desk Connect without walking) and keeps ADV up
+/// until a central Connects. UART `pair pin=` follows the SMP
+/// passkey. In the MCU: controller → trouble-host runner + accept
+/// loop. The runner must stay polled or `LeRand` never seeds SMP.
 #[embassy_executor::task]
 pub async fn pair_task(bluetooth: BT<'static>) {
     let Ok(connector) = BleConnector::new(bluetooth, Default::default()) else {
@@ -272,9 +298,11 @@ pub async fn pair_task(bluetooth: BT<'static>) {
 
     // Fixed random address so we do not read or print the eFuse MAC.
     // `runner.run()` seeds the security CSPRNG from controller LeRand
-    // (not the crate's zero seed). Bonds stay in HostResources RAM.
+    // (not the crate's zero seed). Bonds stay in HostResources RAM
+    // for this connection only; [`forget_ram_bond`] on drop.
     let address = Address::random([0x02, 0x00, 0x00, 0x00, 0x00, 0x02]);
-    let mut resources: HostResources<_, DefaultPacketPool, 1, 2> = HostResources::new();
+    let mut resources: HostResources<_, DefaultPacketPool, BLE_CONNS, BLE_CHANNELS> =
+        HostResources::new();
     let stack = trouble_host::new(ble_controller, &mut resources)
         .set_random_address(address)
         .set_io_capabilities(IoCapabilities::DisplayOnly)
@@ -299,8 +327,10 @@ pub async fn pair_task(bluetooth: BT<'static>) {
 
     show(PairView::Idle);
 
+    // Desk image: ADV from splash on every boot (POWERON / CoreSw /
+    // brownout). Default image stays gated on the pair card.
     #[cfg(feature = "remote-debug")]
-    let ungated_adv = reset_reason(Cpu::ProCpu) == Some(SocResetReason::CoreSw);
+    let ungated_adv = true;
     #[cfg(not(feature = "remote-debug"))]
     let ungated_adv = false;
 
@@ -311,19 +341,24 @@ pub async fn pair_task(bluetooth: BT<'static>) {
             }
             println!("{LOG}: pair advertise {PAIR_ADV_NAME}; no NVS; no MAC");
             show(PairView::Idle);
-            match advertise_once(&mut peripheral, &server, ungated_adv).await {
+            match advertise_once(&stack, &mut peripheral, &server, ungated_adv).await {
                 Ok(()) => {
                     // Disconnect, or (without remote-debug) the operator
                     // left the pair card. Remote-debug holds GATT after leave.
                     show(PairView::Idle);
                 }
                 Err(why) => {
+                    // UART `pair fail=` even on splash (Ferris does not
+                    // steal the glass; the display task ignores PAIR_VIEW
+                    // off `Scene::Pair`).
+                    show(PairView::Fail(why));
                     if is_visible() {
-                        fail_and_hold(why).await;
+                        Timer::after(Duration::from_millis(u64::from(PAIR_FAIL_HOLD_MS))).await;
                     }
                     show(PairView::Idle);
                 }
             }
+            Timer::after(Duration::from_millis(AFTER_DROP_MS)).await;
         }
     };
 
@@ -335,7 +370,12 @@ pub async fn pair_task(bluetooth: BT<'static>) {
 /// Connectable + scannable undirected, general discoverable, BR/EDR
 /// not supported. Empty scan response: the complete local name is
 /// already in the adv payload ([`PAIR_ADV_NAME`], 9 bytes).
+///
+/// After accept: attach GATT, drop a leftover RAM bond for this
+/// peer, then Security Request. Do not swallow SMP start errors
+/// (`request_security` fails when the link is already encrypted).
 async fn advertise_once<C>(
+    stack: &Stack<'_, C, DefaultPacketPool>,
     peripheral: &mut Peripheral<'_, C, DefaultPacketPool>,
     server: &Server<'_>,
     ungated: bool,
@@ -369,10 +409,10 @@ where
         .await
         .map_err(|_| PairFailWhy::Advertise)?;
 
-    // Dropping `advertiser` here (operator left the card) stops ADV.
-    // After a remote-debug `CoreSw` reset, splash is not the pair
-    // card (`PAIR_VISIBLE` is false). Do not treat that as leave or
-    // advertise ends before a desk Connect.
+    // Dropping `advertiser` here (operator left the card) stops ADV
+    // on the default image. Remote-debug is ungated: splash is not
+    // the pair card (`PAIR_VISIBLE` is false); do not treat that as
+    // leave or ADV ends before a desk Connect.
     let leave = async {
         if ungated {
             core::future::pending::<()>().await;
@@ -385,32 +425,79 @@ where
         Either::First(Err(_)) => return Err(PairFailWhy::Advertise),
         Either::Second(()) => return Ok(()),
     };
+    // A leftover RAM LTK after the host forgot BlueZ encrypts
+    // without PassKeyDisplay. Forget before SMP. Never print the
+    // identity (that is a MAC).
+    if conn.is_bonded_peer() {
+        forget_ram_bond(stack, conn.peer_identity());
+    }
+    let gatt = conn
+        .with_attribute_server(server)
+        .map_err(|_| PairFailWhy::Pairing)?;
     // Bondable + request_security sends SMP Security Request so a
     // central Connect (phone Settings or BlueZ Connect) starts
     // DisplayOnly passkey. The PIN is not shown before that. On
     // Linux, do not also call BlueZ Pair(): that races this
     // Security Request (kernel unexpected SMP 0x0B) and cancels.
-    let _ = conn.set_bondable(true);
-    let _ = conn.request_security();
-    let gatt = conn
-        .with_attribute_server(server)
-        .map_err(|_| PairFailWhy::Pairing)?;
+    start_display_only(gatt.raw()).await?;
 
     // Before accept, leave still cancelled advertise (select above).
     // After accept: default image drops the link on leave. Remote-debug
-    // keeps the paired GATT so a walk off `scene=pair` does not kill
-    // the desk session. Advertise stays off until the next pair card.
+    // keeps the paired GATT so a walk off splash / the pair card does
+    // not kill the desk session. After a drop, that image advertises
+    // again without waiting for the pair card.
     #[cfg(not(feature = "remote-debug"))]
     {
-        return match select(drive_connection(&gatt, server), wait_until_visible(false)).await {
+        return match select(
+            drive_connection(stack, &gatt, server),
+            wait_until_visible(false),
+        )
+        .await
+        {
             Either::First(result) => result,
-            Either::Second(()) => Ok(()),
+            Either::Second(()) => {
+                forget_ram_bond(stack, gatt.raw().peer_identity());
+                Ok(())
+            }
         };
     }
     #[cfg(feature = "remote-debug")]
     {
-        drive_connection(&gatt, server).await
+        drive_connection(stack, &gatt, server).await
     }
+}
+
+/// Drop a RAM bond. Never format `identity` (that is a MAC).
+///
+/// Host `disconnect` forgets the BlueZ object. If this image keeps
+/// the LTK, the next Connect encrypts without `PassKeyDisplay`.
+fn forget_ram_bond<C: Controller, P: PacketPool>(stack: &Stack<'_, C, P>, identity: Identity) {
+    let _ = stack.remove_bond_information(identity);
+}
+
+/// Bondable + SMP Security Request (DisplayOnly passkey).
+///
+/// Retries while the ACL is still coming up. Errors if the link is
+/// already encrypted (stale LTK) after [`forget_ram_bond`]. Do not
+/// call BlueZ `Pair()` on Linux; that races this request.
+///
+/// # Errors
+///
+/// [`PairFailWhy::Pairing`] when bondable or Security Request never
+/// succeeds. UART prints `pair fail=pairing`.
+async fn start_display_only<P: PacketPool>(conn: &Connection<'_, P>) -> Result<(), PairFailWhy> {
+    Timer::after(Duration::from_millis(SMP_AFTER_ACCEPT_MS)).await;
+    for _ in 0..SMP_START_TRIES {
+        if conn.set_bondable(true).is_err() {
+            Timer::after(Duration::from_millis(SMP_START_GAP_MS)).await;
+            continue;
+        }
+        if conn.request_security().is_ok() {
+            return Ok(());
+        }
+        Timer::after(Duration::from_millis(SMP_START_GAP_MS)).await;
+    }
+    Err(PairFailWhy::Pairing)
 }
 
 /// GATT + SMP events on one accepted connection.
@@ -423,21 +510,32 @@ where
 /// reassembled and passed to [`crate::remote_debug::handle_envelope`].
 /// A `GetSnapshot` arm/retry streams LAST through TX notifies
 /// (*The Embassy Book*: do this on the BLE task, not the display task).
-async fn drive_connection<P: PacketPool>(
+async fn drive_connection<C, P>(
+    stack: &Stack<'_, C, P>,
     gatt: &GattConnection<'_, '_, P>,
     #[cfg_attr(not(feature = "remote-debug"), allow(unused_variables))] server: &Server<'_>,
-) -> Result<(), PairFailWhy> {
+) -> Result<(), PairFailWhy>
+where
+    C: Controller,
+    P: PacketPool,
+{
     #[cfg(feature = "remote-debug")]
     let mut rx_asm = remote_debug_wire::FrameAssembler::device_rx();
     #[cfg(feature = "remote-debug")]
     let mut pending_pin: Option<u32> = None;
-    #[cfg(feature = "remote-debug")]
+    let mut seen_pin = false;
     let mut paired = false;
     loop {
         #[cfg(feature = "remote-debug")]
-        let event = match select(gatt.next(), Timer::after(Duration::from_secs(5))).await {
-            Either::First(event) => event,
-            Either::Second(()) => {
+        let event = match select3(
+            gatt.next(),
+            Timer::after(Duration::from_secs(5)),
+            crate::remote_debug::wait_log_ready(),
+        )
+        .await
+        {
+            Either3::First(event) => event,
+            Either3::Second(()) => {
                 if let (Some(pin), false) = (pending_pin, paired) {
                     if should_reprint_pin() {
                         emit(Event::PairPin {
@@ -448,12 +546,17 @@ async fn drive_connection<P: PacketPool>(
                 }
                 continue;
             }
+            Either3::Third(()) => {
+                notify_pending_logs(gatt, server).await;
+                continue;
+            }
         };
         #[cfg(not(feature = "remote-debug"))]
         let event = gatt.next().await;
         match event {
             GattConnectionEvent::PassKeyDisplay(key) => {
                 let pin = key.value() % 1_000_000;
+                seen_pin = true;
                 #[cfg(feature = "remote-debug")]
                 {
                     pending_pin = Some(pin);
@@ -462,19 +565,27 @@ async fn drive_connection<P: PacketPool>(
                 show(PairView::Pin(pin));
             }
             GattConnectionEvent::PairingComplete { .. } => {
-                #[cfg(feature = "remote-debug")]
-                {
-                    paired = true;
-                }
+                paired = true;
                 show(PairView::Ok);
             }
             GattConnectionEvent::PairingFailed(err) => {
+                forget_ram_bond(stack, gatt.raw().peer_identity());
                 return Err(map_host_error(err));
             }
             GattConnectionEvent::BondLost => {
+                forget_ram_bond(stack, gatt.raw().peer_identity());
                 return Err(PairFailWhy::BondLost);
             }
+            GattConnectionEvent::Encrypted { bond, .. } => {
+                // Stored LTK with no PIN this connection: host forgot
+                // BlueZ; encrypting that key never shows PassKeyDisplay.
+                if bond.is_some() && !paired && !seen_pin {
+                    forget_ram_bond(stack, gatt.raw().peer_identity());
+                    start_display_only(gatt.raw()).await?;
+                }
+            }
             GattConnectionEvent::Disconnected { .. } => {
+                forget_ram_bond(stack, gatt.raw().peer_identity());
                 show(PairView::Idle);
                 return Ok(());
             }
@@ -544,6 +655,20 @@ async fn on_remote_rx<P: PacketPool>(
         }
         Ok(crate::remote_debug::EnvelopeOutcome::None) | Err(_) => {}
     }
+    notify_pending_logs(gatt, server).await;
+}
+
+/// Flush Target / Scene UART copies as GATT `LogLine` (never a PIN).
+#[cfg(feature = "remote-debug")]
+async fn notify_pending_logs<P: PacketPool>(gatt: &GattConnection<'_, '_, P>, server: &Server<'_>) {
+    let mut text = [0u8; embassy_debug::LINE_CAPACITY];
+    while let Some((t_ms, n)) = crate::remote_debug::take_log_line(&mut text) {
+        let Ok(line) = core::str::from_utf8(&text[..n]) else {
+            continue;
+        };
+        let bytes = remote_debug_wire::encode_log_line(t_ms, line);
+        notify_bytes(gatt, &server.remote.tx, &bytes).await;
+    }
 }
 
 /// Stream the frozen LAST planes as ATT notify chunks.
@@ -556,37 +681,16 @@ async fn notify_armed_snapshot<P: PacketPool>(
     gatt: &GattConnection<'_, '_, P>,
     server: &Server<'_>,
 ) {
-    let Some(meta) = crate::remote_debug::with_armed_frame(|opt| {
-        opt.map(|(nonce, frame)| {
-            (
-                nonce,
-                frame.width,
-                frame.height,
-                remote_debug_wire::frame_kind_to_wire(frame.kind),
-                frame.hold.map(crate::remote_debug::hold_token),
-                frame.bw.len(),
-                frame.red.map(<[u8]>::len).unwrap_or(0),
-            )
-        })
-    }) else {
+    let Some((meta, bw_len, red_len)) = crate::remote_debug::with_armed_snapshot_meta(|opt| opt)
+    else {
         let bytes = remote_debug_wire::encode_snapshot_busy(0);
         notify_bytes(gatt, &server.remote.tx, &bytes).await;
         return;
     };
-    let (nonce, width, height, kind, hold, bw_len, red_len) = meta;
-    let mut preamble = [0u8; 64];
-    if let Ok(n) = remote_debug_wire::snapshot_preamble_to_slice(
-        remote_debug_wire::SnapshotMeta {
-            nonce,
-            width,
-            height,
-            kind,
-            hold,
-        },
-        bw_len,
-        red_len,
-        &mut preamble,
-    ) {
+    let mut preamble = [0u8; 96];
+    if let Ok(n) =
+        remote_debug_wire::snapshot_preamble_to_slice(meta, bw_len, red_len, &mut preamble)
+    {
         notify_bytes(gatt, &server.remote.tx, &preamble[..n]).await;
     }
     notify_plane_chunks(gatt, server, true, bw_len).await;

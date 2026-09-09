@@ -5,7 +5,8 @@ use std::time::Duration;
 use panel_view::{FrameKind, TouchSample};
 use remote_debug_wire::v1::envelope::Body;
 use remote_debug_wire::v1::{
-    GetSnapshot, InjectButton, InjectTouch, ProductKey, SnapshotAck, TouchSource as WireTouch,
+    GetSnapshot, InjectButton, InjectTouch, ProductKey, SnapshotAck, TouchPhase,
+    TouchSource as WireTouch, TouchSpace,
 };
 use remote_debug_wire::{
     decode_envelope, encode_body, encode_reboot, encode_snapshot_clear, inject_button_gpio,
@@ -48,6 +49,16 @@ pub struct SnapshotPlanes {
     pub kind: FrameKind,
     /// Product hold token.
     pub hold: Option<u32>,
+    /// `Scene::persist_byte`.
+    pub scene: Option<u32>,
+    /// Targets walk id when on that card.
+    pub target_step: Option<u32>,
+    /// `dot` / `slide_x` / `slide_y`, or unset.
+    pub target_kind: Option<u32>,
+    /// Expected page X.
+    pub target_expect_x: Option<u32>,
+    /// Expected page Y.
+    pub target_expect_y: Option<u32>,
     /// Black/white plane.
     pub bw: Vec<u8>,
     /// Red/gray plane when gray4.
@@ -59,6 +70,7 @@ pub struct Session<T: Transport> {
     transport: T,
     assembler: FrameAssembler,
     last_nonce: Option<u64>,
+    last_log: Option<String>,
     keep_bond: bool,
 }
 
@@ -70,6 +82,7 @@ impl<T: Transport> Session<T> {
             transport,
             assembler: FrameAssembler::host_rx(),
             last_nonce: None,
+            last_log: None,
             keep_bond,
         }
     }
@@ -86,20 +99,62 @@ impl<T: Transport> Session<T> {
         self.last_nonce
     }
 
+    /// Last Target / Scene `LogLine` text (never a MAC).
+    #[must_use]
+    pub fn last_log(&self) -> Option<&str> {
+        self.last_log.as_deref()
+    }
+
     /// Synthetic framebuffer tap.
     ///
     /// # Errors
     ///
     /// Write failure.
     pub fn inject_touch(&mut self, sample: TouchSample) -> Result<(), Error> {
+        self.inject_touch_ex(sample, TouchPhase::TOUCH_PHASE_DOWN, false)
+    }
+
+    /// Synthetic tap with phase and optional page space.
+    ///
+    /// # Errors
+    ///
+    /// Write failure.
+    pub fn inject_touch_ex(
+        &mut self,
+        sample: TouchSample,
+        phase: TouchPhase,
+        page: bool,
+    ) -> Result<(), Error> {
+        let space = if page {
+            TouchSpace::TOUCH_SPACE_PAGE
+        } else {
+            TouchSpace::TOUCH_SPACE_FRAMEBUFFER
+        };
         let msg = InjectTouch {
             x: u32::from(sample.x),
             y: u32::from(sample.y),
             slot: sample.slot.map(u32::from),
             source: WireTouch::TOUCH_SOURCE_SYNTHETIC.into(),
+            phase: phase.into(),
+            space: space.into(),
             ..InjectTouch::default()
         };
-        self.transport.write_frame(&encode_body(msg))
+        self.transport.write_frame(&encode_body(msg))?;
+        self.drain_logs();
+        Ok(())
+    }
+
+    /// Consume queued GATT `LogLine` fragments (no wait).
+    pub fn drain_logs(&mut self) {
+        while let Some(chunk) = self.transport.try_read_chunk() {
+            if let Ok(Some(frame)) = self.assembler.push(&chunk) {
+                if let Ok(env) = decode_envelope(&frame) {
+                    if let Some(Body::LogLine(line)) = env.body {
+                        self.last_log = Some(line.text);
+                    }
+                }
+            }
+        }
     }
 
     /// Product-key short press (`ok` / `page-up` / `page-down`).
@@ -127,6 +182,7 @@ impl<T: Transport> Session<T> {
             return Err(Error::Io("snapshot nonce must be non-zero".into()));
         }
         self.last_nonce = Some(nonce);
+        self.drain_logs();
         let msg = GetSnapshot {
             nonce,
             ..GetSnapshot::default()
@@ -209,18 +265,27 @@ impl<T: Transport> Session<T> {
                 Some(frame) => match decode_envelope(&frame)?.body {
                     Some(Body::Snapshot(snap)) => {
                         let expected = snapshot_expected(&snap).map_err(Error::Map)?;
+                        let kind_num = snap.target_kind.as_known().map(|k| k as u32);
                         return Ok(SnapshotPlanes {
                             nonce: snap.nonce,
                             width: expected.width,
                             height: expected.height,
                             kind: expected.kind,
                             hold: expected.hold,
+                            scene: snap.scene,
+                            target_step: snap.target_step,
+                            target_kind: kind_num.filter(|&k| k != 0),
+                            target_expect_x: snap.target_expect_x,
+                            target_expect_y: snap.target_expect_y,
                             bw: expected.bw.to_vec(),
                             red: expected.red.map(<[u8]>::to_vec),
                         });
                     }
                     Some(Body::SnapshotBusy(busy)) => {
                         return Err(Error::SnapshotBusy { armed: busy.nonce });
+                    }
+                    Some(Body::LogLine(line)) => {
+                        self.last_log = Some(line.text);
                     }
                     _ => {}
                 },

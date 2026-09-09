@@ -7,8 +7,8 @@ use buffa::Message;
 use buffa::EncodeSink;
 
 use crate::v1::{
-    envelope::Body, Envelope, FrameKind, Reboot, RebootAck, SnapshotAck, SnapshotBusy,
-    SnapshotClear,
+    envelope::Body, Envelope, FrameKind, LogLine, Reboot, RebootAck, SnapshotAck, SnapshotBusy,
+    SnapshotClear, TargetKind,
 };
 
 /// `Envelope.version` this crate writes and accepts.
@@ -27,6 +27,33 @@ pub struct SnapshotMeta {
     pub kind: FrameKind,
     /// Product hold token.
     pub hold: Option<u32>,
+    /// `Scene::persist_byte`, when known.
+    pub scene: Option<u32>,
+    /// Targets walk id `0..=6`, when on that card.
+    pub target_step: Option<u32>,
+    /// Dot / slide, or unspecified off the card.
+    pub target_kind: TargetKind,
+    /// Expected page X for the current mark.
+    pub target_expect_x: Option<u32>,
+    /// Expected page Y for the current mark.
+    pub target_expect_y: Option<u32>,
+}
+
+impl Default for SnapshotMeta {
+    fn default() -> Self {
+        Self {
+            nonce: 0,
+            width: 0,
+            height: 0,
+            kind: FrameKind::FRAME_KIND_UNSPECIFIED,
+            hold: None,
+            scene: None,
+            target_step: None,
+            target_kind: TargetKind::TARGET_KIND_UNSPECIFIED,
+            target_expect_x: None,
+            target_expect_y: None,
+        }
+    }
 }
 
 /// Protobuf field number for `Envelope.snapshot`.
@@ -116,6 +143,7 @@ pub fn encode_snapshot_envelope(
             height,
             kind,
             hold,
+            ..SnapshotMeta::default()
         },
         bw,
         red,
@@ -171,35 +199,37 @@ pub fn encode_reboot_ack() -> Vec<u8> {
     encode_body(RebootAck::default())
 }
 
+/// Device → host: one UART `format_event` line (never a MAC).
+#[must_use]
+pub fn encode_log_line(t_ms: u32, text: &str) -> Vec<u8> {
+    encode_body(LogLine {
+        t_ms,
+        text: alloc::string::String::from(text),
+        ..LogLine::default()
+    })
+}
+
 /// Encoded size of a `Snapshot` body (no envelope wrapper).
 ///
 /// Used so a device can write the u32 LE length and the length-delimited
 /// snapshot header without cloning `bw` / `red`.
 #[must_use]
-pub fn snapshot_body_len(
-    nonce: u64,
-    width: u16,
-    height: u16,
-    kind: FrameKind,
-    hold: Option<u32>,
-    bw_len: usize,
-    red_len: usize,
-) -> u32 {
+pub fn snapshot_body_len(meta: SnapshotMeta, bw_len: usize, red_len: usize) -> u32 {
     let mut size = 0u64;
-    if nonce != 0 {
+    if meta.nonce != 0 {
         size += 1 + u64::from(buffa::types::FIXED64_ENCODED_LEN as u32);
     }
-    if width != 0 {
-        size += 1 + buffa::types::uint32_encoded_len(u32::from(width)) as u64;
+    if meta.width != 0 {
+        size += 1 + buffa::types::uint32_encoded_len(u32::from(meta.width)) as u64;
     }
-    if height != 0 {
-        size += 1 + buffa::types::uint32_encoded_len(u32::from(height)) as u64;
+    if meta.height != 0 {
+        size += 1 + buffa::types::uint32_encoded_len(u32::from(meta.height)) as u64;
     }
-    let kind_i = buffa::Enumeration::to_i32(&kind);
+    let kind_i = buffa::Enumeration::to_i32(&meta.kind);
     if kind_i != 0 {
         size += 1 + buffa::types::int32_encoded_len(kind_i) as u64;
     }
-    if let Some(v) = hold {
+    if let Some(v) = meta.hold {
         size += 1 + buffa::types::uint32_encoded_len(v) as u64;
     }
     if bw_len != 0 {
@@ -207,6 +237,22 @@ pub fn snapshot_body_len(
     }
     if red_len != 0 {
         size += 1 + buffa::encoding::varint_len(red_len as u64) as u64 + red_len as u64;
+    }
+    if let Some(v) = meta.scene {
+        size += 1 + buffa::types::uint32_encoded_len(v) as u64;
+    }
+    if let Some(v) = meta.target_step {
+        size += 1 + buffa::types::uint32_encoded_len(v) as u64;
+    }
+    let kind_i = buffa::Enumeration::to_i32(&meta.target_kind);
+    if kind_i != 0 {
+        size += 1 + buffa::types::int32_encoded_len(kind_i) as u64;
+    }
+    if let Some(v) = meta.target_expect_x {
+        size += 1 + buffa::types::uint32_encoded_len(v) as u64;
+    }
+    if let Some(v) = meta.target_expect_y {
+        size += 1 + buffa::types::uint32_encoded_len(v) as u64;
     }
     buffa::saturate_size(size)
 }
@@ -232,15 +278,7 @@ pub fn write_framed_snapshot<S: EncodeSink>(
     sink: &mut S,
 ) {
     let red = red.unwrap_or(&[]);
-    let inner = snapshot_body_len(
-        meta.nonce,
-        meta.width,
-        meta.height,
-        meta.kind,
-        meta.hold,
-        bw.len(),
-        red.len(),
-    );
+    let inner = snapshot_body_len(meta, bw.len(), red.len());
     let payload = snapshot_envelope_payload_len(inner);
     sink.put_slice(&payload.to_le_bytes());
     buffa::types::put_uint32_field(1, ENVELOPE_VERSION, sink);
@@ -270,15 +308,7 @@ pub fn write_snapshot_preamble<S: EncodeSink>(
     red_len: usize,
     sink: &mut S,
 ) {
-    let inner = snapshot_body_len(
-        meta.nonce,
-        meta.width,
-        meta.height,
-        meta.kind,
-        meta.hold,
-        bw_len,
-        red_len,
-    );
+    let inner = snapshot_body_len(meta, bw_len, red_len);
     let payload = snapshot_envelope_payload_len(inner);
     sink.put_slice(&payload.to_le_bytes());
     buffa::types::put_uint32_field(1, ENVELOPE_VERSION, sink);
@@ -383,5 +413,21 @@ fn write_snapshot_scalars<S: EncodeSink>(meta: SnapshotMeta, sink: &mut S) {
     }
     if let Some(v) = meta.hold {
         buffa::types::put_uint32_field(5, v, sink);
+    }
+    if let Some(v) = meta.scene {
+        buffa::types::put_uint32_field(8, v, sink);
+    }
+    if let Some(v) = meta.target_step {
+        buffa::types::put_uint32_field(9, v, sink);
+    }
+    let kind_i = buffa::Enumeration::to_i32(&meta.target_kind);
+    if kind_i != 0 {
+        buffa::types::put_int32_field(10, kind_i, sink);
+    }
+    if let Some(v) = meta.target_expect_x {
+        buffa::types::put_uint32_field(11, v, sink);
+    }
+    if let Some(v) = meta.target_expect_y {
+        buffa::types::put_uint32_field(12, v, sink);
     }
 }

@@ -29,6 +29,29 @@ enum FrameKind {
   FRAME_KIND_GRAY4 = 2;
 }
 
+// Finger phase. Unset is a tap (DOWN). MOVE does not re-edge dots.
+enum TouchPhase {
+  TOUCH_PHASE_UNSPECIFIED = 0;
+  TOUCH_PHASE_DOWN = 1;
+  TOUCH_PHASE_MOVE = 2;
+  TOUCH_PHASE_UP = 3;
+}
+
+// Coordinate space of InjectTouch x/y. Unset is framebuffer.
+enum TouchSpace {
+  TOUCH_SPACE_UNSPECIFIED = 0;
+  TOUCH_SPACE_FRAMEBUFFER = 1;
+  TOUCH_SPACE_PAGE = 2;
+}
+
+// Targets walk mark. Unset when the card is not targets.
+enum TargetKind {
+  TARGET_KIND_UNSPECIFIED = 0;
+  TARGET_KIND_DOT = 1;
+  TARGET_KIND_SLIDE_X = 2;
+  TARGET_KIND_SLIDE_Y = 3;
+}
+
 // One framed message. `version` is ENVELOPE_VERSION (1).
 message Envelope {
   uint32 version = 1;
@@ -51,13 +74,15 @@ message Envelope {
   }
 }
 
-// Pre-rotation framebuffer tap (native 800×480 on the Sticky).
-// Not UART p0= / glass space, not a raw GT911 480×800 sample.
+// Pre-rotation framebuffer tap (native 800×480 on the Sticky),
+// or page pixels when space=PAGE. Not UART p0= / glass, not raw GT911.
 message InjectTouch {
   uint32 x = 1;
   uint32 y = 2;
   optional uint32 slot = 3;
   TouchSource source = 4;
+  TouchPhase phase = 5;
+  TouchSpace space = 6;
 }
 
 // Short key edge. Firmware applies the same short-press walk as GPIO;
@@ -83,6 +108,13 @@ message Snapshot {
   optional uint32 hold = 5;
   bytes bw = 6;
   bytes red = 7;
+  // embassy-debug Scene::persist_byte (splash=0 … targets=7).
+  optional uint32 scene = 8;
+  // targets::STEP 0..=6 when scene is targets.
+  optional uint32 target_step = 9;
+  TargetKind target_kind = 10;
+  optional uint32 target_expect_x = 11;
+  optional uint32 target_expect_y = 12;
 }
 
 // Host received Snapshot for this nonce. Mismatch does not free the slot.

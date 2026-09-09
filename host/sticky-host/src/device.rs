@@ -363,7 +363,7 @@ impl DeviceIo for RealDevice {
             CHUNK_SIZE / 1024
         );
         eprintln!(
-            "write-bin: {} bytes at {offset:#x} in {windows}×{} KiB windows (device MD5 per window can skip a match; reconnect on drop)",
+            "write-bin: {} bytes at {offset:#x} in {windows}×{} KiB windows (device MD5 per window can skip a match; reconnect after each window and on drop)",
             data.len(),
             CHUNK_SIZE / 1024
         );
@@ -394,6 +394,14 @@ impl DeviceIo for RealDevice {
                 Ok(()) => {
                     index = index.saturating_add(1);
                     retries_left = WRITE_WINDOW_RETRIES;
+                    // A second `write_bin_to_flash` on the same stub
+                    // connection hangs before ProgressCallbacks::init
+                    // (observed on a 1 MiB + 1 KiB embassy-debug image:
+                    // window 2 at 0x190000 never printed `chunks=`).
+                    if index < windows {
+                        drop(flasher);
+                        flasher = connect(port, Some(ESPFLASH_BAUD))?;
+                    }
                 }
                 Err(error) => {
                     let mapped = map_espflash(error);

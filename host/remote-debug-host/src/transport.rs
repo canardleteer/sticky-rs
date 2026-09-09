@@ -20,6 +20,11 @@ pub trait Transport {
     /// Timeout or disconnect.
     fn read_chunk(&mut self) -> Result<Vec<u8>, Error>;
 
+    /// Pop a queued notify without waiting. Default: none.
+    fn try_read_chunk(&mut self) -> Option<Vec<u8>> {
+        None
+    }
+
     /// Drop the GATT link. `keep_bond` is the remember-me flag.
     ///
     /// # Errors

@@ -2,7 +2,7 @@
 
 use panel_view::{ExpectedFrame, FrameKind, TouchSample, TouchSource};
 
-use crate::v1::{self, ProductKey};
+use crate::v1::{self, ProductKey, TouchPhase, TouchSpace};
 
 /// Sticky AI Voice / OK (GPIO4).
 pub const PRODUCT_KEY_OK_GPIO: u8 = 4;
@@ -55,6 +55,25 @@ pub fn inject_touch_sample(msg: &v1::InjectTouch) -> Result<TouchSample, MapErro
         y: msg.y as u16,
         slot,
     })
+}
+
+/// Wire phase. Unset is a tap ([`TouchPhase::TOUCH_PHASE_DOWN`]).
+#[must_use]
+pub fn inject_touch_phase(msg: &v1::InjectTouch) -> TouchPhase {
+    match msg.phase.as_known() {
+        Some(TouchPhase::TOUCH_PHASE_MOVE) => TouchPhase::TOUCH_PHASE_MOVE,
+        Some(TouchPhase::TOUCH_PHASE_UP) => TouchPhase::TOUCH_PHASE_UP,
+        _ => TouchPhase::TOUCH_PHASE_DOWN,
+    }
+}
+
+/// Wire space. Unset is framebuffer.
+#[must_use]
+pub fn inject_touch_space(msg: &v1::InjectTouch) -> TouchSpace {
+    match msg.space.as_known() {
+        Some(TouchSpace::TOUCH_SPACE_PAGE) => TouchSpace::TOUCH_SPACE_PAGE,
+        _ => TouchSpace::TOUCH_SPACE_FRAMEBUFFER,
+    }
 }
 
 /// Product key → Sticky GPIO. Unspecified is [`MapError::Key`].

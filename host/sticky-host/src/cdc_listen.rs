@@ -5,6 +5,7 @@
 //! path claims the USB interfaces instead and leaves the modem lines deasserted.
 
 use std::io::{self, Read};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
 use std::thread;
@@ -71,9 +72,8 @@ impl CdcListen {
                 pid: Some(key.pid),
             });
         }
-        let info = nusb::list_devices()
-            .wait()
-            .map_err(|error| Error::Device(format!("USB list failed: {error}")))?
+        let info = list_qinheng()?
+            .into_iter()
             .find(|dev| {
                 dev.busnum() == key.busnum
                     && dev.device_address() == key.devnum
@@ -86,6 +86,37 @@ impl CdcListen {
                     key.busnum, key.devnum
                 ))
             })?;
+        Self::from_info(info)
+    }
+
+    /// Claim the unique QinHeng when `cdc-acm` has no TTY.
+    ///
+    /// A listen that skipped [`Drop`] (default SIGINT) leaves the kernel
+    /// driver detached. Inventory then reports [`Error::MissingStickyUart`]
+    /// even though usbfs still sees `1a86:55d3`. Auto-PIN uses this path
+    /// so a replug is not required. The UART flock is taken on the usbfs
+    /// node (`/dev/bus/usb/{bus}/{dev}`) before the claim.
+    ///
+    /// # Errors
+    ///
+    /// No QinHeng, more than one, lock failure, or USB claim.
+    pub fn open_unique_locked<F>(acquire: F) -> Result<(Self, crate::UartSession), Error>
+    where
+        F: FnOnce(&str) -> Result<crate::UartSession, Error>,
+    {
+        catch_interrupt();
+        let info = unique_qinheng()?;
+        let path = usbfs_path(info.busnum(), info.device_address());
+        let path = path
+            .to_str()
+            .ok_or_else(|| Error::Device("usbfs path is not UTF-8".into()))?;
+        let uart = acquire(path)?;
+        Ok((Self::from_info(info)?, uart))
+    }
+
+    fn from_info(info: nusb::DeviceInfo) -> Result<Self, Error> {
+        let busnum = info.busnum();
+        let devnum = info.device_address();
         let device = info.open().wait().map_err(map_usb_open)?;
         let config = device
             .active_configuration()
@@ -118,11 +149,7 @@ impl CdcListen {
             .reader(4096);
         reader.set_read_timeout(USB_TIMEOUT);
         let (comm, data) = claimed.finish();
-        log::info!(
-            "CDC listen bus {} addr {} at 115200 (no ACM TTY, modem lines off)",
-            key.busnum,
-            key.devnum
-        );
+        log::info!("CDC listen bus {busnum} addr {devnum} at 115200 (no ACM TTY, modem lines off)");
         Ok(Self {
             reader: Some(reader),
             data: Some(data),
@@ -132,6 +159,29 @@ impl CdcListen {
             data_num: layout.data,
         })
     }
+}
+
+fn list_qinheng() -> Result<Vec<nusb::DeviceInfo>, Error> {
+    nusb::list_devices()
+        .wait()
+        .map_err(|error| Error::Device(format!("USB list failed: {error}")))
+        .map(|iter| {
+            iter.filter(|dev| dev.vendor_id() == QINHENG_VID && dev.product_id() == QINHENG_PID)
+                .collect()
+        })
+}
+
+fn unique_qinheng() -> Result<nusb::DeviceInfo, Error> {
+    let mut devices = list_qinheng()?;
+    match devices.len() {
+        0 => Err(Error::MissingStickyUart),
+        1 => Ok(devices.remove(0)),
+        _ => Err(Error::AmbiguousStickyUart),
+    }
+}
+
+fn usbfs_path(busnum: u8, devnum: u8) -> PathBuf {
+    PathBuf::from(format!("/dev/bus/usb/{busnum:03}/{devnum:03}"))
 }
 
 impl Read for CdcListen {
@@ -343,5 +393,10 @@ mod tests {
         assert_eq!(layout.comm, 0);
         assert_eq!(layout.data, 1);
         assert_eq!(layout.bulk_in, 0x81);
+    }
+
+    #[test]
+    fn usbfs_path_zero_pads_bus_and_dev() {
+        assert_eq!(super::usbfs_path(3, 5).as_os_str(), "/dev/bus/usb/003/005");
     }
 }

@@ -1,5 +1,6 @@
 //! Linux BlueZ central (`bluer`). Connect, not `Pair()`.
 
+use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -12,11 +13,23 @@ use uuid::Uuid;
 use crate::{Error, PasskeySource, Transport};
 
 /// How long discovery may run before the advertise name is a miss.
-const DISCOVER_SECS: u64 = 20;
+pub const DISCOVER_SECS: u64 = 20;
 /// How long a notify wait may block.
 const NOTIFY_SECS: u64 = 30;
+/// How long after `Connect` the ACL may take to show `Connected`.
+const CONNECTED_SECS: u64 = 5;
+/// Pair + `ServicesResolved` after ACL `Connect`.
+pub const GATT_READY_SECS: u64 = 45;
+/// UART scrape / [`crate::ChannelPasskey`] after ACL `Connect` starts.
+///
+/// One GATT wait, one rediscover, one GATT wait. The scrape thread
+/// starts at `Connect`, not at advertise discovery.
+pub const PAIR_WINDOW_SECS: u64 = GATT_READY_SECS + DISCOVER_SECS + GATT_READY_SECS;
 
 /// Live GATT link. Address is never formatted.
+///
+/// TX notifies enqueue FIFO. `Vec` + `pop` reversed a multi-chunk
+/// snapshot and the assembler reported `frame: Version`.
 pub struct BluerTransport {
     /// Owns the tokio threads for notify + later writes.
     _rt: tokio::runtime::Runtime,
@@ -24,7 +37,9 @@ pub struct BluerTransport {
     adapter: bluer::Adapter,
     device: bluer::Device,
     rx: bluer::gatt::remote::Characteristic,
-    tx_chunks: Arc<Mutex<Vec<Vec<u8>>>>,
+    /// FIFO of TX notify payloads. A `Vec` + `pop` reversed
+    /// multi-chunk snapshots (`frame: Version`).
+    tx_chunks: Arc<Mutex<VecDeque<Vec<u8>>>>,
     _agent: bluer::agent::AgentHandle,
 }
 
@@ -39,12 +54,31 @@ pub fn connect(
     advertise_name: &str,
     passkey: Arc<dyn PasskeySource>,
 ) -> Result<BluerTransport, Error> {
+    connect_with(advertise_name, passkey, || {})
+}
+
+/// [`connect`] plus a hook fired once, after a live advertise is found
+/// and immediately before BlueZ `Connect` (UART scrape starts here).
+///
+/// # Errors
+///
+/// Same as [`connect`].
+pub fn connect_with(
+    advertise_name: &str,
+    passkey: Arc<dyn PasskeySource>,
+    on_connecting: impl FnOnce() + Send + 'static,
+) -> Result<BluerTransport, Error> {
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .map_err(|error| Error::Io(error.to_string()))?;
     let handle = rt.handle().clone();
-    let opened = handle.block_on(connect_async(handle.clone(), advertise_name, passkey))?;
+    let opened = handle.block_on(connect_async(
+        handle.clone(),
+        advertise_name,
+        passkey,
+        on_connecting,
+    ))?;
     Ok(BluerTransport {
         _rt: rt,
         rt: handle,
@@ -61,7 +95,7 @@ struct Opened {
     adapter: bluer::Adapter,
     device: bluer::Device,
     rx: bluer::gatt::remote::Characteristic,
-    tx_chunks: Arc<Mutex<Vec<Vec<u8>>>>,
+    tx_chunks: Arc<Mutex<VecDeque<Vec<u8>>>>,
     agent: bluer::agent::AgentHandle,
 }
 
@@ -69,16 +103,9 @@ async fn connect_async(
     handle: tokio::runtime::Handle,
     advertise_name: &str,
     passkey: Arc<dyn PasskeySource>,
+    on_connecting: impl FnOnce() + Send + 'static,
 ) -> Result<Opened, Error> {
     let session = bluer::Session::new()
-        .await
-        .map_err(|error| Error::Ble(error.to_string()))?;
-    let adapter = session
-        .default_adapter()
-        .await
-        .map_err(|error| Error::Ble(error.to_string()))?;
-    adapter
-        .set_powered(true)
         .await
         .map_err(|error| Error::Ble(error.to_string()))?;
 
@@ -100,17 +127,12 @@ async fn connect_async(
         .await
         .map_err(|error| Error::Ble(error.to_string()))?;
 
-    let device = discover_named(&adapter, advertise_name).await?;
+    let (adapter, device) = adapter_and_live_device(&session, advertise_name).await?;
     // Discovery token drops with the stream in `discover_named`.
     // Connect with discovery still up races BlueZ pairing.
-
-    device
-        .connect()
-        .await
-        .map_err(|error| Error::Ble(error.to_string()))?;
-
-    let (rx, tx) = open_debug_chars(&device).await?;
-    let tx_chunks = Arc::new(Mutex::new(Vec::new()));
+    on_connecting();
+    let (device, rx, tx) = connect_debug_chars(&adapter, advertise_name, device).await?;
+    let tx_chunks = Arc::new(Mutex::new(VecDeque::new()));
     let notify_chunks = tx_chunks.clone();
     let notify = tx
         .notify()
@@ -119,7 +141,7 @@ async fn connect_async(
     handle.spawn(async move {
         let mut notify = std::pin::pin!(notify);
         while let Some(chunk) = notify.next().await {
-            notify_chunks.lock().await.push(chunk);
+            notify_chunks.lock().await.push_back(chunk);
         }
     });
 
@@ -130,6 +152,153 @@ async fn connect_async(
         tx_chunks,
         agent: agent_handle,
     })
+}
+
+/// Connect, wait for ACL, walk RX/TX. One retry after a leftover cache miss.
+///
+/// A prior sit may leave a named BlueZ object whose GATT cache is stale
+/// (`ServicesResolved` never becomes true). Drop that object (never print
+/// the address) and discover again. Does not call `Device::pair`.
+async fn connect_debug_chars(
+    adapter: &bluer::Adapter,
+    advertise_name: &str,
+    device: bluer::Device,
+) -> Result<
+    (
+        bluer::Device,
+        bluer::gatt::remote::Characteristic,
+        bluer::gatt::remote::Characteristic,
+    ),
+    Error,
+> {
+    match connect_debug_chars_once(&device).await {
+        Ok((rx, tx)) => Ok((device, rx, tx)),
+        Err(error) if is_stale_gatt(&error) => {
+            forget_device(adapter, &device).await;
+            let device = discover_named(adapter, advertise_name).await?;
+            let (rx, tx) = connect_debug_chars_once(&device).await?;
+            Ok((device, rx, tx))
+        }
+        Err(error) => Err(error),
+    }
+}
+
+async fn connect_debug_chars_once(
+    device: &bluer::Device,
+) -> Result<
+    (
+        bluer::gatt::remote::Characteristic,
+        bluer::gatt::remote::Characteristic,
+    ),
+    Error,
+> {
+    if device.is_connected().await.unwrap_or(false) {
+        let _ = device.disconnect().await;
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+    device
+        .connect()
+        .await
+        .map_err(|error| Error::Ble(error.to_string()))?;
+    wait_connected(device).await?;
+    wait_gatt_ready(device).await?;
+    open_debug_chars(device).await
+}
+
+/// BlueZ `Connect` can return before DisplayOnly SMP finishes. Walking
+/// GATT then is `ServicesUnresolved` (or `Connected` drops mid-pair).
+async fn wait_gatt_ready(device: &bluer::Device) -> Result<(), Error> {
+    let deadline = std::time::Instant::now() + Duration::from_secs(GATT_READY_SECS);
+    loop {
+        let connected = device.is_connected().await.unwrap_or(false);
+        let resolved = device.is_services_resolved().await.unwrap_or(false);
+        if connected && resolved {
+            return Ok(());
+        }
+        if std::time::Instant::now() > deadline {
+            return Err(Error::Ble(if connected {
+                "GATT services not resolved after pair".into()
+            } else {
+                "Connect dropped before pair (UART pair pin= or --pin)".into()
+            }));
+        }
+        if !connected {
+            let _ = device.connect().await;
+        }
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+}
+
+async fn wait_connected(device: &bluer::Device) -> Result<(), Error> {
+    let deadline = std::time::Instant::now() + Duration::from_secs(CONNECTED_SECS);
+    loop {
+        if device.is_connected().await.unwrap_or(false) {
+            return Ok(());
+        }
+        if std::time::Instant::now() > deadline {
+            return Err(Error::Ble("Connect returned but the ACL is not up".into()));
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
+/// Default adapter that currently sees advertise `name` (RSSI present).
+///
+/// A leftover object with no RSSI is skipped so we do not Connect a
+/// ghost. Never prints an address.
+async fn adapter_and_live_device(
+    session: &bluer::Session,
+    name: &str,
+) -> Result<(bluer::Adapter, bluer::Device), Error> {
+    let adapter = session
+        .default_adapter()
+        .await
+        .map_err(|error| Error::Ble(error.to_string()))?;
+    adapter
+        .set_powered(true)
+        .await
+        .map_err(|error| Error::Ble(error.to_string()))?;
+    forget_named(&adapter, name).await;
+    let device = discover_named(&adapter, name).await?;
+    Ok((adapter, device))
+}
+
+async fn forget_named(adapter: &bluer::Adapter, name: &str) {
+    let Ok(addrs) = adapter.device_addresses().await else {
+        return;
+    };
+    let mut forgot = false;
+    for addr in addrs {
+        let Ok(device) = adapter.device(addr) else {
+            continue;
+        };
+        let alias = device.alias().await.ok();
+        let local = device.name().await.ok().flatten();
+        if alias.as_deref() == Some(name) || local.as_deref() == Some(name) {
+            forget_device(adapter, &device).await;
+            forgot = true;
+        }
+    }
+    if forgot {
+        tokio::time::sleep(Duration::from_millis(400)).await;
+    }
+}
+
+async fn forget_device(adapter: &bluer::Adapter, device: &bluer::Device) {
+    let addr = device.address();
+    let _ = device.disconnect().await;
+    let _ = adapter.remove_device(addr).await;
+}
+
+fn is_stale_gatt(error: &Error) -> bool {
+    match error {
+        Error::Ble(reason) => {
+            reason.contains("have not been resolved")
+                || reason.contains("Connect dropped before pair")
+                || reason.contains("GATT services not resolved after pair")
+        }
+        _ => false,
+    }
 }
 
 async fn discover_named(adapter: &bluer::Adapter, name: &str) -> Result<bluer::Device, Error> {
@@ -151,11 +320,17 @@ async fn discover_named(adapter: &bluer::Adapter, name: &str) -> Result<bluer::D
             let alias = device.alias().await.ok();
             let local = device.name().await.ok().flatten();
             if alias.as_deref() == Some(name) || local.as_deref() == Some(name) {
+                // No RSSI: BlueZ still has the object but it is not
+                // advertising. Connect on that ghost drops before
+                // `PassKeyDisplay` (no UART `pair pin=`).
+                if device.rssi().await.ok().flatten().is_none() {
+                    continue;
+                }
                 return Ok(device);
             }
         }
         Err(Error::Ble(format!(
-            "advertise name {name} not seen (walk to scene=pair)"
+            "advertise name {name} not seen (remote-debug: splash; else scene=pair)"
         )))
     })
     .await
@@ -234,7 +409,7 @@ impl Transport for BluerTransport {
         self.rt.block_on(async move {
             timeout(Duration::from_secs(NOTIFY_SECS), async {
                 loop {
-                    if let Some(chunk) = chunks.lock().await.pop() {
+                    if let Some(chunk) = chunks.lock().await.pop_front() {
                         return Ok(chunk);
                     }
                     tokio::time::sleep(Duration::from_millis(20)).await;
@@ -243,6 +418,12 @@ impl Transport for BluerTransport {
             .await
             .map_err(|_| Error::Io("notify timeout".into()))?
         })
+    }
+
+    fn try_read_chunk(&mut self) -> Option<Vec<u8>> {
+        let chunks = self.tx_chunks.clone();
+        self.rt
+            .block_on(async move { chunks.lock().await.pop_front() })
     }
 
     fn disconnect(&mut self, keep_bond: bool) -> Result<(), Error> {

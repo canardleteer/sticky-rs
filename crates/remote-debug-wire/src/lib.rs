@@ -35,17 +35,18 @@ mod reassemble;
 mod slot;
 
 pub use frame::{
-    bytes_field_header_to_slice, decode_envelope, encode_body, encode_envelope, encode_reboot,
-    encode_reboot_ack, encode_snapshot_ack, encode_snapshot_busy, encode_snapshot_clear,
-    encode_snapshot_envelope, framed, snapshot_body_len, snapshot_envelope_payload_len,
-    snapshot_preamble_to_slice, unframe, write_bytes_field_header, write_framed_snapshot,
-    write_snapshot_preamble, FrameError, SnapshotMeta, ENVELOPE_VERSION,
+    bytes_field_header_to_slice, decode_envelope, encode_body, encode_envelope, encode_log_line,
+    encode_reboot, encode_reboot_ack, encode_snapshot_ack, encode_snapshot_busy,
+    encode_snapshot_clear, encode_snapshot_envelope, framed, snapshot_body_len,
+    snapshot_envelope_payload_len, snapshot_preamble_to_slice, unframe, write_bytes_field_header,
+    write_framed_snapshot, write_snapshot_preamble, FrameError, SnapshotMeta, ENVELOPE_VERSION,
 };
 pub use gatt::{GATT_RX_UUID, GATT_SERVICE_UUID, GATT_TX_UUID};
 pub use map::{
     frame_kind_from_wire, frame_kind_to_wire, hold_from_u32, hold_to_u32, inject_button_gpio,
-    inject_touch_sample, product_key_from_gpio, snapshot_expected, MapError, PRODUCT_KEY_OK_GPIO,
-    PRODUCT_KEY_PAGE_DOWN_GPIO, PRODUCT_KEY_PAGE_UP_GPIO,
+    inject_touch_phase, inject_touch_sample, inject_touch_space, product_key_from_gpio,
+    snapshot_expected, MapError, PRODUCT_KEY_OK_GPIO, PRODUCT_KEY_PAGE_DOWN_GPIO,
+    PRODUCT_KEY_PAGE_UP_GPIO,
 };
 pub use reassemble::{FrameAssembler, DEVICE_RX_MAX, HOST_RX_MAX};
 pub use slot::{AckOutcome, ClearOutcome, GetOutcome, SnapshotSlot};
@@ -302,6 +303,7 @@ mod tests {
                 height: 4,
                 kind: v1::FrameKind::FRAME_KIND_MONO,
                 hold: Some(2),
+                ..SnapshotMeta::default()
             },
             &bw,
             None,

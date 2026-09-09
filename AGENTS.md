@@ -58,8 +58,8 @@ message (`detect-connected --probe`, live `backup-factory-firmware`,
 `remote-debug --mcp`). Host-only xtask
 (`detect-connected` without `--probe`, `backup-factory-firmware --import`,
 `diff-learn-uart`, `vet-idle-log`, `build-fw`, `ci`) does not open a
-UART. `remote-debug` is live BLE; default `connect` also takes the UART
-lock to scrape a new `pair pin=` when a Sticky CH343 is present.
+UART. `remote-debug` is live BLE; default `connect` takes the UART lock
+only while scraping a new `pair pin=` when a Sticky CH343 is present.
 
 When a live ask is present, the **only** in-repo device I/O is `cargo xtask`.
 `flash-app` does not compile; `cargo xtask build-fw` first. Flag catalog:
@@ -115,28 +115,39 @@ ask is present.
 ## Remote-debug testing options
 
 When testing `--features remote-debug` (encrypted GATT after the
-same DisplayOnly pair), always offer the human the option to pair
-from their own phone first. The host desk session is a separate
-live ask (`cargo xtask remote-debug` or `remote-debug --mcp`).
-Do not also run `monitor` (auto-PIN takes the UART lock).
+same DisplayOnly pair), a phone pair is optional. When the human
+already asked for a host desk sit, do not pause to ask them to
+pair from a phone. The host desk session is a separate live ask
+(`cargo xtask remote-debug` or `remote-debug --mcp`).
+`connect` starts a detached Unix-socket broker that owns GATT
+and returns `pairing`; poll `status` until `connected` or
+`pair failed`. Later leaves are RPC. `serve` is an optional
+foreground log. Do not also run `monitor` while auto-PIN
+scrapes `pair pin=` (that scrape takes the UART lock, then
+releases it).
 
-Advertise still only on `scene=pair`, except after a software
-reset (`CoreSw`) on this image, which advertises on splash so a
-desk host can Connect without walking. After `pair ok`, this image
-**holds** the bonded GATT when walking off the pair card. Default
-image (no `remote-debug`) still drops the link on leave. Reconnect
-after any other drop means walk back to the pair card. Firmware
-RAM-bonds this boot only; do not write factory NVS. `--remember`
-keep the BlueZ bond for allowlisted factory / CH343 USB serials in
-gitignored `developer-data/remote-debug/` (never a MAC, never the
-PIN). `reboot` software-resets the **embedded MCU** (not the host);
+Advertise on **splash** from every boot of this image (cold
+POWERON and `CoreSw`), not only after a software reset. Stay on
+Ferris; a desk host can Connect without walking to `scene=pair`.
+UART prints `pair pin=` when SMP starts and reprints every 5 s
+on splash or the pair card until `pair ok`. After `pair ok`, this
+image **holds** the bonded GATT when walking off splash / the
+pair card. After a drop it advertises again immediately. Default
+image (no `remote-debug`) still advertises only on the pair card
+and drops the link on leave. Firmware RAM-bonds this
+connection; a drop forgets that LTK so the next Connect is
+a new DisplayOnly PIN. Do not write factory NVS.
+`--remember` keep the BlueZ bond for
+allowlisted factory / CH343 USB serials in gitignored
+`developer-data/remote-debug/` (never a MAC, never the PIN).
+`reboot` software-resets the **embedded MCU** (not the host);
 the GATT session dies and leftover BlueZ LTK must not be reused.
-UART auto-PIN re-pairs (the image reprints `pair pin=` every 5 s
-on splash or the pair card until `pair ok`).
+UART auto-PIN re-pairs on the new splash advertise.
 
 Injects are framebuffer pixels and product keys, not UART `p0=` /
 raw GT911. Snapshot is the last composed DRAW planes (one frozen
-slot). Never a MAC. Step-by-step:
+slot; host TX notify must stay FIFO or `get-snapshot` fails
+`frame: Version`). Never a MAC. Step-by-step:
 [firmware/embassy-debug/AGENTS.md](firmware/embassy-debug/AGENTS.md#remote-debug-verification-workflow).
 Do not run the BLE central unless that live ask is present.
 
@@ -196,6 +207,7 @@ conflicts in the hardware skill instead of flattening them.
 | Agent rules that belong to one directory | that directory’s `AGENTS.md` (nearest file wins on conflict) |
 | How-to voice | this file (working-rules how-to bullet) |
 | Firmware examples as tutorial code | [firmware/AGENTS.md](firmware/AGENTS.md#firmware-examples-as-tutorial-code) (and each package `AGENTS.md`) **and** this file if it restates the bar |
+| stdio MCP (`cargo xtask remote-debug --mcp`), clap-mcp wiring, or `--features remote-debug` firmware that those tools talk to | [mcp-interactions.md](.agents/skills/sticky-rs/references/mcp-interactions.md) (how-to, discoveries, difficult / crude). Keep [xtask.md](.agents/skills/sticky-rs/references/xtask.md) as the CLI catalog |
 
 Do not treat `cargo xtask --help` as a substitute for the sticky-rs catalog
 and the README list.
@@ -266,6 +278,13 @@ and the README list.
   backlog ids in this file and the skills. A backlog item may close a
   how-to as a note, not as the voice of the steps. Do not write those
   pages as agent notes.
+- After changing xtask, stdio MCP (`cargo xtask remote-debug --mcp`),
+  or the `--features remote-debug` image those tools talk to,
+  self-test the MCP tools in a **freshly launched subagent**
+  (stdio attaches at process launch). Keep
+  [mcp-interactions.md](.agents/skills/sticky-rs/references/mcp-interactions.md)
+  current. Same live-ask and never-a-MAC rules as
+  [Remote-debug testing options](#remote-debug-testing-options).
 - Firmware under `firmware/` (`simple-debug-fw` and
   `embassy-debug-fw`) must serve as educational reference code.
   Every function, method, struct, enum, and constant (public or

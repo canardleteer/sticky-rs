@@ -158,6 +158,26 @@ pub const fn gray4_touch_framebuffer(
     })
 }
 
+/// Framebuffer inject that [`View::map_touch_point`] maps back to `page`.
+///
+/// Inverse of gray4 hit-test: [`page_to_framebuffer`] then
+/// [`gray4_touch_framebuffer`] (an involution). Not the compose
+/// canvas alone — portrait flip-Y is why a 2026-09-08 top-left
+/// tap missed until that flip. Do not OR landscape 180°.
+///
+/// Use this for remote-debug `TouchSpace::PAGE` and host `--page`.
+#[must_use]
+pub const fn inject_framebuffer_for_page(
+    px: u16,
+    py: u16,
+    rotation: PageRotation,
+) -> Option<(u16, u16)> {
+    let Some((hx, hy)) = page_to_framebuffer(px, py, rotation) else {
+        return None;
+    };
+    gray4_touch_framebuffer(hx, hy, rotation)
+}
+
 /// Last RAM X address unit for a full-width window (`8.3` address units).
 pub const RAM_X_END: u16 = WIDTH - 1;
 /// Last RAM Y address unit for a full-height window (`8.4` address units).
@@ -580,6 +600,45 @@ mod tests {
             (230..270).contains(&cx) && (380..420).contains(&cy),
             "centre disk sit p0=399,225 must stay near (240,400), got ({cx},{cy})"
         );
+        let (ifx, ify) =
+            inject_framebuffer_for_page(80, 80, PageRotation::Portrait0).expect("tl inject");
+        let (ipx, ipy) = gray4_wifi_page(ifx, ify, PageRotation::Portrait0);
+        assert_eq!((ipx, ipy), (80, 80), "PAGE inject must hit-test to itself");
+    }
+
+    /// PAGE inject inverts gray4 hit-test on every in-plane hold.
+    #[test]
+    fn inject_framebuffer_round_trips_page_marks() {
+        use crate::view::View;
+
+        for rotation in [
+            PageRotation::Portrait0,
+            PageRotation::Portrait180,
+            PageRotation::Landscape0,
+            PageRotation::Landscape180,
+        ] {
+            let (page_w, page_h) = rotation.page_size();
+            let inset = 80u16;
+            let marks = [
+                (inset, inset),
+                (page_w - inset, inset),
+                (inset, page_h - inset),
+                (page_w - inset, page_h - inset),
+                (page_w / 2, page_h / 2),
+            ];
+            let view = View::from_hold(rotation);
+            for (px, py) in marks {
+                let (fx, fy) = inject_framebuffer_for_page(px, py, rotation).expect("inject");
+                let page = view
+                    .map_touch_point(crate::FramebufferPoint { x: fx, y: fy })
+                    .expect("hit-test");
+                assert_eq!(
+                    (page.x, page.y),
+                    (px, py),
+                    "{rotation:?} page ({px},{py}) via ({fx},{fy})"
+                );
+            }
+        }
     }
 
     #[test]

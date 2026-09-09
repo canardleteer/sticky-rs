@@ -31,7 +31,7 @@ goes to write-once `original/<serial>/`. Anything else is a named capture. \
 
 Host-only (no UART): `detect-connected` without `--probe`, `backup-factory-firmware --import`, \
 `build-fw`, `ci`, `diff-learn-uart`, and `vet-idle-log`. \
-`remote-debug` is live BLE (and UART when auto-PIN scrapes `pair pin=`).
+`remote-debug` is live BLE (UART only while auto-PIN scrapes `pair pin=`).
 
 Use `<COMMAND> --help` for flags.";
 
@@ -122,7 +122,7 @@ pub enum Command {
     Ci,
     /// Read UART0 at 115200 via USB CDC
     Monitor(MonitorArgs),
-    /// Live BLE remote-debug (pair then hold; `--mcp` is this subtree only)
+    /// Live BLE remote-debug (broker owns GATT; `--mcp` is this subtree only)
     #[command(long_about = crate::remote_debug::ABOUT)]
     RemoteDebug(crate::remote_debug::RemoteDebugCli),
 }

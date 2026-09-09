@@ -37,8 +37,14 @@
 //!   [`embassy_debug::TouchSource`]. [`crate::touch_task`] tags the
 //!   UART line and then calls the same first-contact path as GT911.
 //!
-//! Extra `.bss`: two [`display::PLANE_BYTES`] copies (96 KiB). Desk-only.
-//! Do not enable on a battery sit you care about.
+//! LAST lives in a 96 KiB **octal PSRAM carve**, not `.bss`. Pair +
+//! Wi-Fi + DRAW/TX already fill internal DRAM; a second pair of
+//! planes in `.bss` fails the S3 `dram_seg` / `stack.x` link
+//! (`cannot move location counter backwards`). DRAW/TX stay in
+//! DRAM so panel SPI DMA does not bounce from PSRAM. Do not add
+//! the rest of PSRAM to the global heap (S3 atomics are wrong
+//! there; BLE / Wi-Fi `malloc` stays Internal). Desk-only. Do not
+//! enable on a battery sit you care about.
 //!
 //! # Safety
 //!
@@ -49,32 +55,41 @@
 use core::cell::RefCell;
 
 use embassy_debug::{
-    Event, ExpectedFrame, FrameKind, SnapOp, TouchSample, TouchSource, LOG_PREFIX,
+    Event, ExpectedFrame, FrameKind, Scene, SnapOp, TargetKind, TouchSample, TouchSource,
+    LINE_CAPACITY, LOG_PREFIX,
 };
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::blocking_mutex::Mutex;
 use embassy_sync::channel::Channel;
+use embassy_sync::signal::Signal;
 use esp_println::println;
 use remote_debug_wire::v1::envelope::Body;
+use remote_debug_wire::v1::{TargetKind as WireTargetKind, TouchPhase, TouchSpace};
 use remote_debug_wire::{
-    decode_envelope, inject_button_gpio, inject_touch_sample, AckOutcome, FrameError, GetOutcome,
+    decode_envelope, frame_kind_to_wire, inject_button_gpio, inject_touch_phase,
+    inject_touch_sample, inject_touch_space, AckOutcome, FrameError, GetOutcome, SnapshotMeta,
     SnapshotSlot,
 };
-use seeed_reterminal_sticky::display::{self, PageRotation};
-use static_cell::ConstStaticCell;
+use seeed_reterminal_sticky::display::{self, inject_framebuffer_for_page, PageRotation};
 
 /// How many pending synthetic taps the mux keeps.
 ///
 /// Embassy [`Channel`] depth. [`crate::touch_task`] polls at board
-/// [`seeed_reterminal_sticky::touch::STATUS_POLL_MS`]. Four slots
-/// cover a short desk burst without a large `.bss` queue.
-const SYNTHETIC_CAP: usize = 4;
+/// [`seeed_reterminal_sticky::touch::STATUS_POLL_MS`]. Eight slots
+/// cover a five-point slide stroke plus a short desk burst.
+const SYNTHETIC_CAP: usize = 8;
 
-/// Injected framebuffer taps. [`crate::touch_task`] is the only receiver.
+/// Injected framebuffer taps (plus phase). [`crate::touch_task`] is the only receiver.
 ///
 /// *The Embassy Book*: a `Channel` is MPMC; `try_send` / `try_receive`
 /// do not wait. Overflow drops the tap (same idea as [`crate::emit`]).
-static SYNTHETIC: Channel<CriticalSectionRawMutex, TouchSample, SYNTHETIC_CAP> = Channel::new();
+static SYNTHETIC: Channel<CriticalSectionRawMutex, SyntheticTouch, SYNTHETIC_CAP> = Channel::new();
+
+/// UART `format_event` copies for GATT `LogLine` (Target / Scene only).
+static LOG_LINES: Channel<CriticalSectionRawMutex, QueuedLog, SYNTHETIC_CAP> = Channel::new();
+
+/// Wake the BLE task when a Target / Scene line is queued.
+static LOG_READY: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 
 /// Injected short-press edges. [`crate::button_task`] is the only receiver.
 ///
@@ -83,15 +98,29 @@ static SYNTHETIC: Channel<CriticalSectionRawMutex, TouchSample, SYNTHETIC_CAP> =
 /// large `.bss` queue.
 static BUTTONS: Channel<CriticalSectionRawMutex, SyntheticButton, SYNTHETIC_CAP> = Channel::new();
 
-/// Last composed black/white plane (pre-rotation 800×480, packed).
-///
-/// Taken once into [`REMOTE`]. Not the panel’s SPI readout.
-static LAST_BW: ConstStaticCell<[u8; display::PLANE_BYTES]> =
-    ConstStaticCell::new([0; display::PLANE_BYTES]);
+/// How many bytes [`map_last_planes`] carves from mapped PSRAM.
+const LAST_CARVE_BYTES: usize = display::PLANE_BYTES * 2;
 
-/// Last composed red/gray plane, or unused zeros on a 1-bit card.
-static LAST_RED: ConstStaticCell<[u8; display::PLANE_BYTES]> =
-    ConstStaticCell::new([0; display::PLANE_BYTES]);
+/// One queued synthetic tap plus finger phase.
+///
+/// `DOWN` is a lift→down edge (dots score). `MOVE` feeds slides
+/// without `dispatch_first_contact`. `UP` lifts without a first-contact
+/// beep (*The Embassy Book*: one mux, one consumer).
+#[derive(Clone, Copy)]
+pub(crate) struct SyntheticTouch {
+    /// Pre-rotation framebuffer sample.
+    pub sample: TouchSample,
+    /// Wire phase (unset treated as DOWN by the mapper).
+    pub phase: TouchPhase,
+}
+
+/// One GATT `LogLine` waiting on the BLE task.
+#[derive(Clone, Copy)]
+struct QueuedLog {
+    t_ms: u32,
+    len: u8,
+    text: [u8; LINE_CAPACITY],
+}
 
 /// One queued product-key edge (GPIO 4 / 5 / 6).
 ///
@@ -108,9 +137,10 @@ pub(crate) struct SyntheticButton {
 
 /// Planes plus the hold used to compose them.
 ///
-/// `bw` / `red` are `'static` after [`ConstStaticCell::take`]. The
-/// mutex is a critical section (*The Embedded Rust Book*: share by
-/// locking, not by cloning 48 KiB onto the stack).
+/// `bw` / `red` are `'static` after [`map_last_planes`] carves them
+/// from mapped PSRAM. The mutex is a critical section (*The
+/// Embedded Rust Book*: share by locking, not by cloning 48 KiB
+/// onto the stack).
 struct LastInner {
     /// Native RAM black/white plane.
     bw: &'static mut [u8; display::PLANE_BYTES],
@@ -120,6 +150,16 @@ struct LastInner {
     kind: FrameKind,
     /// In-plane hold at compose (`View::from_hold`).
     hold: PageRotation,
+    /// `Scene::persist_byte` at compose.
+    scene: u8,
+    /// Targets walk id, or `0xff` when not on that card.
+    target_step: u8,
+    /// Wire mark kind (unspecified off targets).
+    target_kind: WireTargetKind,
+    /// Expected page X when on targets.
+    target_expect_x: u16,
+    /// Expected page Y when on targets.
+    target_expect_y: u16,
     /// False before the first successful publish, or if the copy failed
     /// [`ExpectedFrame::is_consistent`].
     ready: bool,
@@ -143,6 +183,76 @@ static REMOTE: Mutex<CriticalSectionRawMutex, RefCell<RemoteInner>> =
         last: None,
         slot: SnapshotSlot::new(),
     }));
+
+/// Map in-package octal PSRAM and install the LAST carve.
+///
+/// Call once after the latch, before the first compose. Board fact:
+/// ESP32-S3R8 **8 MB octal** at 3.3 V (`AP_3v3`). 80 MHz is a proven
+/// firmware configuration, not an eFuse field (hardware skill
+/// **PSRAM**). `esp_hal::psram::Psram::new` programs MSPI + DCache
+/// MMU; we then take the first [`LAST_CARVE_BYTES`] and leave the
+/// rest unmapped from the global heap.
+///
+/// On the unit: UART `remote psram last=` means the carve is live.
+/// `remote psram map failed` means [`publish_compose`] will skip
+/// (no snapshot) rather than panic. DRAW/TX stay in DRAM.
+///
+/// In the MCU (*The Embedded Rust Book* `unsafe` at the HAL
+/// boundary): `Psram::raw_parts` is the mapped window. The two
+/// plane pointers are exclusive; nothing else in this image
+/// reads that window. [`core::mem::forget`] keeps the PSRAM
+/// singleton claimed for the process lifetime (same latch-pin
+/// pattern; the type has no `Drop` that unmaps).
+///
+/// # Safety
+///
+/// The `unsafe` block assumes `start` is non-null, `size` is at
+/// least [`LAST_CARVE_BYTES`], and the window stays mapped. The
+/// null / size checks above are the guard.
+pub(crate) fn map_last_planes(psram: esp_hal::peripherals::PSRAM<'static>) {
+    let config = esp_hal::psram::PsramConfig {
+        mode: esp_hal::psram::PsramMode::OctalSpi,
+        size: esp_hal::psram::PsramSize::Size(8 * 1024 * 1024),
+        ram_frequency: esp_hal::psram::SpiRamFreq::Freq80m,
+        ..Default::default()
+    };
+    let mapped = esp_hal::psram::Psram::new(psram, config);
+    let (start, size) = mapped.raw_parts();
+    if start.is_null() || size < LAST_CARVE_BYTES {
+        println!("{LOG_PREFIX}: remote psram map failed size={size}");
+        core::mem::forget(mapped);
+        return;
+    }
+    // Exclusive carve of the first two planes. `start` is the MMU
+    // window; `PLANE_BYTES` is 48_000 (64-byte aligned).
+    // SAFETY: null / size checked above; window stays mapped.
+    let (bw, red) = unsafe {
+        let bw = &mut *start.cast::<[u8; display::PLANE_BYTES]>();
+        let red = &mut *start
+            .add(display::PLANE_BYTES)
+            .cast::<[u8; display::PLANE_BYTES]>();
+        (bw, red)
+    };
+    bw.fill(0);
+    red.fill(0);
+    REMOTE.lock(|cell| {
+        let mut remote = cell.borrow_mut();
+        remote.last = Some(LastInner {
+            bw,
+            red,
+            kind: FrameKind::Mono,
+            hold: PageRotation::Portrait0,
+            scene: 0,
+            target_step: 0xff,
+            target_kind: WireTargetKind::TARGET_KIND_UNSPECIFIED,
+            target_expect_x: 0,
+            target_expect_y: 0,
+            ready: false,
+        });
+    });
+    println!("{LOG_PREFIX}: remote psram last={LAST_CARVE_BYTES}");
+    core::mem::forget(mapped);
+}
 
 /// Copy a 1-bit DRAW plane after compose and before `draw.fill(0)`.
 ///
@@ -188,16 +298,10 @@ fn publish_compose(
         if remote.slot.is_armed() {
             return;
         }
-        if remote.last.is_none() {
-            remote.last = Some(LastInner {
-                bw: LAST_BW.take(),
-                red: LAST_RED.take(),
-                kind,
-                hold,
-                ready: false,
-            });
-        }
-        let last = remote.last.as_mut().expect("last compose cell");
+        // PSRAM map failed, or `map_last_planes` was not called.
+        let Some(last) = remote.last.as_mut() else {
+            return;
+        };
         last.bw.copy_from_slice(bw);
         match (kind, red) {
             (FrameKind::Gray4, Some(red)) => last.red.copy_from_slice(red),
@@ -210,6 +314,7 @@ fn publish_compose(
         }
         last.kind = kind;
         last.hold = hold;
+        fill_compose_meta(last);
         let frame = ExpectedFrame {
             width: display::WIDTH,
             height: display::HEIGHT,
@@ -228,6 +333,46 @@ fn publish_compose(
             last.ready = false;
         }
     });
+}
+
+/// Record scene / targets mark for the next `Snapshot` (UART stays the
+/// same). Splash persist `0` is Ferris; digits are pair-card only.
+fn fill_compose_meta(last: &mut LastInner) {
+    let scene = crate::pair::current_scene();
+    last.scene = scene.map(Scene::persist_byte).unwrap_or(0);
+    if scene == Some(Scene::Targets) {
+        let mark = crate::targets::current_mark(last.hold);
+        last.target_step = mark.id;
+        last.target_kind = match mark.kind {
+            TargetKind::Dot => WireTargetKind::TARGET_KIND_DOT,
+            TargetKind::SlideX => WireTargetKind::TARGET_KIND_SLIDE_X,
+            TargetKind::SlideY => WireTargetKind::TARGET_KIND_SLIDE_Y,
+        };
+        last.target_expect_x = mark.x;
+        last.target_expect_y = mark.y;
+    } else {
+        last.target_step = 0xff;
+        last.target_kind = WireTargetKind::TARGET_KIND_UNSPECIFIED;
+        last.target_expect_x = 0;
+        last.target_expect_y = 0;
+    }
+}
+
+/// Wire scalars for the armed pull (planes stay in LAST).
+fn snapshot_meta_from_last(nonce: u64, last: &LastInner) -> SnapshotMeta {
+    let on_targets = last.target_step != 0xff;
+    SnapshotMeta {
+        nonce,
+        width: display::WIDTH,
+        height: display::HEIGHT,
+        kind: frame_kind_to_wire(last.kind),
+        hold: Some(hold_token(last.hold)),
+        scene: Some(u32::from(last.scene)),
+        target_step: on_targets.then_some(u32::from(last.target_step)),
+        target_kind: last.target_kind,
+        target_expect_x: on_targets.then_some(u32::from(last.target_expect_x)),
+        target_expect_y: on_targets.then_some(u32::from(last.target_expect_y)),
+    }
 }
 
 /// Visit the last compose under the same lock used to publish.
@@ -264,6 +409,40 @@ pub(crate) fn with_armed_frame<R>(
             (Some(nonce), Some(last)) if last.ready => f(Some((nonce, expected_from_last(last)))),
             _ => f(None),
         }
+    })
+}
+
+/// Armed pull scalars plus plane lengths (no 48 KiB clone).
+pub(crate) fn with_armed_snapshot_meta<R>(
+    f: impl FnOnce(Option<(SnapshotMeta, usize, usize)>) -> R,
+) -> R {
+    REMOTE.lock(|cell| {
+        let remote = cell.borrow();
+        match (remote.slot.armed_nonce(), remote.last.as_ref()) {
+            (Some(nonce), Some(last)) if last.ready => {
+                let red_len = match last.kind {
+                    FrameKind::Mono => 0,
+                    FrameKind::Gray4 => display::PLANE_BYTES,
+                };
+                f(Some((
+                    snapshot_meta_from_last(nonce, last),
+                    display::PLANE_BYTES,
+                    red_len,
+                )))
+            }
+            _ => f(None),
+        }
+    })
+}
+
+/// Last compose hold (PAGE inject). Portrait0 before the first paint.
+fn last_hold() -> PageRotation {
+    REMOTE.lock(|cell| {
+        cell.borrow()
+            .last
+            .as_ref()
+            .map(|last| last.hold)
+            .unwrap_or(PageRotation::Portrait0)
     })
 }
 
@@ -306,7 +485,15 @@ pub(crate) fn hold_token(rotation: PageRotation) -> u32 {
 /// RX parser and no radio path.
 #[allow(dead_code)]
 pub(crate) fn inject_touch(sample: TouchSample) -> bool {
-    SYNTHETIC.try_send(sample).is_ok()
+    inject_synthetic(SyntheticTouch {
+        sample,
+        phase: TouchPhase::TOUCH_PHASE_DOWN,
+    })
+}
+
+/// Queue a phased tap. Returns `false` when [`SYNTHETIC`] is full.
+pub(crate) fn inject_synthetic(touch: SyntheticTouch) -> bool {
+    SYNTHETIC.try_send(touch).is_ok()
 }
 
 /// Queue one short-press product key for [`crate::button_task`].
@@ -331,8 +518,46 @@ pub(crate) async fn wait_button() -> SyntheticButton {
 /// [`crate::touch_task`] calls this each poll, before or instead of
 /// a GT911 Status read. `None` means the glass path can run.
 #[must_use]
-pub(crate) fn take_synthetic() -> Option<TouchSample> {
+pub(crate) fn take_synthetic() -> Option<SyntheticTouch> {
     SYNTHETIC.try_receive().ok()
+}
+
+/// Copy one Target / Scene UART line for GATT (never a PIN, never a MAC).
+pub(crate) fn queue_log_line(event: &Event) {
+    let t_ms = match event {
+        Event::Target { t_ms, .. } | Event::Scene { t_ms, .. } => *t_ms,
+        _ => return,
+    };
+    let mut buf = [0u8; LINE_CAPACITY];
+    let Ok(line) = embassy_debug::format_event(event, &mut buf) else {
+        return;
+    };
+    let mut queued = QueuedLog {
+        t_ms,
+        len: line.len() as u8,
+        text: [0u8; LINE_CAPACITY],
+    };
+    queued.text[..line.len()].copy_from_slice(line.as_bytes());
+    if LOG_LINES.try_send(queued).is_ok() {
+        LOG_READY.signal(());
+    }
+}
+
+/// BLE task waits here for a queued `LogLine`.
+pub(crate) fn wait_log_ready() -> impl core::future::Future<Output = ()> {
+    LOG_READY.wait()
+}
+
+/// Copy one queued UART line into `buf`. Returns `(t_ms, len)`.
+#[must_use]
+pub(crate) fn take_log_line(buf: &mut [u8]) -> Option<(u32, usize)> {
+    let queued = LOG_LINES.try_receive().ok()?;
+    let n = usize::from(queued.len);
+    if n > buf.len() {
+        return None;
+    }
+    buf[..n].copy_from_slice(&queued.text[..n]);
+    Some((queued.t_ms, n))
 }
 
 /// Pre-rotation framebuffer → UART `p0=` glass space.
@@ -416,15 +641,24 @@ pub(crate) fn handle_envelope(bytes: &[u8]) -> Result<EnvelopeOutcome, FrameErro
 /// are all drops. UART always logs the drop so a desk log is not
 /// silent (*The Embedded Rust Book*: ignore is not silence).
 fn handle_inject_touch(msg: &remote_debug_wire::v1::InjectTouch) {
-    let Ok(sample) = inject_touch_sample(msg) else {
+    let Ok(mut sample) = inject_touch_sample(msg) else {
         emit_touch_drop();
         return;
     };
+    let phase = inject_touch_phase(msg);
+    if inject_touch_space(msg) == TouchSpace::TOUCH_SPACE_PAGE {
+        let Some((fx, fy)) = inject_framebuffer_for_page(sample.x, sample.y, last_hold()) else {
+            emit_touch_drop();
+            return;
+        };
+        sample.x = fx;
+        sample.y = fy;
+    }
     if framebuffer_to_uart_screen(sample.x, sample.y).is_none() {
         emit_touch_drop();
         return;
     }
-    if !inject_touch(sample) {
+    if !inject_synthetic(SyntheticTouch { sample, phase }) {
         emit_touch_drop();
     }
 }

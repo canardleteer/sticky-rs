@@ -53,11 +53,13 @@ pub const TONE_DUMP_WINDOWS: u32 = 2;
 /// Wi-Fi / BLE scan period, in seconds (`--features radio` image).
 pub const RADIO_REPORT_SECS: u32 = 10;
 
-/// BLE advertise name (`Complete Local Name`) while the pair card is showing.
+/// BLE advertise name (`Complete Local Name`).
 ///
 /// Nine ASCII bytes so it fits a 31-byte adv payload with flags.
 /// UART and the idle pair card print the same string. Not a MAC.
-/// The image does not advertise on splash / shapes / legend / tones.
+/// Default image advertises only on the pair card. `--features
+/// remote-debug` advertises from splash so a desk Connect does not
+/// need a walk.
 #[cfg(feature = "pair")]
 pub const PAIR_ADV_NAME: &str = "sticky-rs";
 
@@ -2160,6 +2162,14 @@ mod tests {
             assert_eq!(Scene::from_persist_byte(scene.persist_byte()), Some(scene));
         }
         assert_eq!(Scene::from_persist_byte(9), None);
+    }
+
+    /// Splash may reprint UART `pair pin=`; glass digits are pair-card only.
+    #[test]
+    fn splash_persist_is_not_the_pair_card() {
+        assert_eq!(Scene::Splash.persist_byte(), 0);
+        assert!(Scene::Splash.pair_pin_reprint());
+        assert_eq!(Scene::Targets.persist_byte(), 7);
     }
 
     #[test]

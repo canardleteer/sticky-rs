@@ -94,6 +94,7 @@ default = ["pair", "wifi"]
 # Insecure desk debug: last DRAW snapshot + synthetic tap/key mux +
 # UART `src=phys` / `src=syn` / `snap` + encrypted GATT after pair.
 # Not default. Packs with `pair` + `wifi` (not an exclusive sit).
+# LAST is a 96 KiB octal PSRAM carve (`.bss` overflowed `dram_seg`).
 # No UART RX parser and no SoftAP framebuffer protocol.
 remote-debug = [
   "pair",
@@ -147,7 +148,7 @@ wifi = [
   "esp-radio/coex",
 ]
 # BLE peripheral + DisplayOnly passkey card. Advertise `sticky-rs`.
-# RAM bonds only; no factory NVS; no eFuse MAC on UART. Walkthrough:
+# RAM bond this connection; no factory NVS; no eFuse MAC on UART. Walkthrough:
 # src/pair.rs. Do not combine with `mic`, `radio`, `charge`, or `sd`.
 # `legacy-pairing` is the passkey path. `central` is required so
 # trouble-host 0.7 defines GAP_SERVICE_ATTRIBUTE_COUNT (security +

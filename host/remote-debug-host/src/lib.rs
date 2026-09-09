@@ -22,7 +22,9 @@ pub use session::{rx_uuid, service_uuid, tx_uuid, Session, SnapshotPlanes, DEFAU
 pub use transport::Transport;
 
 #[cfg(target_os = "linux")]
-pub use linux::{connect, BluerTransport};
+pub use linux::{
+    connect, connect_with, BluerTransport, DISCOVER_SECS, GATT_READY_SECS, PAIR_WINDOW_SECS,
+};
 
 #[cfg(test)]
 mod tests {
@@ -87,6 +89,15 @@ mod tests {
         ));
         let mut asm = FrameAssembler::device_rx();
         assert!(asm.push(&framed).expect("one shot").is_some());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn pair_window_covers_gatt_and_retry() {
+        assert_eq!(
+            PAIR_WINDOW_SECS,
+            GATT_READY_SECS + DISCOVER_SECS + GATT_READY_SECS
+        );
     }
 
     #[test]

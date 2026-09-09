@@ -62,13 +62,15 @@ detached owner is on-disk `target/debug/xtask`).
    (unset = tap). Wait ~2–3 s for compose. Do not tap START
    on the Wi-Fi cards unless asked.
 4. `get-snapshot` — LAST DRAW plus `scene` / `hold` /
-   `target_step` / expect page. Writes `.bw` / `.red` /
-   **page-space** `.png` (portrait 480×800 or landscape
-   800×480) under
-   `developer-data/remote-debug/snapshots/`. `status`
-   `last_log` is the last Target / Scene UART copy. A leftover
-   arm is `SnapshotBusy`; `snapshot-clear` then retry. Ack
-   when done. Read `sticky-rs://remote-debug/pickup`.
+   `target_step` / expect page. Open the JSON `png` field
+   (page-space, portrait 480×800 or landscape 800×480 under
+   `developer-data/remote-debug/snapshots/`). Sibling `.bw` /
+   `.red` are packed SSD1677 planes (`.red` is the second
+   gray4 plane, not pigment) and are omitted from JSON.
+   CLI prints `png=` on the same line. `status` `last_log`
+   is the last Target / Scene UART copy. A leftover arm is
+   `SnapshotBusy`; `snapshot-clear` then retry. Ack when
+   done. Read `sticky-rs://remote-debug/pickup`.
 5. Targets walk (no `monitor`): seven Page Downs to
    `scene=targets` (persist `7`). Tap `--page` at snapshot
    `expect` (same origin as the page PNG). Dot: one
@@ -99,7 +101,7 @@ Leaves match the CLI:
 | `list-targets` | Advertise names the owner currently tracks (never a MAC) |
 | `inject-touch` | Framebuffer tap, or `--page` page pixels; `--phase` for slides. Not UART `p0=` |
 | `inject-button` | `ok` / `page-up` / `page-down` short-press (`down` true). Wait for compose |
-| `get-snapshot` | Arm LAST DRAW; write `snap-<hex>.bw` / `.red` / page `.png`; scene / hold / expect |
+| `get-snapshot` | Arm LAST DRAW. JSON `png` is the page image to open. `.bw` / `.red` are SSD1677 planes (`.red` = gray4 plane 1, not pigment) and are omitted from JSON. scene / hold / expect |
 | `snapshot-ack` | Release the armed nonce |
 | `snapshot-clear` | Operator abort (no nonce); use after a failed get |
 | `reboot` | Software-reset the **embedded MCU**, then re-pair unless `no_reconnect` |
@@ -112,7 +114,8 @@ resources `sticky-rs://remote-debug/pickup` /
 those clap-mcp serve options change.
 
 Structured output is the generated ConnectRPC `*Response` JSON.
-`message` must not include a MAC.
+`get-snapshot` also adds host-only `png` (absolute page-image
+path) after the write. `message` must not include a MAC.
 
 ## Self-test
 
@@ -228,7 +231,36 @@ edges under [Difficult / crude](#difficult--crude).
   `list-targets` and ConnectRPC instructions. A later
   attach kept those initialize / pickup cards but had an
   empty tool table; the same sit used CLI `run()` (same
-  leaf map as MCP).
+  leaf map as MCP). `tools/list` was rejected when
+  `outputSchema` was schemars `AnyValue` (`serde_json::Value`):
+  `outputSchema.type` was not the literal `"object"`. Leaves
+  now advertise a JSON object (`additionalProperties` true)
+  so the table can bind. Rebuild `target/debug/xtask` and
+  start a new agent so stdio re-reads `tools/list`.
+- MCP `connect` (2026-09-09): clap-mcp runs `run` on a Tokio
+  worker. `ControlClient` used `Builder::block_on` on that
+  worker, panicked (`Cannot start a runtime from within a
+  runtime`), and poisoned the stdio mutex so later leaves
+  printed `session lock`. The client now `block_on`s on a
+  thread with no Tokio context. Rebuild `target/debug/xtask`
+  and reload the stdio server.
+- MCP revalidation (2026-09-09): same attach, no reload.
+  `connect` → `reboot` → splash Ferris (`scene=0 hold=0`, no PIN
+  boxes). Second `get-snapshot` is Connect `FailedPrecondition`
+  (`snapshot busy`); `snapshot-clear` then retry. Seven
+  `page-down` reached `scene=7`. Dots at snapshot `expect`.
+  `slide_x` / `slide_y` used page-end insets. After id 6,
+  `target_step=0` and `last_log` `target show id=0`.
+  `list-targets` `sticky-rs`. `disconnect` → `no broker`.
+  `get-snapshot` structured JSON used to include LAST DRAW
+  planes (~125 KiB). xtask now clears `bw` / `red` after the
+  host write (empty fields omit from JSON) and adds `png`
+  (absolute page-image path). CLI prints `png=` on the
+  control line. `.red` on disk is the second gray4 SSD1677
+  plane, not pigment.
+- Fresh attach (2026-09-09): `connect` → splash `png` (Ferris,
+  `scene=0 hold=0`, no `bw` / `red` keys) → `page-down` →
+  shapes `png` (`scene=1`) → ack → `disconnect`.
 
 ## Difficult / crude
 

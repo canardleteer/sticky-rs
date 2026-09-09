@@ -89,12 +89,33 @@ pub struct BrokerTarget {
     pub socket_dir: Option<PathBuf>,
 }
 
+/// ConnectRPC `*Response` JSON object for clap-mcp `outputSchema`.
+///
+/// `serde_json::Value` is schemars `AnyValue` (boolean `true`). Some MCP
+/// clients drop `tools/list` unless `outputSchema.type` is the literal
+/// `"object"`. `additionalProperties` stays true so real response fields
+/// (`message`, `targets`, `snapshot`, `png`) are not rejected.
+struct RemoteDebugToolOutput;
+
+impl schemars::JsonSchema for RemoteDebugToolOutput {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "RemoteDebugResponse".into()
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "type": "object",
+            "additionalProperties": true
+        })
+    }
+}
+
 /// Leaf tools. Broker owns GATT (`reinvocation_safe`); one serialized link.
 #[derive(Debug, Clone, Subcommand, ClapMcp)]
 #[clap_mcp(reinvocation_safe, parallel_safe = false)]
 #[clap_mcp_output_from_with_state = "run"]
 #[clap_mcp_state_type = "Mutex<RemoteDebugState>"]
-#[clap_mcp_output_type = "serde_json::Value"]
+#[clap_mcp_output_type = "RemoteDebugToolOutput"]
 pub enum RemoteDebugCommand {
     /// Foreground broker (desk log). Ctrl-C disconnects
     Serve(ServeArgs),
@@ -123,10 +144,13 @@ get-snapshot. Seven page-downs from splash reach scene=targets.")]
     InjectButton(InjectButtonArgs),
     /// Arm LAST DRAW; write page-space PNG plus scene / expect
     #[command(long_about = "\
-Arm the frozen LAST DRAW slot. Writes snap-<hex>.bw/.red and a page-space \
-.png (portrait 480×800 or landscape 800×480 from hold). Message includes \
-scene / hold / step / expect / last_log. Tap --page at expect. A leftover \
-arm is SnapshotBusy; snapshot-clear then retry. Ack when done.")]
+Arm the frozen LAST DRAW slot. Writes a page-space .png (open that; \
+portrait 480×800 or landscape 800×480 from hold). Sibling .bw and .red \
+are packed SSD1677 planes (48 KiB each); .red is the second gray4 plane, \
+not pigment. Structured JSON omits those bytes and adds png (absolute \
+path). Message includes png= / scene / hold / step / expect / last_log. \
+Tap --page at expect. A leftover arm is SnapshotBusy; snapshot-clear \
+then retry. Ack when done.")]
     GetSnapshot(GetSnapshotArgs),
     /// Release the snapshot slot
     #[clap_mcp(idempotent)]
@@ -389,7 +413,9 @@ pub fn run(
     if matches!(cmd, RemoteDebugCommand::Serve(_)) {
         return Err("use a terminal; connect auto-starts the owner".into());
     }
-    let guard = state.lock().map_err(|_| "session lock".to_string())?;
+    let guard = state
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let default_dir = broker_runtime_dir();
     let dir_owned = socket_dir_of(&cmd);
     let dir = dir_owned.as_deref().unwrap_or(&default_dir);
@@ -414,23 +440,8 @@ pub fn run(
         }
         RemoteDebugCommand::GetSnapshot(args) => {
             let mut resp = client.get_snapshot(args.into()).map_err(map_broker)?;
-            if resp.snapshot.is_set() {
-                let snap = &*resp.snapshot;
-                let red = if snap.red.is_empty() {
-                    None
-                } else {
-                    Some(snap.red.as_slice())
-                };
-                let path =
-                    write_snapshot_planes(&guard.layout, snap.nonce, &snap.bw, red, snap.hold)
-                        .map_err(map_host)?;
-                resp.message = decorate_snapshot(
-                    format!("{} wrote {}", resp.message, path.display()),
-                    snap,
-                    resp.last_log.as_deref(),
-                );
-            }
-            json_value(resp)
+            let png = write_and_strip_snapshot(&guard.layout, &mut resp)?;
+            json_value_with_png(resp, png)
         }
         RemoteDebugCommand::SnapshotAck(args) => value(client.snapshot_ack(args.into())),
         RemoteDebugCommand::SnapshotClear(target) => value(client.snapshot_clear(target.into())),
@@ -579,6 +590,69 @@ fn inject_button_request(args: InjectButtonArgs) -> Result<control::InjectButton
     })
 }
 
+/// Write LAST DRAW under `developer-data/remote-debug/snapshots/`,
+/// point the control line at the page PNG, then drop plane bytes.
+///
+/// The ConnectRPC body still carries planes; this client writes
+/// files and must not echo ~125 KiB of SSD1677 RAM back through
+/// CLI / MCP. `Snapshot.red` is the second gray4 plane, not pigment.
+fn write_and_strip_snapshot(
+    layout: &Layout,
+    resp: &mut control::GetSnapshotResponse,
+) -> Result<Option<PathBuf>, String> {
+    if !resp.snapshot.is_set() {
+        return Ok(None);
+    }
+    let stem = {
+        let snap = &*resp.snapshot;
+        let red = if snap.red.is_empty() {
+            None
+        } else {
+            Some(snap.red.as_slice())
+        };
+        write_snapshot_planes(layout, snap.nonce, &snap.bw, red, snap.hold).map_err(map_host)?
+    };
+    let png = stem.with_extension("png");
+    let wrote = png.is_file().then_some(png);
+    let line = match wrote.as_ref() {
+        Some(path) => format!("{} png={}", resp.message, path.display()),
+        None => resp.message.clone(),
+    };
+    resp.message = decorate_snapshot(line, &resp.snapshot, resp.last_log.as_deref());
+    strip_snapshot_planes(resp);
+    Ok(wrote)
+}
+
+/// Drop LAST DRAW bytes after they are written under
+/// `developer-data/remote-debug/snapshots/`.
+///
+/// `Snapshot.red` is the second packed SSD1677 plane (gray4), not a
+/// red pigment. Empty fields are omitted from JSON.
+fn strip_snapshot_planes(resp: &mut control::GetSnapshotResponse) {
+    if let Some(snap) = resp.snapshot.as_option_mut() {
+        snap.bw.clear();
+        snap.red.clear();
+    }
+}
+
+/// ConnectRPC JSON plus a host-only `png` path (not on the wire).
+fn json_value_with_png(
+    resp: control::GetSnapshotResponse,
+    png: Option<PathBuf>,
+) -> Result<AsStructured<Value>, String> {
+    let mut value = serde_json::to_value(resp).map_err(|error| error.to_string())?;
+    if let Some(png) = png {
+        let object = value
+            .as_object_mut()
+            .ok_or_else(|| "get-snapshot json".to_string())?;
+        object.insert(
+            "png".into(),
+            Value::String(png.to_string_lossy().into_owned()),
+        );
+    }
+    Ok(AsStructured(value))
+}
+
 fn decorate_snapshot(
     mut message: String,
     snap: &shared::Snapshot,
@@ -649,7 +723,10 @@ fn map_host(error: Error) -> String {
 mod tests {
     use super::*;
     use clap::CommandFactory;
-    use clap_mcp::{schema_from_command_with_metadata, ClapMcpSchemaMetadataProvider};
+    use clap_mcp::{
+        schema_from_command_with_metadata, tools_from_schema_with_metadata, ClapMcpConfigProvider,
+        ClapMcpSchemaMetadataProvider,
+    };
     use sticky_host::NO_BROKER;
 
     #[test]
@@ -765,5 +842,109 @@ mod tests {
             ]
         });
         assert_eq!(message_of(&value), "targets=sticky-rs");
+    }
+
+    #[test]
+    fn mcp_output_schema_is_object_not_any_value() {
+        let schema = schema_from_command_with_metadata(
+            &RemoteDebugMcpRoot::command(),
+            &RemoteDebugMcpRoot::clap_mcp_schema_metadata(),
+        );
+        let tools = tools_from_schema_with_metadata(
+            &schema,
+            &RemoteDebugMcpRoot::clap_mcp_config(),
+            &RemoteDebugMcpRoot::clap_mcp_schema_metadata(),
+        );
+        assert!(
+            tools.iter().any(|tool| tool.name.contains("connect")),
+            "names={:?}",
+            tools
+                .iter()
+                .map(|tool| tool.name.as_ref())
+                .collect::<Vec<_>>()
+        );
+        assert!(
+            tools.iter().any(
+                |tool| tool.name.contains("list-targets") || tool.name.contains("list_targets")
+            ),
+            "names={:?}",
+            tools
+                .iter()
+                .map(|tool| tool.name.as_ref())
+                .collect::<Vec<_>>()
+        );
+        let mut saw_leaf_schema = false;
+        for tool in &tools {
+            let Some(output) = tool.output_schema.as_ref() else {
+                continue;
+            };
+            if tool.name.contains("connect")
+                || tool.name.contains("status")
+                || tool.name.contains("list-targets")
+                || tool.name.contains("list_targets")
+                || tool.name.contains("get-snapshot")
+            {
+                saw_leaf_schema = true;
+            }
+            assert_eq!(
+                output.get("type").and_then(Value::as_str),
+                Some("object"),
+                "tool {} outputSchema={output:?}",
+                tool.name
+            );
+            assert_ne!(
+                output.get("title").and_then(Value::as_str),
+                Some("AnyValue"),
+                "tool {} still AnyValue: {output:?}",
+                tool.name
+            );
+        }
+        assert!(saw_leaf_schema, "leaf tools must advertise outputSchema");
+    }
+
+    #[test]
+    fn strip_snapshot_planes_clears_last_draw() {
+        let mut resp = control::GetSnapshotResponse {
+            snapshot: shared::Snapshot {
+                bw: vec![1, 2, 3],
+                red: vec![4],
+                ..shared::Snapshot::default()
+            }
+            .into(),
+            ..control::GetSnapshotResponse::default()
+        };
+        strip_snapshot_planes(&mut resp);
+        assert!(resp.snapshot.bw.is_empty());
+        assert!(resp.snapshot.red.is_empty());
+        let value = serde_json::to_value(&resp).expect("json");
+        let snap = value.get("snapshot").expect("snapshot");
+        assert!(snap.get("bw").is_none(), "{snap}");
+        assert!(snap.get("red").is_none(), "{snap}");
+    }
+
+    #[test]
+    fn get_snapshot_json_adds_png_not_planes() {
+        let mut resp = control::GetSnapshotResponse {
+            message: "ok".into(),
+            snapshot: shared::Snapshot {
+                bw: vec![1, 2, 3],
+                red: vec![4],
+                scene: Some(7),
+                ..shared::Snapshot::default()
+            }
+            .into(),
+            ..control::GetSnapshotResponse::default()
+        };
+        strip_snapshot_planes(&mut resp);
+        let png = PathBuf::from("/tmp/snap-demo.png");
+        let value = json_value_with_png(resp, Some(png)).expect("json").0;
+        assert_eq!(
+            value.get("png").and_then(Value::as_str),
+            Some("/tmp/snap-demo.png")
+        );
+        let snap = value.get("snapshot").expect("snapshot");
+        assert!(snap.get("bw").is_none(), "{snap}");
+        assert!(snap.get("red").is_none(), "{snap}");
+        assert_eq!(snap.get("scene").and_then(Value::as_u64), Some(7));
     }
 }

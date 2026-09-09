@@ -35,7 +35,8 @@ enum FrameKind {
   FRAME_KIND_UNSPECIFIED = 0;
   // Black/white only. `red` must be empty.
   FRAME_KIND_MONO = 1;
-  // Four-gray dual plane. `red` holds the second packed plane.
+  // Four-gray dual plane. `red` is the second packed SSD1677
+  // plane (controller name; this panel has no red pigment).
   FRAME_KIND_GRAY4 = 2;
 }
 
@@ -118,9 +119,11 @@ message Snapshot {
   FrameKind kind = 4;
   // Product hold token (Sticky PageRotation discriminant), or unset.
   optional uint32 hold = 5;
-  // Black/white packed plane.
+  // First packed 1-bit plane (SSD1677 BW RAM).
   bytes bw = 6;
-  // Red/gray packed plane when kind is gray4. Empty on mono.
+  // Second packed 1-bit plane when kind is gray4 (SSD1677
+  // "red" RAM). Empty on mono. Not a red pigment on this
+  // panel; host PNG may paint those bits reddish to show them.
   bytes red = 7;
   // embassy-debug Scene::persist_byte (splash=0 … targets=7).
   optional uint32 scene = 8;

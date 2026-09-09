@@ -156,14 +156,27 @@ impl ControlClient {
 
 fn block_on<F, T, E>(fut: F) -> Result<T, Error>
 where
-    F: std::future::Future<Output = Result<T, E>>,
+    F: std::future::Future<Output = Result<T, E>> + Send,
+    T: Send,
     Error: From<E>,
 {
-    tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?
-        .block_on(fut)
-        .map_err(Error::from)
+    // clap-mcp `run` is on a Tokio worker. A nested
+    // `Builder::block_on` panics (`Cannot start a runtime from within a
+    // runtime`) and poisons the stdio mutex (`session lock`).
+    match std::thread::scope(|scope| {
+        scope
+            .spawn(|| {
+                tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()?
+                    .block_on(fut)
+                    .map_err(Error::from)
+            })
+            .join()
+    }) {
+        Ok(result) => result,
+        Err(_) => Err(Error::message("client worker panicked")),
+    }
 }
 
 /// How long a client waits for one RPC.
@@ -171,3 +184,20 @@ where
 /// `connect` returns `pairing` without waiting for BlueZ. Snapshot
 /// notify budget is 30s.
 pub(crate) const CLIENT_TIMEOUT: Duration = Duration::from_secs(120);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn block_on_from_inside_tokio() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        runtime.block_on(async {
+            let value = block_on(async { Ok::<_, Error>(7_u8) }).expect("off-runtime");
+            assert_eq!(value, 7);
+        });
+    }
+}

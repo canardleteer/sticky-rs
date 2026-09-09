@@ -196,6 +196,10 @@ fn write_allowlist(layout: &Layout, units: &[RememberedUnit]) -> Result<(), Erro
 /// Save snapshot planes under `developer-data/remote-debug/snapshots/`
 /// (nonce in the filename; no serial).
 ///
+/// `.bw` / `.red` are packed SSD1677 1-bit planes (800×480). `.red` is
+/// the second gray4 plane (controller name), not pigment. `.png` is
+/// rematerialized page space for `hold`.
+///
 /// # Errors
 ///
 /// I/O.

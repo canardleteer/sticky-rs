@@ -26,10 +26,12 @@ inject-touch --page uses page pixels for the last compose hold (gray4 \
 hit-test inverse). --phase down/move/up (unset = tap). Do not use UART p0=. \
 Wait ~2–3 s after inject for compose. Do not tap Wi-Fi START unless asked.
 
-get-snapshot writes .bw/.red plus a page-space .png (portrait 480×800 or \
-landscape 800×480). Tap --page at snapshot expect, not a guessed landscape \
-centre. A leftover arm is SnapshotBusy; snapshot-clear then retry. Ack when \
-done.
+get-snapshot writes a page-space .png (open the png field; portrait \
+480×800 or landscape 800×480). Sibling .bw / .red are packed SSD1677 \
+planes; .red is the second gray4 plane, not pigment. Structured JSON \
+omits those bytes and adds png. Tap --page at snapshot expect, not a \
+guessed landscape centre. A leftover arm is SnapshotBusy; \
+snapshot-clear then retry. Ack when done.
 
 Read sticky-rs://remote-debug/pickup before the next sit. Prompts: desk-sit, \
 targets-walk, after-failed-snapshot.";
@@ -46,8 +48,10 @@ No monitor during auto-PIN. No --remember unless asked. Never a MAC.
 3. inject-button page-down / page-up, or inject-touch --page at expect.
    --phase down / move / up (unset = tap). Wait ~2–3 s. Do not tap START.
 4. get-snapshot — LAST DRAW plus scene / hold / target_step / expect.
-   PNG is page space (same origin as --page). Ack when done.
-   SnapshotBusy → snapshot-clear, then retry.
+   Open the png field (page space, same origin as --page). .bw /
+   .red are SSD1677 planes (.red = gray4 plane 1, not pigment);
+   JSON omits those bytes. Ack when done. SnapshotBusy →
+   snapshot-clear, then retry.
 5. Targets: seven page-downs to scene=7. Tap --page at expect. Slides use
    --phase. After id 6, target_step=0. last_log may be target show id=0.
 6. list-targets shows advertise names the owner holds. disconnect when
@@ -64,20 +68,23 @@ const TOOLS: &str = "\
 | list-targets | Advertise names the owner currently tracks (never a MAC). |
 | inject-touch | Default x/y are framebuffer. page=true treats x/y as page pixels. phase down/move/up; unset is a tap. Not UART p0=. |
 | inject-button | key ok / page-up / page-down. down true is a short press. Wait for compose. |
-| get-snapshot | Arms LAST DRAW. Writes snap-<hex>.bw/.red/.png. scene / hold / step / expect on the line. |
+| get-snapshot | Arms LAST DRAW. JSON png is the page-space image to open. Sibling .bw / .red are SSD1677 planes (.red = gray4 plane 1, not pigment) and are omitted from JSON. scene / hold / step / expect on the line. |
 | snapshot-ack | Release the armed nonce. |
 | snapshot-clear | Abort with no nonce. Use after a failed get. |
 | reboot | Software-reset the embedded MCU (not this host). Re-pairs unless no_reconnect. |
 | disconnect | Drop one GATT session. Empty map also shuts the owner down. Unknown units lose the BlueZ bond. |
 
-Structured output is the generated ConnectRPC `*Response` JSON. `message` \
-must not include a MAC.
+Structured output is the generated ConnectRPC `*Response` JSON, plus \
+host-only `png` on get-snapshot. `message` must not include a MAC.
 ";
 
 const SNAPSHOT: &str = "\
 # Snapshot PNG
 
-.bw / .red stay pre-rotation 800×480 controller planes.
+.bw / .red stay pre-rotation 800×480 SSD1677 planes (48 KiB
+each). `.red` is the second gray4 plane (controller name), not
+a red pigment. Open the `png` field for ink. Structured
+`get-snapshot` JSON drops plane bytes and adds that path.
 
 .png is rematerialized in **page** space for Snapshot.hold:
 
@@ -183,8 +190,8 @@ No --remember. Never a MAC.
 2. status. If no broker, connect (expect pairing).
 3. Poll status until connected. Retry connect after flash if the first \
 sit is le-connection-abort-by-local or CDC busy.
-4. get-snapshot. Confirm Ferris only (no six-digit boxes). PNG is page \
-space. Ack.
+4. get-snapshot. Confirm Ferris only (no six-digit boxes). Open png \
+(page space). Ack.
 5. disconnect when done.
 
 Read sticky-rs://remote-debug/snapshot if the PNG aspect looks wrong.

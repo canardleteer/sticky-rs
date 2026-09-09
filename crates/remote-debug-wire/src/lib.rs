@@ -19,14 +19,51 @@
 
 extern crate alloc;
 
-/// Generated `sticky.remote.v1` types ([`buffa`](https://docs.rs/buffa)).
-#[allow(missing_docs)]
+/// Generated `sticky.remote.shared.v1` / `sticky.remote.v1` types
+/// ([`buffa`](https://docs.rs/buffa)).
+///
+/// Hand-stitched so we do not `include!` packaging `mod.rs` (its
+/// `#![allow]` is a crate-root inner attribute).
+#[allow(missing_docs, clippy::derivable_impls, clippy::match_single_binding)]
 pub mod proto {
-    include!("gen/_include.rs");
+    #[allow(missing_docs)]
+    pub mod sticky {
+        #[allow(missing_docs)]
+        pub mod remote {
+            /// `sticky.remote.shared.v1`.
+            #[allow(missing_docs)]
+            pub mod shared {
+                #[allow(missing_docs, clippy::derivable_impls, clippy::match_single_binding)]
+                pub mod v1 {
+                    include!("gen/sticky.remote.shared.v1.mod.rs");
+                }
+            }
+            /// GATT `Envelope` package.
+            #[allow(missing_docs, clippy::derivable_impls, clippy::match_single_binding)]
+            pub mod v1 {
+                include!("gen/sticky.remote.v1.mod.rs");
+            }
+        }
+    }
 }
 
-/// `sticky.remote.v1` messages and enums.
-pub use proto::sticky::remote::v1;
+/// GATT `Envelope` plus re-exported shared inject / snapshot types.
+///
+/// Firmware can keep `v1::InjectTouch` / `v1::envelope::Body`. The
+/// shared package is also [`shared`].
+#[allow(missing_docs)]
+pub mod v1 {
+    pub use crate::proto::sticky::remote::shared::v1::{
+        FrameKind, GetSnapshot, InjectButton, InjectTouch, LogLine, ProductKey, Reboot, RebootAck,
+        Snapshot, SnapshotAck, SnapshotBusy, SnapshotClear, TargetKind, TouchPhase, TouchSource,
+        TouchSpace,
+    };
+    pub use crate::proto::sticky::remote::v1::__buffa::oneof::envelope;
+    pub use crate::proto::sticky::remote::v1::Envelope;
+}
+
+/// `sticky.remote.shared.v1` messages and enums (same types as [`v1`]).
+pub use proto::sticky::remote::shared::v1 as shared;
 
 mod frame;
 mod gatt;

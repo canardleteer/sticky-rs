@@ -1,26 +1,29 @@
-//! Unix-socket broker that owns one remote-debug [`Session`].
+//! ConnectRPC owner that holds 0..N remote-debug [`Session`]s.
 //!
-//! CLI and MCP clients send one length-prefixed JSON request and wait
-//! for one reply. The broker serializes GATT so two snapshot or inject
-//! clients cannot interleave ATT chunks. Client hangup does **not**
-//! drop the link; [`BrokerRequest::Disconnect`] or serve exit does.
+//! One loopback HTTP listener. Clients send generated
+//! `RemoteDebugControlService` RPCs. The owner serializes GATT per
+//! advertise name so two snapshot or inject clients cannot interleave
+//! ATT chunks. Client hangup does **not** drop the link;
+//! [`DisconnectRequest`] drops one session; [`ShutdownRequest`] or
+//! serve exit drops every session.
 //!
 //! This crate has **no** clap, **no** UART, and **no** Sticky pin map.
-//! Callers pass a socket directory and an opener that builds a
+//! Callers pass an endpoint directory and an opener that builds a
 //! [`Session`]. Detached serve uses [`SpawnSpec`] (exe + argv), not a
 //! hardcoded xtask leaf.
 //!
-//! The socket key is the advertise name, never a MAC.
+//! The map key is the advertise name (`target`), never a MAC.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+mod client;
 mod error;
 mod types;
 
+use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
-use std::io::{Read, Write};
-use std::os::unix::net::{UnixListener, UnixStream};
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -28,87 +31,110 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use buffa::Enumeration;
+use connectrpc::{
+    ConnectError, ErrorCode, RequestContext, Response, Router, Server, ServiceRequest,
+    ServiceResult,
+};
 use panel_view::{FrameKind, TouchSample, TouchSource};
 use remote_debug_host::{Session, Transport, DEFAULT_ADV_NAME};
 use remote_debug_wire::v1::{ProductKey, TouchPhase};
-use serde::{Deserialize, Serialize};
 
+pub use client::ControlClient;
 pub use error::Error;
-pub use types::{
-    BrokerPhase, BrokerReply, BrokerRequest, ConnectReq, RebootReq, RememberHook, ServeOpts,
-    SnapshotWire, SpawnSpec,
-};
+pub use types::{RememberHook, ServeOpts, SpawnSpec};
 
-/// Printed when the socket is missing or the peer is gone.
+/// Generated buffa messages (`sticky.remote.{shared,v1,control}.v1`).
+#[allow(missing_docs, clippy::derivable_impls, clippy::match_single_binding)]
+pub mod proto {
+    /// Proto packages under `sticky`.
+    #[allow(missing_docs)]
+    pub mod sticky {
+        /// Remote-debug packages.
+        #[allow(missing_docs)]
+        pub mod remote {
+            /// Shared inject / snapshot types.
+            #[allow(missing_docs)]
+            pub mod shared {
+                /// `sticky.remote.shared.v1`.
+                #[allow(missing_docs, clippy::derivable_impls, clippy::match_single_binding)]
+                pub mod v1 {
+                    include!("gen/buffa/sticky.remote.shared.v1.mod.rs");
+                }
+            }
+            /// GATT `Envelope` package (host copy with JSON).
+            #[allow(missing_docs, clippy::derivable_impls, clippy::match_single_binding)]
+            pub mod v1 {
+                include!("gen/buffa/sticky.remote.v1.mod.rs");
+            }
+            /// ConnectRPC control plane.
+            #[allow(missing_docs)]
+            pub mod control {
+                /// `sticky.remote.control.v1`.
+                #[allow(missing_docs, clippy::derivable_impls, clippy::match_single_binding)]
+                pub mod v1 {
+                    include!("gen/buffa/sticky.remote.control.v1.mod.rs");
+                }
+            }
+        }
+    }
+}
+
+/// Generated ConnectRPC stubs.
+#[allow(missing_docs, clippy::type_complexity)]
+pub mod connect {
+    /// Proto packages under `sticky`.
+    #[allow(missing_docs)]
+    pub mod sticky {
+        /// Remote-debug packages.
+        #[allow(missing_docs)]
+        pub mod remote {
+            /// Control service stubs.
+            #[allow(missing_docs)]
+            pub mod control {
+                /// `sticky.remote.control.v1`.
+                #[allow(missing_docs, clippy::match_single_binding, clippy::type_complexity)]
+                pub mod v1 {
+                    include!("gen/connect/sticky.remote.control.v1.mod.rs");
+                }
+            }
+        }
+    }
+}
+
+/// `sticky.remote.control.v1` request / response types.
+pub use proto::sticky::remote::control::v1 as control;
+/// `sticky.remote.shared.v1` inject / snapshot types (host JSON copy).
+pub use proto::sticky::remote::shared::v1 as shared;
+
+pub(crate) use connect::sticky::remote::control::v1 as connect_svc;
+
+/// Printed when the endpoint file is missing or the peer is gone.
 pub const NO_BROKER: &str = "no broker; run connect or serve";
 
-/// Max JSON body (gray4 planes plus envelope).
-const MAX_FRAME: usize = 8 * 1024 * 1024;
-/// How long a client waits for one reply.
-///
-/// `connect` returns `pairing` without waiting for BlueZ. Snapshot
-/// notify budget is 30s.
-const CLIENT_TIMEOUT: Duration = Duration::from_secs(120);
 /// How long [`ensure_broker`] waits for the child to bind.
 const SPAWN_WAIT: Duration = Duration::from_secs(5);
 
-struct Inner<T: Transport> {
-    session: Option<Session<T>>,
-    last_nonce: Option<u64>,
-    pairing: bool,
-    /// Bumped to discard a late opener result after disconnect / new pair.
-    pair_gen: u64,
-    last_error: Option<String>,
-}
-
-struct BrokerState<T: Transport, F> {
-    inner: Mutex<Inner<T>>,
-    opener: Mutex<F>,
-    shutdown: AtomicBool,
-    socket_path: PathBuf,
-    log: bool,
-    on_remember: Option<RememberHook>,
-}
-
-/// `$dir/remote-debug-<sanitized-name>.sock`.
+/// `$dir/remote-debug.connect` (loopback URI, one owner).
 #[must_use]
-pub fn broker_socket_path(dir: &Path, name: &str) -> PathBuf {
-    dir.join(format!("{}.sock", socket_stem(name)))
+pub fn endpoint_path(dir: &Path) -> PathBuf {
+    dir.join("remote-debug.connect")
 }
 
-/// Pid sidecar next to the socket.
+/// Pid sidecar next to the endpoint file.
 #[must_use]
-pub fn broker_pid_path(dir: &Path, name: &str) -> PathBuf {
-    dir.join(format!("{}.pid", socket_stem(name)))
+pub fn broker_pid_path(dir: &Path) -> PathBuf {
+    dir.join("remote-debug.pid")
 }
 
 /// Append-only log for a detached `serve` (`connect` auto-start).
 #[must_use]
-pub fn broker_log_path(dir: &Path, name: &str) -> PathBuf {
-    dir.join(format!("{}.log", socket_stem(name)))
+pub fn broker_log_path(dir: &Path) -> PathBuf {
+    dir.join("remote-debug.log")
 }
 
 fn no_broker_at(path: &Path) -> Error {
     Error::message(format!("{NO_BROKER} ({})", path.display()))
-}
-
-fn socket_stem(name: &str) -> String {
-    let slug: String = name
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    let slug = if slug.is_empty() {
-        DEFAULT_ADV_NAME.to_string()
-    } else {
-        slug
-    };
-    format!("remote-debug-{slug}")
 }
 
 /// Product key from `ok` / `page-up` / `page-down`.
@@ -125,55 +151,25 @@ pub fn parse_product_key(raw: &str) -> Result<ProductKey, Error> {
     }
 }
 
-/// `down` / `move` / `up`. Unset is a tap.
-fn parse_touch_phase(raw: Option<&str>) -> Result<TouchPhase, Error> {
-    match raw.map(str::to_ascii_lowercase).as_deref() {
-        None | Some("down") | Some("tap") => Ok(TouchPhase::TOUCH_PHASE_DOWN),
-        Some("move") => Ok(TouchPhase::TOUCH_PHASE_MOVE),
-        Some("up") => Ok(TouchPhase::TOUCH_PHASE_UP),
-        Some(_) => Err(Error::message("phase must be down, move, or up")),
+/// Advertise name, or [`DEFAULT_ADV_NAME`] when empty.
+fn target_name(raw: &str) -> String {
+    let name = raw.trim();
+    if name.is_empty() {
+        DEFAULT_ADV_NAME.to_string()
+    } else {
+        name.to_string()
     }
 }
 
-/// Send one request and wait for one reply.
-///
-/// # Errors
-///
-/// Missing broker, I/O, or JSON.
-pub fn rpc(dir: &Path, name: &str, request: &BrokerRequest) -> Result<BrokerReply, Error> {
-    let path = broker_socket_path(dir, name);
-    if !path.exists() {
-        return Err(no_broker_at(&path));
-    }
-    let mut stream = UnixStream::connect(&path).map_err(|error| map_connect(&path, error))?;
-    stream.set_read_timeout(Some(CLIENT_TIMEOUT))?;
-    stream.set_write_timeout(Some(CLIENT_TIMEOUT))?;
-    write_msg(&mut stream, request)?;
-    read_msg(&mut stream)
-}
-
-fn map_connect(path: &Path, error: std::io::Error) -> Error {
-    match error.kind() {
-        std::io::ErrorKind::ConnectionRefused
-        | std::io::ErrorKind::NotFound
-        | std::io::ErrorKind::ConnectionReset => no_broker_at(path),
-        _ if path.exists() => Error::message(format!(
-            "broker socket {} exists but connect failed: {error}",
-            path.display()
-        )),
-        _ => error.into(),
-    }
-}
-
-/// Unlink a leftover socket when the peer pid is dead, then spawn serve
-/// if nothing is listening.
+/// Unlink a leftover endpoint when the peer pid is dead, then spawn
+/// serve if nothing is listening.
 ///
 /// # Errors
 ///
 /// Spawn failure or the child never bound.
-pub fn ensure_broker(dir: &Path, name: &str, spec: &SpawnSpec) -> Result<(), Error> {
-    reclaim_stale(dir, name)?;
-    if broker_listening(dir, name) {
+pub fn ensure_broker(dir: &Path, spec: &SpawnSpec) -> Result<(), Error> {
+    reclaim_stale(dir)?;
+    if broker_listening(dir) {
         return Ok(());
     }
     if !spec.exe.is_file() {
@@ -183,7 +179,7 @@ pub fn ensure_broker(dir: &Path, name: &str, spec: &SpawnSpec) -> Result<(), Err
         )));
     }
     fs::create_dir_all(dir)?;
-    let log_path = broker_log_path(dir, name);
+    let log_path = broker_log_path(dir);
     let log = OpenOptions::new()
         .create(true)
         .append(true)
@@ -216,7 +212,7 @@ pub fn ensure_broker(dir: &Path, name: &str, spec: &SpawnSpec) -> Result<(), Err
             spec.exe.display()
         ))
     })?;
-    wait_for_broker(dir, name, SPAWN_WAIT)
+    wait_for_broker(dir, SPAWN_WAIT)
 }
 
 /// Poll until the pid file is live or `budget` elapses.
@@ -224,36 +220,36 @@ pub fn ensure_broker(dir: &Path, name: &str, spec: &SpawnSpec) -> Result<(), Err
 /// # Errors
 ///
 /// Timeout.
-pub fn wait_for_broker(dir: &Path, name: &str, budget: Duration) -> Result<(), Error> {
+pub fn wait_for_broker(dir: &Path, budget: Duration) -> Result<(), Error> {
     let deadline = Instant::now() + budget;
     while Instant::now() < deadline {
-        if broker_listening(dir, name) {
+        if broker_listening(dir) {
             return Ok(());
         }
         thread::sleep(Duration::from_millis(50));
     }
-    Err(no_broker_at(&broker_socket_path(dir, name)))
+    Err(no_broker_at(&endpoint_path(dir)))
 }
 
-fn broker_listening(dir: &Path, name: &str) -> bool {
-    let sock = broker_socket_path(dir, name);
-    let pid_path = broker_pid_path(dir, name);
-    sock.exists() && read_pid(&pid_path).is_some_and(pid_alive)
+fn broker_listening(dir: &Path) -> bool {
+    let endpoint = endpoint_path(dir);
+    let pid_path = broker_pid_path(dir);
+    endpoint.exists() && read_pid(&pid_path).is_some_and(pid_alive)
 }
 
-fn reclaim_stale(dir: &Path, name: &str) -> Result<(), Error> {
-    let sock = broker_socket_path(dir, name);
-    let pid_path = broker_pid_path(dir, name);
-    if broker_listening(dir, name) {
+fn reclaim_stale(dir: &Path) -> Result<(), Error> {
+    let endpoint = endpoint_path(dir);
+    let pid_path = broker_pid_path(dir);
+    if broker_listening(dir) {
         return Ok(());
     }
-    if sock.exists() {
+    if endpoint.exists() {
         if let Some(pid) = read_pid(&pid_path) {
             if pid_alive(pid) {
                 return Ok(());
             }
         }
-        let _ = fs::remove_file(&sock);
+        let _ = fs::remove_file(&endpoint);
         let _ = fs::remove_file(&pid_path);
     } else if pid_path.exists() && read_pid(&pid_path).is_none_or(|pid| !pid_alive(pid)) {
         let _ = fs::remove_file(&pid_path);
@@ -275,7 +271,40 @@ fn write_pid(path: &Path) -> Result<(), Error> {
     Ok(())
 }
 
-/// Accept clients until [`BrokerRequest::Disconnect`] or Ctrl-C.
+struct Slot<T: Transport> {
+    session: Option<Session<T>>,
+    last_nonce: Option<u64>,
+    pairing: bool,
+    pair_gen: u64,
+    last_error: Option<String>,
+}
+
+impl<T: Transport> Default for Slot<T> {
+    fn default() -> Self {
+        Self {
+            session: None,
+            last_nonce: None,
+            pairing: false,
+            pair_gen: 0,
+            last_error: None,
+        }
+    }
+}
+
+struct Inner<T: Transport> {
+    targets: HashMap<String, Slot<T>>,
+}
+
+struct OwnerState<T: Transport, F> {
+    inner: Mutex<Inner<T>>,
+    opener: Mutex<F>,
+    shutdown: AtomicBool,
+    shutdown_tx: tokio::sync::watch::Sender<bool>,
+    log: bool,
+    on_remember: Option<RememberHook>,
+}
+
+/// Accept clients until [`ShutdownRequest`] or Ctrl-C.
 ///
 /// `opener` builds a [`Session`] (tests pass
 /// [`remote_debug_host::FakeTransport`]).
@@ -286,329 +315,185 @@ fn write_pid(path: &Path) -> Result<(), Error> {
 pub fn serve_with<T, F>(opts: ServeOpts<'_>, opener: F) -> Result<(), Error>
 where
     T: Transport + Send + 'static,
-    F: FnMut(&ConnectReq) -> Result<Session<T>, Error> + Send + 'static,
+    F: FnMut(&control::ConnectRequest) -> Result<Session<T>, Error> + Send + 'static,
+{
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+    rt.block_on(serve_async(opts, opener))
+}
+
+async fn serve_async<T, F>(opts: ServeOpts<'_>, opener: F) -> Result<(), Error>
+where
+    T: Transport + Send + 'static,
+    F: FnMut(&control::ConnectRequest) -> Result<Session<T>, Error> + Send + 'static,
 {
     fs::create_dir_all(opts.dir)?;
-    reclaim_stale(opts.dir, opts.name)?;
-    let socket_path = broker_socket_path(opts.dir, opts.name);
-    let pid_path = broker_pid_path(opts.dir, opts.name);
-    if broker_listening(opts.dir, opts.name) {
+    reclaim_stale(opts.dir)?;
+    let endpoint = endpoint_path(opts.dir);
+    let pid_path = broker_pid_path(opts.dir);
+    if broker_listening(opts.dir) {
         return Err(Error::message("already serving"));
     }
-    let listener = match UnixListener::bind(&socket_path) {
-        Ok(listener) => listener,
-        Err(error) if error.kind() == std::io::ErrorKind::AddrInUse => {
-            reclaim_stale(opts.dir, opts.name)?;
-            UnixListener::bind(&socket_path)?
-        }
-        Err(error) => return Err(error.into()),
-    };
+    let addr = opts.listen.unwrap_or(SocketAddr::from(([127, 0, 0, 1], 0)));
+    let bound = Server::bind(addr)
+        .await
+        .map_err(|error| Error::message(format!("bind: {error}")))?;
+    let local = bound
+        .local_addr()
+        .map_err(|error| Error::message(format!("local addr: {error}")))?;
+    fs::write(&endpoint, format!("http://{local}\n"))?;
     write_pid(&pid_path)?;
-    let state = Arc::new(BrokerState {
+    let (shutdown_tx, mut shutdown_rx) = tokio::sync::watch::channel(false);
+    let state = Arc::new(OwnerState {
         inner: Mutex::new(Inner {
-            session: None,
-            last_nonce: None,
-            pairing: false,
-            pair_gen: 0,
-            last_error: None,
+            targets: HashMap::new(),
         }),
         opener: Mutex::new(opener),
         shutdown: AtomicBool::new(false),
-        socket_path: socket_path.clone(),
+        shutdown_tx,
         log: opts.log,
         on_remember: opts.on_remember,
     });
     if opts.install_ctrlc {
         let shutdown = Arc::clone(&state);
-        let path = socket_path.clone();
         let _ = ctrlc::set_handler(move || {
-            shutdown.shutdown.store(true, Ordering::SeqCst);
-            let _ = UnixStream::connect(&path);
+            request_shutdown(&shutdown);
         });
     }
     if opts.log {
-        eprintln!("remote-debug: broker listening");
+        eprintln!("remote-debug: owner listening on http://{local}");
     }
-    let accept_result = accept_loop(&listener, &state);
-    {
-        let mut inner = lock_inner(&state)?;
-        invalidate_pair(&mut inner);
-        if let Some(mut session) = inner.session.take() {
+    let router = Router::new().add_service(Arc::new(Owner(Arc::clone(&state))));
+    let serve = bound.serve_with_graceful_shutdown(router, async move {
+        let _ = shutdown_rx.wait_for(|stop| *stop).await;
+    });
+    let serve_result = serve
+        .await
+        .map_err(|error| Error::message(format!("serve: {error}")));
+    off_runtime(|| drop_all_sessions(&state, opts.log));
+    let _ = fs::remove_file(&endpoint);
+    let _ = fs::remove_file(&pid_path);
+    serve_result
+}
+
+fn request_shutdown<T: Transport, F>(state: &OwnerState<T, F>) {
+    state.shutdown.store(true, Ordering::SeqCst);
+    let _ = state.shutdown_tx.send(true);
+}
+
+fn drop_all_sessions<T: Transport, F>(state: &OwnerState<T, F>, log: bool) {
+    let Ok(mut inner) = state.inner.lock() else {
+        return;
+    };
+    for slot in inner.targets.values_mut() {
+        invalidate_pair(slot);
+        if let Some(mut session) = slot.session.take() {
             if let Err(error) = session.disconnect() {
-                if opts.log {
+                if log {
                     eprintln!("remote-debug: {error}");
                 }
             }
         }
     }
-    let _ = fs::remove_file(&socket_path);
-    let _ = fs::remove_file(&pid_path);
-    accept_result
+    inner.targets.clear();
 }
 
-fn accept_loop<T, F>(listener: &UnixListener, state: &Arc<BrokerState<T, F>>) -> Result<(), Error>
-where
-    T: Transport + Send + 'static,
-    F: FnMut(&ConnectReq) -> Result<Session<T>, Error> + Send + 'static,
-{
-    listener.set_nonblocking(false)?;
-    loop {
-        if state.shutdown.load(Ordering::SeqCst) {
-            break;
-        }
-        match listener.accept() {
-            Ok((mut stream, _)) => {
-                if state.shutdown.load(Ordering::SeqCst) {
-                    break;
-                }
-                let state = Arc::clone(state);
-                thread::spawn(move || {
-                    if let Err(error) = handle_client(&mut stream, &state) {
-                        if state.log {
-                            eprintln!("remote-debug: {error}");
-                        }
-                    }
-                });
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(error) => {
-                if state.shutdown.load(Ordering::SeqCst) {
-                    break;
-                }
-                return Err(error.into());
-            }
-        }
-    }
-    Ok(())
-}
-
-fn handle_client<T, F>(stream: &mut UnixStream, state: &Arc<BrokerState<T, F>>) -> Result<(), Error>
-where
-    T: Transport + Send + 'static,
-    F: FnMut(&ConnectReq) -> Result<Session<T>, Error> + Send + 'static,
-{
-    stream.set_read_timeout(Some(CLIENT_TIMEOUT))?;
-    stream.set_write_timeout(Some(CLIENT_TIMEOUT))?;
-    let request = match read_msg::<BrokerRequest>(stream) {
-        Ok(request) => request,
-        Err(_) => return Ok(()),
-    };
-    let reply = dispatch(state, &request);
-    let disconnect = matches!(request, BrokerRequest::Disconnect);
-    write_msg(stream, &reply)?;
-    if disconnect {
-        state.shutdown.store(true, Ordering::SeqCst);
-        let _ = UnixStream::connect(&state.socket_path);
-    }
-    Ok(())
-}
-
-fn dispatch<T, F>(state: &Arc<BrokerState<T, F>>, request: &BrokerRequest) -> BrokerReply
-where
-    T: Transport + Send + 'static,
-    F: FnMut(&ConnectReq) -> Result<Session<T>, Error> + Send + 'static,
-{
-    match dispatch_inner(state, request) {
-        Ok(reply) => {
-            if state.log {
-                log_reply(&reply);
-            }
-            reply
-        }
-        Err(error) => {
-            if state.log {
-                eprintln!("remote-debug: {error}");
-            }
-            let (connected, phase) = session_meter(state);
-            BrokerReply {
-                ok: false,
-                message: error.to_string(),
-                nonce: None,
-                connected,
-                phase,
-                snapshot: None,
-                last_log: None,
-            }
-        }
-    }
-}
-
-fn session_meter<T, F>(state: &BrokerState<T, F>) -> (bool, BrokerPhase)
-where
-    T: Transport,
-{
+fn lock_inner<T: Transport, F>(
+    state: &OwnerState<T, F>,
+) -> Result<std::sync::MutexGuard<'_, Inner<T>>, ConnectError> {
     state
         .inner
         .lock()
-        .map(|inner| (inner.session.is_some(), phase_of(&inner)))
-        .unwrap_or((false, BrokerPhase::Disconnected))
+        .map_err(|_| ConnectError::new(ErrorCode::Internal, "session lock"))
 }
 
-fn phase_of<T: Transport>(inner: &Inner<T>) -> BrokerPhase {
-    if inner.session.is_some() {
-        BrokerPhase::Connected
-    } else if inner.pairing {
-        BrokerPhase::Pairing
+fn slot_mut<'a, T: Transport>(inner: &'a mut Inner<T>, target: &str) -> &'a mut Slot<T> {
+    inner.targets.entry(target.to_string()).or_default()
+}
+
+fn phase_of<T: Transport>(slot: &Slot<T>) -> control::SessionPhase {
+    if slot.session.is_some() {
+        control::SessionPhase::SESSION_PHASE_CONNECTED
+    } else if slot.pairing {
+        control::SessionPhase::SESSION_PHASE_PAIRING
     } else {
-        BrokerPhase::Disconnected
+        control::SessionPhase::SESSION_PHASE_DISCONNECTED
     }
 }
 
-fn status_reply<T: Transport>(inner: &mut Inner<T>) -> BrokerReply {
-    let phase = phase_of(inner);
+fn status_fields<T: Transport>(slot: &Slot<T>) -> (String, control::SessionPhase, bool) {
+    let phase = phase_of(slot);
     let message = match phase {
-        BrokerPhase::Connected => "connected".to_string(),
-        BrokerPhase::Pairing => "pairing".to_string(),
-        BrokerPhase::Disconnected => match &inner.last_error {
+        control::SessionPhase::SESSION_PHASE_CONNECTED => "connected".to_string(),
+        control::SessionPhase::SESSION_PHASE_PAIRING => "pairing".to_string(),
+        _ => match &slot.last_error {
             Some(error) => format!("pair failed: {error}"),
             None => "disconnected".to_string(),
         },
     };
-    with_session_log(inner, ok_reply(&message, inner.last_nonce, phase, None))
+    let connected = matches!(phase, control::SessionPhase::SESSION_PHASE_CONNECTED);
+    (message, phase, connected)
 }
 
-fn dispatch_inner<T, F>(
-    state: &Arc<BrokerState<T, F>>,
-    request: &BrokerRequest,
-) -> Result<BrokerReply, Error>
+fn last_log<T: Transport>(slot: &mut Slot<T>) -> Option<String> {
+    slot.session.as_mut().and_then(|session| {
+        session.drain_logs();
+        session.last_log().map(str::to_string)
+    })
+}
+
+fn session_mut<T: Transport>(slot: &mut Slot<T>) -> Result<&mut Session<T>, ConnectError> {
+    slot.session.as_mut().ok_or_else(|| {
+        ConnectError::new(
+            ErrorCode::FailedPrecondition,
+            "not connected; run remote-debug connect first",
+        )
+    })
+}
+
+fn invalidate_pair<T: Transport>(slot: &mut Slot<T>) {
+    slot.pair_gen = slot.pair_gen.wrapping_add(1);
+    slot.pairing = false;
+}
+
+fn start_pair<T, F>(state: &Arc<OwnerState<T, F>>, slot: &mut Slot<T>, req: control::ConnectRequest)
 where
     T: Transport + Send + 'static,
-    F: FnMut(&ConnectReq) -> Result<Session<T>, Error> + Send + 'static,
+    F: FnMut(&control::ConnectRequest) -> Result<Session<T>, Error> + Send + 'static,
 {
-    let mut inner = lock_inner(state)?;
-    match request {
-        BrokerRequest::Connect(req) => connect_locked(state, &mut inner, req),
-        BrokerRequest::InjectTouch {
-            x,
-            y,
-            slot,
-            phase,
-            page,
-        } => {
-            let phase = parse_touch_phase(phase.as_deref())?;
-            session_mut(&mut inner)?.inject_touch_ex(
-                TouchSample {
-                    source: TouchSource::Synthetic,
-                    x: *x,
-                    y: *y,
-                    slot: *slot,
-                },
-                phase,
-                *page,
-            )?;
-            let nonce = inner.last_nonce;
-            Ok(with_session_log(
-                &mut inner,
-                ok_reply("inject-touch queued", nonce, BrokerPhase::Connected, None),
-            ))
-        }
-        BrokerRequest::InjectButton { key, down } => {
-            let parsed = parse_product_key(key)?;
-            session_mut(&mut inner)?.inject_button(parsed, *down)?;
-            Ok(ok_reply(
-                "inject-button queued",
-                inner.last_nonce,
-                BrokerPhase::Connected,
-                None,
-            ))
-        }
-        BrokerRequest::GetSnapshot { nonce } => get_snapshot_locked(&mut inner, *nonce),
-        BrokerRequest::SnapshotAck { nonce } => {
-            let nonce = nonce
-                .or(inner.last_nonce)
-                .ok_or_else(|| Error::message("no nonce; pass --nonce or get-snapshot first"))?;
-            session_mut(&mut inner)?.snapshot_ack(nonce)?;
-            Ok(ok_reply(
-                "snapshot ack sent",
-                Some(nonce),
-                BrokerPhase::Connected,
-                None,
-            ))
-        }
-        BrokerRequest::SnapshotClear => {
-            session_mut(&mut inner)?.snapshot_clear()?;
-            Ok(ok_reply(
-                "snapshot clear",
-                inner.last_nonce,
-                BrokerPhase::Connected,
-                None,
-            ))
-        }
-        BrokerRequest::Status => Ok(status_reply(&mut inner)),
-        BrokerRequest::Reboot(req) => reboot_locked(state, &mut inner, req),
-        BrokerRequest::Disconnect => {
-            invalidate_pair(&mut inner);
-            if let Some(mut session) = inner.session.take() {
-                session.disconnect()?;
-            }
-            inner.last_nonce = None;
-            inner.last_error = None;
-            Ok(ok_reply(
-                "disconnected",
-                None,
-                BrokerPhase::Disconnected,
-                None,
-            ))
-        }
-    }
-}
-
-fn invalidate_pair<T: Transport>(inner: &mut Inner<T>) {
-    inner.pair_gen = inner.pair_gen.wrapping_add(1);
-    inner.pairing = false;
-}
-
-fn connect_locked<T, F>(
-    state: &Arc<BrokerState<T, F>>,
-    inner: &mut Inner<T>,
-    req: &ConnectReq,
-) -> Result<BrokerReply, Error>
-where
-    T: Transport + Send + 'static,
-    F: FnMut(&ConnectReq) -> Result<Session<T>, Error> + Send + 'static,
-{
-    if inner.session.is_some() {
-        return Ok(ok_reply(
-            "already connected",
-            inner.last_nonce,
-            BrokerPhase::Connected,
-            None,
-        ));
-    }
-    if inner.pairing {
-        return Ok(ok_reply(
-            "pairing",
-            inner.last_nonce,
-            BrokerPhase::Pairing,
-            None,
-        ));
-    }
-    start_pair(state, inner, req.clone());
-    Ok(ok_reply(
-        "pairing",
-        inner.last_nonce,
-        BrokerPhase::Pairing,
-        None,
-    ))
-}
-
-fn start_pair<T, F>(state: &Arc<BrokerState<T, F>>, inner: &mut Inner<T>, req: ConnectReq)
-where
-    T: Transport + Send + 'static,
-    F: FnMut(&ConnectReq) -> Result<Session<T>, Error> + Send + 'static,
-{
-    inner.pair_gen = inner.pair_gen.wrapping_add(1);
-    let gen = inner.pair_gen;
-    inner.pairing = true;
-    inner.last_error = None;
+    slot.pair_gen = slot.pair_gen.wrapping_add(1);
+    let gen = slot.pair_gen;
+    slot.pairing = true;
+    slot.last_error = None;
+    let target = target_name(&req.target);
     let state = Arc::clone(state);
-    thread::spawn(move || finish_pair(state, req, gen));
+    thread::spawn(move || finish_pair(state, target, req, gen));
 }
 
-fn finish_pair<T, F>(state: Arc<BrokerState<T, F>>, req: ConnectReq, gen: u64)
-where
+/// Service wrapper so handlers can [`Arc::clone`] the owner.
+struct Owner<T: Transport, F>(Arc<OwnerState<T, F>>);
+
+/// Run `f` on a thread that is not inside the owner's Tokio runtime.
+///
+/// [`remote_debug_host::BluerTransport`] uses its own runtime and
+/// `block_on`. Calling that from a ConnectRPC worker panics
+/// (`Cannot start a runtime from within a runtime`).
+fn off_runtime<R: Send>(f: impl FnOnce() -> R + Send) -> R {
+    thread::scope(|scope| match scope.spawn(f).join() {
+        Ok(value) => value,
+        Err(_) => panic!("remote-debug owner worker panicked"),
+    })
+}
+
+fn finish_pair<T, F>(
+    state: Arc<OwnerState<T, F>>,
+    target: String,
+    req: control::ConnectRequest,
+    gen: u64,
+) where
     T: Transport,
-    F: FnMut(&ConnectReq) -> Result<Session<T>, Error>,
+    F: FnMut(&control::ConnectRequest) -> Result<Session<T>, Error>,
 {
     let result = match state.opener.lock() {
         Ok(mut opener) => opener(&req),
@@ -623,7 +508,8 @@ where
             return;
         }
     };
-    if inner.pair_gen != gen || state.shutdown.load(Ordering::SeqCst) {
+    let slot = slot_mut(&mut inner, &target);
+    if slot.pair_gen != gen || state.shutdown.load(Ordering::SeqCst) {
         if let Ok(mut session) = result {
             let _ = session.disconnect();
         }
@@ -640,108 +526,17 @@ where
                     }
                 }
             }
-            inner.session = Some(session);
-            inner.pairing = false;
-            inner.last_error = None;
+            slot.session = Some(session);
+            slot.pairing = false;
+            slot.last_error = None;
         }
         Err(error) => {
-            inner.pairing = false;
-            inner.last_error = Some(error.to_string());
+            slot.pairing = false;
+            slot.last_error = Some(error.to_string());
             if state.log {
                 eprintln!("remote-debug: {error}");
             }
         }
-    }
-}
-
-fn reboot_locked<T, F>(
-    state: &Arc<BrokerState<T, F>>,
-    inner: &mut Inner<T>,
-    req: &RebootReq,
-) -> Result<BrokerReply, Error>
-where
-    T: Transport + Send + 'static,
-    F: FnMut(&ConnectReq) -> Result<Session<T>, Error> + Send + 'static,
-{
-    let mut session = inner
-        .session
-        .take()
-        .ok_or_else(|| Error::message("not connected; run remote-debug connect first"))?;
-    session.reboot()?;
-    inner.last_nonce = None;
-    if req.no_reconnect {
-        invalidate_pair(inner);
-        return Ok(ok_reply(
-            "device reboot sent; GATT session gone (embedded MCU, not this host)",
-            None,
-            BrokerPhase::Disconnected,
-            None,
-        ));
-    }
-    start_pair(
-        state,
-        inner,
-        ConnectReq {
-            pin: req.pin,
-            port: req.port.clone(),
-            name: req.name.clone(),
-            remember: req.remember,
-        },
-    );
-    Ok(ok_reply(
-        "device rebooted; pairing",
-        None,
-        BrokerPhase::Pairing,
-        None,
-    ))
-}
-
-fn get_snapshot_locked<T: Transport>(
-    inner: &mut Inner<T>,
-    nonce: Option<u64>,
-) -> Result<BrokerReply, Error> {
-    let nonce = nonce.unwrap_or_else(time_nonce);
-    match session_mut(inner)?.get_snapshot(nonce) {
-        Ok(snap) => {
-            inner.last_nonce = Some(snap.nonce);
-            let kind = match snap.kind {
-                FrameKind::Mono => "mono",
-                FrameKind::Gray4 => "gray4",
-            };
-            let wire = SnapshotWire {
-                nonce: snap.nonce,
-                width: snap.width,
-                height: snap.height,
-                kind: kind.to_string(),
-                hold: snap.hold,
-                scene: snap.scene,
-                target_step: snap.target_step,
-                target_kind: snap.target_kind,
-                target_expect_x: snap.target_expect_x,
-                target_expect_y: snap.target_expect_y,
-                bw: snap.bw,
-                red: snap.red,
-            };
-            Ok(with_session_log(
-                inner,
-                ok_reply(
-                    &format!("snapshot {}x{} kind={}", wire.width, wire.height, wire.kind),
-                    Some(wire.nonce),
-                    BrokerPhase::Connected,
-                    Some(wire),
-                ),
-            ))
-        }
-        Err(remote_debug_host::Error::SnapshotBusy { armed }) => Ok(BrokerReply {
-            ok: false,
-            message: format!("snapshot busy (armed={armed:#x})"),
-            nonce: Some(armed),
-            connected: true,
-            phase: BrokerPhase::Connected,
-            snapshot: None,
-            last_log: None,
-        }),
-        Err(error) => Err(error.into()),
     }
 }
 
@@ -753,406 +548,649 @@ fn time_nonce() -> u64 {
         .max(1)
 }
 
-fn session_mut<T: Transport>(inner: &mut Inner<T>) -> Result<&mut Session<T>, Error> {
-    inner
-        .session
-        .as_mut()
-        .ok_or_else(|| Error::message("not connected; run remote-debug connect first"))
-}
-
-fn lock_inner<'a, T: Transport, F>(
-    state: &'a BrokerState<T, F>,
-) -> Result<std::sync::MutexGuard<'a, Inner<T>>, Error> {
-    state
-        .inner
-        .lock()
-        .map_err(|_| Error::message("session lock"))
-}
-
-fn ok_reply(
-    message: &str,
-    nonce: Option<u64>,
-    phase: BrokerPhase,
-    snapshot: Option<SnapshotWire>,
-) -> BrokerReply {
-    BrokerReply {
-        ok: true,
-        message: message.to_string(),
-        nonce,
-        connected: matches!(phase, BrokerPhase::Connected),
-        phase,
-        snapshot,
-        last_log: None,
+fn snapshot_proto(snap: remote_debug_host::SnapshotPlanes) -> shared::Snapshot {
+    let kind = match snap.kind {
+        FrameKind::Mono => shared::FrameKind::FRAME_KIND_MONO,
+        FrameKind::Gray4 => shared::FrameKind::FRAME_KIND_GRAY4,
+    };
+    let target_kind = snap
+        .target_kind
+        .and_then(|kind| shared::TargetKind::from_i32(kind as i32))
+        .unwrap_or(shared::TargetKind::TARGET_KIND_UNSPECIFIED);
+    shared::Snapshot {
+        nonce: snap.nonce,
+        width: u32::from(snap.width),
+        height: u32::from(snap.height),
+        kind: kind.into(),
+        hold: snap.hold,
+        bw: snap.bw,
+        red: snap.red.unwrap_or_default(),
+        scene: snap.scene,
+        target_step: snap.target_step,
+        target_kind: target_kind.into(),
+        target_expect_x: snap.target_expect_x,
+        target_expect_y: snap.target_expect_y,
+        ..shared::Snapshot::default()
     }
 }
 
-fn with_session_log<T: Transport>(inner: &mut Inner<T>, mut reply: BrokerReply) -> BrokerReply {
-    if let Some(session) = inner.session.as_mut() {
-        session.drain_logs();
-        reply.last_log = session.last_log().map(str::to_string);
+fn wire_phase(inject: &shared::InjectTouch) -> TouchPhase {
+    match inject.phase.as_known() {
+        Some(shared::TouchPhase::TOUCH_PHASE_MOVE) => TouchPhase::TOUCH_PHASE_MOVE,
+        Some(shared::TouchPhase::TOUCH_PHASE_UP) => TouchPhase::TOUCH_PHASE_UP,
+        _ => TouchPhase::TOUCH_PHASE_DOWN,
     }
-    reply
 }
 
-fn log_reply(reply: &BrokerReply) {
-    eprintln!("remote-debug: {}", reply.message);
-}
-
-fn write_msg<T: Serialize>(stream: &mut UnixStream, value: &T) -> Result<(), Error> {
-    let bytes = serde_json::to_vec(value)?;
-    let len = u32::try_from(bytes.len())
-        .map_err(|_| Error::message("remote-debug frame larger than u32"))?;
-    stream.write_all(&len.to_le_bytes())?;
-    stream.write_all(&bytes)?;
-    Ok(())
-}
-
-fn read_msg<T: for<'de> Deserialize<'de>>(stream: &mut UnixStream) -> Result<T, Error> {
-    let mut len_buf = [0u8; 4];
-    stream.read_exact(&mut len_buf)?;
-    let len = usize::try_from(u32::from_le_bytes(len_buf))
-        .map_err(|_| Error::message("remote-debug frame length"))?;
-    if len == 0 || len > MAX_FRAME {
-        return Err(Error::message("remote-debug frame length"));
+fn wire_key(inject: &shared::InjectButton) -> Result<ProductKey, ConnectError> {
+    match inject.key.as_known() {
+        Some(shared::ProductKey::PRODUCT_KEY_OK) => Ok(ProductKey::PRODUCT_KEY_OK),
+        Some(shared::ProductKey::PRODUCT_KEY_PAGE_UP) => Ok(ProductKey::PRODUCT_KEY_PAGE_UP),
+        Some(shared::ProductKey::PRODUCT_KEY_PAGE_DOWN) => Ok(ProductKey::PRODUCT_KEY_PAGE_DOWN),
+        _ => Err(ConnectError::new(
+            ErrorCode::InvalidArgument,
+            "key must be ok, page-up, or page-down",
+        )),
     }
-    let mut buf = vec![0u8; len];
-    stream.read_exact(&mut buf)?;
-    Ok(serde_json::from_slice(&buf)?)
+}
+
+fn rpc_err(error: impl std::fmt::Display) -> ConnectError {
+    ConnectError::new(ErrorCode::Internal, error.to_string())
+}
+
+#[allow(refining_impl_trait)]
+impl<T, F> connect_svc::RemoteDebugControlService for Owner<T, F>
+where
+    T: Transport + Send + 'static,
+    F: FnMut(&control::ConnectRequest) -> Result<Session<T>, Error> + Send + 'static,
+{
+    async fn connect(
+        &self,
+        _ctx: RequestContext,
+        request: ServiceRequest<'_, control::ConnectRequest>,
+    ) -> ServiceResult<control::ConnectResponse> {
+        off_runtime(|| {
+            let mut req = request.to_owned_message();
+            req.target = target_name(&req.target);
+            let mut inner = lock_inner(&self.0)?;
+            let slot = slot_mut(&mut inner, &req.target);
+            if slot.session.is_some() {
+                let (_, phase, connected) = status_fields(slot);
+                return Response::ok(control::ConnectResponse {
+                    message: "already connected".into(),
+                    phase: phase.into(),
+                    connected,
+                    nonce: slot.last_nonce,
+                    last_log: last_log(slot),
+                    ..control::ConnectResponse::default()
+                });
+            }
+            if slot.pairing {
+                return Response::ok(control::ConnectResponse {
+                    message: "pairing".into(),
+                    phase: control::SessionPhase::SESSION_PHASE_PAIRING.into(),
+                    connected: false,
+                    nonce: slot.last_nonce,
+                    last_log: None,
+                    ..control::ConnectResponse::default()
+                });
+            }
+            start_pair(&self.0, slot, req);
+            Response::ok(control::ConnectResponse {
+                message: "pairing".into(),
+                phase: control::SessionPhase::SESSION_PHASE_PAIRING.into(),
+                connected: false,
+                nonce: None,
+                last_log: None,
+                ..control::ConnectResponse::default()
+            })
+        })
+    }
+
+    async fn status(
+        &self,
+        _ctx: RequestContext,
+        request: ServiceRequest<'_, control::StatusRequest>,
+    ) -> ServiceResult<control::StatusResponse> {
+        off_runtime(|| {
+            let target = target_name(request.target);
+            let mut inner = lock_inner(&self.0)?;
+            let Some(slot) = inner.targets.get_mut(&target) else {
+                return Response::ok(control::StatusResponse {
+                    message: "disconnected".into(),
+                    phase: control::SessionPhase::SESSION_PHASE_DISCONNECTED.into(),
+                    connected: false,
+                    ..control::StatusResponse::default()
+                });
+            };
+            let (message, phase, connected) = status_fields(slot);
+            Response::ok(control::StatusResponse {
+                message,
+                phase: phase.into(),
+                connected,
+                nonce: slot.last_nonce,
+                last_log: last_log(slot),
+                ..control::StatusResponse::default()
+            })
+        })
+    }
+
+    async fn list_targets(
+        &self,
+        _ctx: RequestContext,
+        _request: ServiceRequest<'_, control::ListTargetsRequest>,
+    ) -> ServiceResult<control::ListTargetsResponse> {
+        let inner = lock_inner(&self.0)?;
+        let targets = inner
+            .targets
+            .iter()
+            .map(|(target, slot)| control::TargetInfo {
+                target: target.clone(),
+                phase: phase_of(slot).into(),
+                connected: slot.session.is_some(),
+                ..control::TargetInfo::default()
+            })
+            .collect();
+        Response::ok(control::ListTargetsResponse {
+            targets,
+            ..control::ListTargetsResponse::default()
+        })
+    }
+
+    async fn inject_touch(
+        &self,
+        _ctx: RequestContext,
+        request: ServiceRequest<'_, control::InjectTouchRequest>,
+    ) -> ServiceResult<control::InjectTouchResponse> {
+        off_runtime(|| {
+            let req = request.to_owned_message();
+            let target = target_name(&req.target);
+            let inject = Option::<shared::InjectTouch>::from(req.inject).ok_or_else(|| {
+                ConnectError::new(ErrorCode::InvalidArgument, "inject-touch body required")
+            })?;
+            if inject.x > u32::from(u16::MAX) || inject.y > u32::from(u16::MAX) {
+                return Err(ConnectError::new(ErrorCode::InvalidArgument, "coord"));
+            }
+            let slot_n = match inject.slot {
+                None => None,
+                Some(s) if s <= 4 => Some(s as u8),
+                Some(_) => return Err(ConnectError::new(ErrorCode::InvalidArgument, "slot")),
+            };
+            let page = matches!(
+                inject.space.as_known(),
+                Some(shared::TouchSpace::TOUCH_SPACE_PAGE)
+            );
+            let phase = wire_phase(&inject);
+            let mut inner = lock_inner(&self.0)?;
+            let slot = slot_or_err(&mut inner, &target)?;
+            session_mut(slot)?
+                .inject_touch_ex(
+                    TouchSample {
+                        source: TouchSource::Synthetic,
+                        x: inject.x as u16,
+                        y: inject.y as u16,
+                        slot: slot_n,
+                    },
+                    phase,
+                    page,
+                )
+                .map_err(rpc_err)?;
+            let nonce = slot.last_nonce;
+            let last_log = last_log(slot);
+            Response::ok(control::InjectTouchResponse {
+                message: "inject-touch queued".into(),
+                phase: control::SessionPhase::SESSION_PHASE_CONNECTED.into(),
+                connected: true,
+                nonce,
+                last_log,
+                ..control::InjectTouchResponse::default()
+            })
+        })
+    }
+
+    async fn inject_button(
+        &self,
+        _ctx: RequestContext,
+        request: ServiceRequest<'_, control::InjectButtonRequest>,
+    ) -> ServiceResult<control::InjectButtonResponse> {
+        off_runtime(|| {
+            let req = request.to_owned_message();
+            let target = target_name(&req.target);
+            let inject = Option::<shared::InjectButton>::from(req.inject).ok_or_else(|| {
+                ConnectError::new(ErrorCode::InvalidArgument, "inject-button body required")
+            })?;
+            let key = wire_key(&inject)?;
+            let mut inner = lock_inner(&self.0)?;
+            let slot = slot_or_err(&mut inner, &target)?;
+            session_mut(slot)?
+                .inject_button(key, inject.down)
+                .map_err(rpc_err)?;
+            Response::ok(control::InjectButtonResponse {
+                message: "inject-button queued".into(),
+                phase: control::SessionPhase::SESSION_PHASE_CONNECTED.into(),
+                connected: true,
+                nonce: slot.last_nonce,
+                last_log: last_log(slot),
+                ..control::InjectButtonResponse::default()
+            })
+        })
+    }
+
+    async fn get_snapshot(
+        &self,
+        _ctx: RequestContext,
+        request: ServiceRequest<'_, control::GetSnapshotRequest>,
+    ) -> ServiceResult<control::GetSnapshotResponse> {
+        off_runtime(|| {
+            let req = request.to_owned_message();
+            let target = target_name(&req.target);
+            let nonce = req.nonce.unwrap_or_else(time_nonce);
+            let mut inner = lock_inner(&self.0)?;
+            let slot = slot_or_err(&mut inner, &target)?;
+            match session_mut(slot)?.get_snapshot(nonce) {
+                Ok(snap) => {
+                    slot.last_nonce = Some(snap.nonce);
+                    let wire = snapshot_proto(snap);
+                    let last_log = last_log(slot);
+                    if self.0.log {
+                        eprintln!(
+                            "remote-debug: snapshot {}x{} kind={}",
+                            wire.width,
+                            wire.height,
+                            match wire.kind.as_known() {
+                                Some(shared::FrameKind::FRAME_KIND_GRAY4) => "gray4",
+                                _ => "mono",
+                            }
+                        );
+                    }
+                    Response::ok(control::GetSnapshotResponse {
+                        message: format!(
+                            "snapshot {}x{} kind={}",
+                            wire.width,
+                            wire.height,
+                            match wire.kind.as_known() {
+                                Some(shared::FrameKind::FRAME_KIND_GRAY4) => "gray4",
+                                _ => "mono",
+                            }
+                        ),
+                        phase: control::SessionPhase::SESSION_PHASE_CONNECTED.into(),
+                        connected: true,
+                        nonce: Some(wire.nonce),
+                        last_log,
+                        snapshot: wire.into(),
+                        ..control::GetSnapshotResponse::default()
+                    })
+                }
+                Err(remote_debug_host::Error::SnapshotBusy { armed }) => Err(ConnectError::new(
+                    ErrorCode::FailedPrecondition,
+                    format!("snapshot busy (armed={armed:#x})"),
+                )),
+                Err(error) => Err(rpc_err(error)),
+            }
+        })
+    }
+
+    async fn snapshot_ack(
+        &self,
+        _ctx: RequestContext,
+        request: ServiceRequest<'_, control::SnapshotAckRequest>,
+    ) -> ServiceResult<control::SnapshotAckResponse> {
+        off_runtime(|| {
+            let req = request.to_owned_message();
+            let target = target_name(&req.target);
+            let mut inner = lock_inner(&self.0)?;
+            let slot = slot_or_err(&mut inner, &target)?;
+            let nonce = req.nonce.or(slot.last_nonce).ok_or_else(|| {
+                ConnectError::new(
+                    ErrorCode::FailedPrecondition,
+                    "no nonce; pass --nonce or get-snapshot first",
+                )
+            })?;
+            session_mut(slot)?.snapshot_ack(nonce).map_err(rpc_err)?;
+            Response::ok(control::SnapshotAckResponse {
+                message: "snapshot ack sent".into(),
+                phase: control::SessionPhase::SESSION_PHASE_CONNECTED.into(),
+                connected: true,
+                nonce: Some(nonce),
+                last_log: last_log(slot),
+                ..control::SnapshotAckResponse::default()
+            })
+        })
+    }
+
+    async fn snapshot_clear(
+        &self,
+        _ctx: RequestContext,
+        request: ServiceRequest<'_, control::SnapshotClearRequest>,
+    ) -> ServiceResult<control::SnapshotClearResponse> {
+        off_runtime(|| {
+            let req = request.to_owned_message();
+            let target = target_name(&req.target);
+            let mut inner = lock_inner(&self.0)?;
+            let slot = slot_or_err(&mut inner, &target)?;
+            session_mut(slot)?.snapshot_clear().map_err(rpc_err)?;
+            Response::ok(control::SnapshotClearResponse {
+                message: "snapshot clear".into(),
+                phase: control::SessionPhase::SESSION_PHASE_CONNECTED.into(),
+                connected: true,
+                nonce: slot.last_nonce,
+                last_log: last_log(slot),
+                ..control::SnapshotClearResponse::default()
+            })
+        })
+    }
+
+    async fn reboot(
+        &self,
+        _ctx: RequestContext,
+        request: ServiceRequest<'_, control::RebootRequest>,
+    ) -> ServiceResult<control::RebootResponse> {
+        off_runtime(|| {
+            let req = request.to_owned_message();
+            let target = target_name(&req.target);
+            let mut inner = lock_inner(&self.0)?;
+            let slot = slot_or_err(&mut inner, &target)?;
+            let mut session = slot.session.take().ok_or_else(|| {
+                ConnectError::new(
+                    ErrorCode::FailedPrecondition,
+                    "not connected; run remote-debug connect first",
+                )
+            })?;
+            session.reboot().map_err(rpc_err)?;
+            slot.last_nonce = None;
+            if req.no_reconnect {
+                invalidate_pair(slot);
+                return Response::ok(control::RebootResponse {
+                    message: "device reboot sent; GATT session gone (embedded MCU, not this host)"
+                        .into(),
+                    phase: control::SessionPhase::SESSION_PHASE_DISCONNECTED.into(),
+                    connected: false,
+                    last_log: None,
+                    ..control::RebootResponse::default()
+                });
+            }
+            start_pair(
+                &self.0,
+                slot,
+                control::ConnectRequest {
+                    target: target.clone(),
+                    pin: req.pin,
+                    port: req.port,
+                    remember: req.remember,
+                    ..control::ConnectRequest::default()
+                },
+            );
+            Response::ok(control::RebootResponse {
+                message: "device rebooted; pairing".into(),
+                phase: control::SessionPhase::SESSION_PHASE_PAIRING.into(),
+                connected: false,
+                last_log: None,
+                ..control::RebootResponse::default()
+            })
+        })
+    }
+
+    async fn disconnect(
+        &self,
+        _ctx: RequestContext,
+        request: ServiceRequest<'_, control::DisconnectRequest>,
+    ) -> ServiceResult<control::DisconnectResponse> {
+        off_runtime(|| {
+            let target = target_name(request.target);
+            let mut inner = lock_inner(&self.0)?;
+            let mut remaining = inner.targets.len();
+            if let Some(mut slot) = inner.targets.remove(&target) {
+                remaining = inner.targets.len();
+                invalidate_pair(&mut slot);
+                if let Some(mut session) = slot.session.take() {
+                    session.disconnect().map_err(rpc_err)?;
+                }
+            }
+            Response::ok(control::DisconnectResponse {
+                message: "disconnected".into(),
+                phase: control::SessionPhase::SESSION_PHASE_DISCONNECTED.into(),
+                connected: false,
+                remaining: remaining as u32,
+                ..control::DisconnectResponse::default()
+            })
+        })
+    }
+
+    async fn shutdown(
+        &self,
+        _ctx: RequestContext,
+        _request: ServiceRequest<'_, control::ShutdownRequest>,
+    ) -> ServiceResult<control::ShutdownResponse> {
+        request_shutdown(&self.0);
+        Response::ok(control::ShutdownResponse {
+            message: "shutdown".into(),
+            ..control::ShutdownResponse::default()
+        })
+    }
+}
+
+fn slot_or_err<'a, T: Transport>(
+    inner: &'a mut Inner<T>,
+    target: &str,
+) -> Result<&'a mut Slot<T>, ConnectError> {
+    inner.targets.get_mut(target).ok_or_else(|| {
+        ConnectError::new(
+            ErrorCode::FailedPrecondition,
+            "not connected; run remote-debug connect first",
+        )
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use remote_debug_host::{FakeTransport, Transport as HostTransport};
-    use std::sync::atomic::AtomicU32;
+    use remote_debug_host::FakeTransport;
+    use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
+    use std::thread;
+    use std::time::Duration;
 
-    struct SharedFake {
-        inner: FakeTransport,
-        disconnects: Arc<AtomicU32>,
-    }
-
-    impl HostTransport for SharedFake {
-        fn write_frame(&mut self, framed: &[u8]) -> Result<(), remote_debug_host::Error> {
-            self.inner.write_frame(framed)
-        }
-
-        fn read_chunk(&mut self) -> Result<Vec<u8>, remote_debug_host::Error> {
-            self.inner.read_chunk()
-        }
-
-        fn disconnect(&mut self, keep_bond: bool) -> Result<(), remote_debug_host::Error> {
-            let result = self.inner.disconnect(keep_bond);
-            self.disconnects
-                .store(self.inner.disconnects, Ordering::SeqCst);
-            result
+    fn serve_opts(dir: &Path) -> ServeOpts<'_> {
+        ServeOpts {
+            dir,
+            listen: None,
+            install_ctrlc: false,
+            log: false,
+            on_remember: None,
         }
     }
 
-    fn start_broker(
-        dir: &Path,
-        disconnects: Arc<AtomicU32>,
+    fn spawn_owner(
+        dir: PathBuf,
+        opener: impl FnMut(&control::ConnectRequest) -> Result<Session<FakeTransport>, Error>
+            + Send
+            + 'static,
     ) -> thread::JoinHandle<Result<(), Error>> {
-        start_broker_with(dir, {
-            let disconnects = disconnects.clone();
-            move |_req| {
-                Ok(Session::new(
-                    SharedFake {
-                        inner: FakeTransport::tiny(),
-                        disconnects: disconnects.clone(),
-                    },
-                    false,
-                ))
-            }
-        })
+        thread::spawn(move || serve_with(serve_opts(&dir), opener))
     }
 
-    fn start_broker_with<F>(dir: &Path, opener: F) -> thread::JoinHandle<Result<(), Error>>
-    where
-        F: FnMut(&ConnectReq) -> Result<Session<SharedFake>, Error> + Send + 'static,
-    {
-        let dir = dir.to_path_buf();
-        thread::spawn(move || {
+    fn open_tiny(_req: &control::ConnectRequest) -> Result<Session<FakeTransport>, Error> {
+        Ok(Session::new(FakeTransport::tiny(), false))
+    }
+
+    fn wait_connected(client: &ControlClient, target: &str) -> control::StatusResponse {
+        for _ in 0..80 {
+            let status = client
+                .status(control::StatusRequest {
+                    target: target.into(),
+                    ..control::StatusRequest::default()
+                })
+                .expect("status");
+            if status.connected {
+                return status;
+            }
+            if status.message.starts_with("pair failed") {
+                panic!("{}", status.message);
+            }
+            thread::sleep(Duration::from_millis(25));
+        }
+        panic!("timed out waiting for connected")
+    }
+
+    fn req(target: &str) -> control::ConnectRequest {
+        control::ConnectRequest {
+            target: target.into(),
+            ..control::ConnectRequest::default()
+        }
+    }
+
+    #[test]
+    fn connect_pairs_and_client_hangup_keeps_gatt() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().to_path_buf();
+        let owner = spawn_owner(dir.clone(), open_tiny);
+        wait_for_broker(&dir, Duration::from_secs(2)).unwrap();
+
+        let client = ControlClient::open(&dir).unwrap();
+        let started = client.connect(req("sticky-rs")).unwrap();
+        assert_eq!(started.message, "pairing");
+        assert!(!started.connected);
+        wait_connected(&client, "sticky-rs");
+        drop(client);
+
+        let again = ControlClient::open(&dir).unwrap();
+        let status = again
+            .status(control::StatusRequest {
+                target: "sticky-rs".into(),
+                ..control::StatusRequest::default()
+            })
+            .unwrap();
+        assert!(status.connected, "{}", status.message);
+
+        let listed = again
+            .list_targets(control::ListTargetsRequest::default())
+            .unwrap();
+        assert_eq!(listed.targets.len(), 1);
+        assert_eq!(listed.targets[0].target, "sticky-rs");
+        assert!(listed.targets[0].connected);
+
+        again.shutdown(control::ShutdownRequest::default()).unwrap();
+        let _ = owner.join().unwrap();
+    }
+
+    #[test]
+    fn snapshot_busy_is_failed_precondition() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().to_path_buf();
+        let owner = spawn_owner(dir.clone(), open_tiny);
+        wait_for_broker(&dir, Duration::from_secs(2)).unwrap();
+        let client = ControlClient::open(&dir).unwrap();
+        client.connect(req("")).unwrap();
+        wait_connected(&client, "sticky-rs");
+
+        let first = client
+            .get_snapshot(control::GetSnapshotRequest {
+                target: "sticky-rs".into(),
+                nonce: Some(7),
+                ..control::GetSnapshotRequest::default()
+            })
+            .unwrap();
+        assert!(first.snapshot.is_set());
+        assert_eq!(first.nonce, Some(7));
+
+        let busy = client
+            .get_snapshot(control::GetSnapshotRequest {
+                target: "sticky-rs".into(),
+                nonce: Some(8),
+                ..control::GetSnapshotRequest::default()
+            })
+            .unwrap_err();
+        assert!(busy.to_string().contains("snapshot busy"), "{busy}");
+
+        client
+            .snapshot_clear(control::SnapshotClearRequest {
+                target: "sticky-rs".into(),
+                ..control::SnapshotClearRequest::default()
+            })
+            .unwrap();
+        client
+            .shutdown(control::ShutdownRequest::default())
+            .unwrap();
+        let _ = owner.join().unwrap();
+    }
+
+    #[test]
+    fn disconnect_drops_one_session_shutdown_stops_owner() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().to_path_buf();
+        let owner = spawn_owner(dir.clone(), open_tiny);
+        wait_for_broker(&dir, Duration::from_secs(2)).unwrap();
+        let client = ControlClient::open(&dir).unwrap();
+        client.connect(req("alpha")).unwrap();
+        wait_connected(&client, "alpha");
+        client.connect(req("beta")).unwrap();
+        wait_connected(&client, "beta");
+
+        let listed = client
+            .list_targets(control::ListTargetsRequest::default())
+            .unwrap();
+        assert_eq!(listed.targets.len(), 2);
+
+        let gone = client
+            .disconnect(control::DisconnectRequest {
+                target: "alpha".into(),
+                ..control::DisconnectRequest::default()
+            })
+            .unwrap();
+        assert_eq!(gone.remaining, 1);
+        assert!(endpoint_path(&dir).exists());
+
+        let leftover = client
+            .status(control::StatusRequest {
+                target: "beta".into(),
+                ..control::StatusRequest::default()
+            })
+            .unwrap();
+        assert!(leftover.connected);
+
+        client
+            .shutdown(control::ShutdownRequest::default())
+            .unwrap();
+        let _ = owner.join().unwrap();
+        assert!(!endpoint_path(&dir).exists());
+    }
+
+    #[test]
+    fn remember_hook_runs_after_pair() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().to_path_buf();
+        let hits = Arc::new(AtomicUsize::new(0));
+        let hook_hits = Arc::clone(&hits);
+        let on_remember: RememberHook = Arc::new(move |_req| {
+            hook_hits.fetch_add(1, AtomicOrdering::SeqCst);
+            Ok(())
+        });
+        let opts_dir = dir.clone();
+        let owner = thread::spawn(move || {
             serve_with(
                 ServeOpts {
-                    dir: &dir,
-                    name: DEFAULT_ADV_NAME,
+                    dir: &opts_dir,
+                    listen: None,
                     install_ctrlc: false,
                     log: false,
-                    on_remember: None,
+                    on_remember: Some(on_remember),
                 },
-                opener,
+                open_tiny,
             )
-        })
-    }
-
-    fn wait_phase(dir: &Path, want: BrokerPhase) -> BrokerReply {
-        let deadline = Instant::now() + Duration::from_secs(2);
-        let mut last = None;
-        while Instant::now() < deadline {
-            let reply = rpc(dir, DEFAULT_ADV_NAME, &BrokerRequest::Status).expect("status");
-            if reply.phase == want {
-                return reply;
-            }
-            last = Some(reply);
-            thread::sleep(Duration::from_millis(20));
-        }
-        panic!("wanted {want:?}, last={last:?}");
-    }
-
-    fn connect_req() -> BrokerRequest {
-        BrokerRequest::Connect(ConnectReq {
-            pin: Some(42),
-            port: None,
-            name: DEFAULT_ADV_NAME.to_string(),
-            remember: false,
-        })
-    }
-
-    #[test]
-    fn socket_stem_strips_colons() {
-        assert_eq!(socket_stem("sticky-rs"), "remote-debug-sticky-rs");
-        assert_eq!(socket_stem("aa:bb:cc"), "remote-debug-aa_bb_cc");
-    }
-
-    #[test]
-    fn rpc_without_socket_is_no_broker() {
-        let tmp = tempfile::tempdir().unwrap();
-        let err = rpc(tmp.path(), DEFAULT_ADV_NAME, &BrokerRequest::Status).unwrap_err();
-        assert!(err.to_string().contains(NO_BROKER), "{err}");
-        assert!(
-            err.to_string().contains(
-                &broker_socket_path(tmp.path(), DEFAULT_ADV_NAME)
-                    .display()
-                    .to_string()
-            ),
-            "{err}"
-        );
-    }
-
-    #[test]
-    fn rpc_socket_exists_but_not_listening() {
-        let tmp = tempfile::tempdir().unwrap();
-        let path = broker_socket_path(tmp.path(), DEFAULT_ADV_NAME);
-        fs::write(&path, b"not a socket").unwrap();
-        let err = rpc(tmp.path(), DEFAULT_ADV_NAME, &BrokerRequest::Status).unwrap_err();
-        let text = err.to_string();
-        assert!(
-            text.contains("exists but connect failed") || text.contains(NO_BROKER),
-            "{text}"
-        );
-        assert!(text.contains(&path.display().to_string()), "{text}");
-    }
-
-    #[test]
-    fn broker_log_path_matches_stem() {
-        assert_eq!(
-            broker_log_path(Path::new("/run"), "sticky-rs"),
-            PathBuf::from("/run/remote-debug-sticky-rs.log")
-        );
-    }
-
-    #[test]
-    fn disconnect_exits_and_unlinks_socket() {
-        let tmp = tempfile::tempdir().unwrap();
-        let dir = tmp.path();
-        let disconnects = Arc::new(AtomicU32::new(0));
-        let handle = start_broker(dir, disconnects.clone());
-        wait_for_broker(dir, DEFAULT_ADV_NAME, Duration::from_secs(2)).expect("listen");
-
-        let gone = rpc(dir, DEFAULT_ADV_NAME, &BrokerRequest::Disconnect).expect("disconnect");
-        assert!(gone.ok);
-        assert!(!gone.connected);
-        handle.join().expect("join").expect("serve");
-        assert!(!broker_socket_path(dir, DEFAULT_ADV_NAME).exists());
-        let err = rpc(dir, DEFAULT_ADV_NAME, &BrokerRequest::Status).unwrap_err();
-        assert!(err.to_string().contains(NO_BROKER), "{err}");
-    }
-
-    #[test]
-    fn two_clients_busy_hangup_does_not_disconnect() {
-        let tmp = tempfile::tempdir().unwrap();
-        let dir = tmp.path();
-        let disconnects = Arc::new(AtomicU32::new(0));
-        let handle = start_broker(dir, disconnects.clone());
-        wait_for_broker(dir, DEFAULT_ADV_NAME, Duration::from_secs(2)).expect("listen");
-
-        let started = rpc(dir, DEFAULT_ADV_NAME, &connect_req()).expect("connect");
-        assert!(started.ok);
-        assert_eq!(started.phase, BrokerPhase::Pairing);
-        assert!(!started.connected);
-        let connected = wait_phase(dir, BrokerPhase::Connected);
-        assert!(connected.connected);
-
-        let touch_a = thread::spawn({
-            let dir = dir.to_path_buf();
-            move || {
-                rpc(
-                    &dir,
-                    DEFAULT_ADV_NAME,
-                    &BrokerRequest::InjectTouch {
-                        x: 1,
-                        y: 2,
-                        slot: None,
-                        phase: None,
-                        page: false,
-                    },
-                )
-            }
         });
-        let touch_b = thread::spawn({
-            let dir = dir.to_path_buf();
-            move || {
-                rpc(
-                    &dir,
-                    DEFAULT_ADV_NAME,
-                    &BrokerRequest::InjectTouch {
-                        x: 3,
-                        y: 4,
-                        slot: None,
-                        phase: None,
-                        page: false,
-                    },
-                )
-            }
-        });
-        assert!(touch_a.join().unwrap().unwrap().ok);
-        assert!(touch_b.join().unwrap().unwrap().ok);
-
-        let first = rpc(
-            dir,
-            DEFAULT_ADV_NAME,
-            &BrokerRequest::GetSnapshot { nonce: Some(1) },
-        )
-        .expect("first get");
-        assert!(first.ok, "{}", first.message);
-        let snap = first.snapshot.expect("planes");
-        assert_eq!(snap.width, 8);
-        assert_eq!(snap.height, 4);
-        assert_eq!(snap.kind, "mono");
-        assert_eq!(snap.bw.len(), 4);
-
-        let busy = rpc(
-            dir,
-            DEFAULT_ADV_NAME,
-            &BrokerRequest::GetSnapshot { nonce: Some(2) },
-        )
-        .expect("busy get");
-        assert!(!busy.ok);
-        assert!(busy.message.contains("busy"), "{}", busy.message);
-        assert!(busy.connected);
-
-        let hangup = UnixStream::connect(broker_socket_path(dir, DEFAULT_ADV_NAME)).unwrap();
-        drop(hangup);
-        thread::sleep(Duration::from_millis(50));
-        assert_eq!(disconnects.load(Ordering::SeqCst), 0);
-
-        let status = rpc(dir, DEFAULT_ADV_NAME, &BrokerRequest::Status).expect("status");
-        assert!(status.connected);
-
-        rpc(
-            dir,
-            DEFAULT_ADV_NAME,
-            &BrokerRequest::SnapshotAck { nonce: Some(1) },
-        )
-        .expect("ack");
-        let second = rpc(
-            dir,
-            DEFAULT_ADV_NAME,
-            &BrokerRequest::GetSnapshot { nonce: Some(3) },
-        )
-        .expect("after ack");
-        assert!(second.ok, "{}", second.message);
-
-        let gone = rpc(dir, DEFAULT_ADV_NAME, &BrokerRequest::Disconnect).expect("disconnect");
-        assert!(gone.ok);
-        assert!(!gone.connected);
-        handle.join().expect("join").expect("serve");
-        assert_eq!(disconnects.load(Ordering::SeqCst), 1);
-        assert!(!broker_socket_path(dir, DEFAULT_ADV_NAME).exists());
-    }
-
-    #[test]
-    fn connect_returns_while_opener_runs() {
-        let tmp = tempfile::tempdir().unwrap();
-        let dir = tmp.path();
-        let handle = start_broker_with(dir, |_req| {
-            thread::sleep(Duration::from_millis(400));
-            Ok(Session::new(
-                SharedFake {
-                    inner: FakeTransport::tiny(),
-                    disconnects: Arc::new(AtomicU32::new(0)),
-                },
-                false,
-            ))
-        });
-        wait_for_broker(dir, DEFAULT_ADV_NAME, Duration::from_secs(2)).expect("listen");
-
-        let started = Instant::now();
-        let pairing = rpc(dir, DEFAULT_ADV_NAME, &connect_req()).expect("connect");
-        assert!(
-            started.elapsed() < Duration::from_millis(200),
-            "connect blocked"
-        );
-        assert!(pairing.ok);
-        assert_eq!(pairing.phase, BrokerPhase::Pairing);
-        assert!(!pairing.connected);
-
-        let status = rpc(dir, DEFAULT_ADV_NAME, &BrokerRequest::Status).expect("status");
-        assert_eq!(status.phase, BrokerPhase::Pairing);
-        assert_eq!(status.message, "pairing");
-
-        let again = rpc(dir, DEFAULT_ADV_NAME, &connect_req()).expect("idempotent");
-        assert_eq!(again.phase, BrokerPhase::Pairing);
-
-        let connected = wait_phase(dir, BrokerPhase::Connected);
-        assert!(connected.connected);
-        assert_eq!(connected.message, "connected");
-
-        rpc(dir, DEFAULT_ADV_NAME, &BrokerRequest::Disconnect).expect("disconnect");
-        handle.join().expect("join").expect("serve");
-    }
-
-    #[test]
-    fn disconnect_unlinks_during_pairing() {
-        let tmp = tempfile::tempdir().unwrap();
-        let dir = tmp.path();
-        let handle = start_broker_with(dir, |_req| {
-            thread::sleep(Duration::from_millis(800));
-            Ok(Session::new(
-                SharedFake {
-                    inner: FakeTransport::tiny(),
-                    disconnects: Arc::new(AtomicU32::new(0)),
-                },
-                false,
-            ))
-        });
-        wait_for_broker(dir, DEFAULT_ADV_NAME, Duration::from_secs(2)).expect("listen");
-
-        let pairing = rpc(dir, DEFAULT_ADV_NAME, &connect_req()).expect("connect");
-        assert_eq!(pairing.phase, BrokerPhase::Pairing);
-
-        let gone = rpc(dir, DEFAULT_ADV_NAME, &BrokerRequest::Disconnect).expect("disconnect");
-        assert!(gone.ok);
-        assert!(!gone.connected);
-        handle.join().expect("join").expect("serve");
-        assert!(!broker_socket_path(dir, DEFAULT_ADV_NAME).exists());
-    }
-
-    #[test]
-    fn status_reports_pair_failed() {
-        let tmp = tempfile::tempdir().unwrap();
-        let dir = tmp.path();
-        let handle = start_broker_with(dir, |_req| -> Result<Session<SharedFake>, Error> {
-            Err(Error::message("Connect dropped before pair"))
-        });
-        wait_for_broker(dir, DEFAULT_ADV_NAME, Duration::from_secs(2)).expect("listen");
-
-        rpc(dir, DEFAULT_ADV_NAME, &connect_req()).expect("connect");
-        let failed = wait_phase(dir, BrokerPhase::Disconnected);
-        assert!(failed.message.contains("pair failed"), "{}", failed.message);
-        assert!(!failed.connected);
-
-        rpc(dir, DEFAULT_ADV_NAME, &BrokerRequest::Disconnect).expect("disconnect");
-        handle.join().expect("join").expect("serve");
+        wait_for_broker(&dir, Duration::from_secs(2)).unwrap();
+        let client = ControlClient::open(&dir).unwrap();
+        client
+            .connect(control::ConnectRequest {
+                target: "sticky-rs".into(),
+                remember: true,
+                ..control::ConnectRequest::default()
+            })
+            .unwrap();
+        wait_connected(&client, "sticky-rs");
+        assert_eq!(hits.load(AtomicOrdering::SeqCst), 1);
+        client
+            .shutdown(control::ShutdownRequest::default())
+            .unwrap();
+        let _ = owner.join().unwrap();
     }
 }

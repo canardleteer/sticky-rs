@@ -20,7 +20,6 @@ buffa = { version = "0.9.2", default-features = false }
 panel-view = { path = "../panel-view", version = "0.1.0" }
 
 [build-dependencies]
-buffa-build = "0.9.2"
 buf-tools = "=1.72.0-hotfix.2"
 
 [lints]

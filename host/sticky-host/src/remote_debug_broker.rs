@@ -1,4 +1,4 @@
-//! Sticky live owner for the generic Unix-socket broker.
+//! Sticky live owner for the generic ConnectRPC control plane.
 //!
 //! RPC types, `serve_with`, and [`SpawnSpec`] live in
 //! `remote-debug-broker`. This module keeps UART `pair pin=` scrape,
@@ -8,6 +8,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use remote_debug_broker::control::ConnectRequest;
 use remote_debug_wire::v1::ProductKey;
 
 use crate::original::Layout;
@@ -15,11 +16,12 @@ use crate::uart_lock::default_lock_dir;
 use crate::Error;
 
 pub use remote_debug_broker::{
-    broker_log_path, broker_pid_path, broker_socket_path, serve_with, BrokerPhase, BrokerReply,
-    BrokerRequest, ConnectReq, RebootReq, ServeOpts, SnapshotWire, SpawnSpec, NO_BROKER,
+    broker_log_path, broker_pid_path, endpoint_path, serve_with, wait_for_broker, ControlClient,
+    ServeOpts, SpawnSpec, NO_BROKER,
 };
+pub use remote_debug_broker::{control, shared};
 
-/// Runtime dir for the broker socket (same family as the UART flock).
+/// Runtime dir for the owner endpoint (same family as the UART flock).
 #[must_use]
 pub fn broker_runtime_dir() -> PathBuf {
     default_lock_dir()
@@ -48,43 +50,31 @@ pub fn parse_product_key(raw: &str) -> Result<ProductKey, Error> {
     remote_debug_broker::parse_product_key(raw).map_err(Error::from)
 }
 
-/// Send one request and wait for one reply.
-///
-/// # Errors
-///
-/// Missing broker, I/O, or JSON.
-pub fn rpc(dir: &Path, name: &str, request: &BrokerRequest) -> Result<BrokerReply, Error> {
-    remote_debug_broker::rpc(dir, name, request).map_err(Error::from)
-}
-
 /// Poll until the pid file is live or `budget` elapses.
 ///
 /// # Errors
 ///
 /// Timeout.
-pub fn wait_for_broker(dir: &Path, name: &str, budget: Duration) -> Result<(), Error> {
-    remote_debug_broker::wait_for_broker(dir, name, budget).map_err(Error::from)
+pub fn wait_for_owner(dir: &Path, budget: Duration) -> Result<(), Error> {
+    wait_for_broker(dir, budget).map_err(Error::from)
 }
 
-/// Unlink a leftover socket when the peer pid is dead, then spawn
+/// Unlink a leftover endpoint when the peer pid is dead, then spawn
 /// `remote-debug serve` if nothing is listening.
 ///
-/// `exe` is the same xtask binary (`remote-debug serve --name …`).
+/// `exe` is the same xtask binary. Argv does not embed `--name`.
 ///
 /// # Errors
 ///
 /// Spawn failure or the child never bound.
-pub fn ensure_broker(dir: &Path, name: &str, exe: &Path) -> Result<(), Error> {
+pub fn ensure_broker(dir: &Path, exe: &Path) -> Result<(), Error> {
     remote_debug_broker::ensure_broker(
         dir,
-        name,
         &SpawnSpec {
             exe: exe.to_path_buf(),
             args: vec![
                 "remote-debug".into(),
                 "serve".into(),
-                "--name".into(),
-                name.into(),
                 "--socket-dir".into(),
                 dir.to_string_lossy().into_owned(),
             ],
@@ -93,19 +83,19 @@ pub fn ensure_broker(dir: &Path, name: &str, exe: &Path) -> Result<(), Error> {
     .map_err(Error::from)
 }
 
-/// Foreground live owner (Linux BlueZ). Blocks until disconnect or Ctrl-C.
+/// Foreground live owner (Linux BlueZ). Blocks until shutdown or Ctrl-C.
 ///
 /// # Errors
 ///
 /// Bind failure, BlueZ, or UART scrape.
-pub fn serve_live(layout: &Layout, name: &str, socket_dir: Option<&Path>) -> Result<(), Error> {
+pub fn serve_live(layout: &Layout, socket_dir: Option<&Path>) -> Result<(), Error> {
     let default = broker_runtime_dir();
     let dir = socket_dir.unwrap_or(&default);
     std::fs::create_dir_all(dir)?;
-    serve_live_inner(layout, dir, name)
+    serve_live_inner(layout, dir)
 }
 
-fn serve_live_inner(layout: &Layout, dir: &Path, name: &str) -> Result<(), Error> {
+fn serve_live_inner(layout: &Layout, dir: &Path) -> Result<(), Error> {
     #[cfg(target_os = "linux")]
     {
         use std::sync::Arc;
@@ -120,7 +110,7 @@ fn serve_live_inner(layout: &Layout, dir: &Path, name: &str) -> Result<(), Error
         remote_debug_broker::serve_with(
             ServeOpts {
                 dir,
-                name,
+                listen: None,
                 install_ctrlc: true,
                 log: true,
                 on_remember: Some(on_remember),
@@ -131,7 +121,7 @@ fn serve_live_inner(layout: &Layout, dir: &Path, name: &str) -> Result<(), Error
     }
     #[cfg(not(target_os = "linux"))]
     {
-        let _ = (layout, dir, name);
+        let _ = (layout, dir);
         Err(Error::RemoteDebug(
             "remote-debug serve needs Linux BlueZ".into(),
         ))
@@ -151,7 +141,7 @@ fn map_open(error: Error) -> remote_debug_broker::Error {
 /// Port, lock, PIN timeout, or BlueZ.
 #[cfg(target_os = "linux")]
 pub fn open_live_session(
-    req: &ConnectReq,
+    req: &ConnectRequest,
 ) -> Result<remote_debug_host::Session<remote_debug_host::BluerTransport>, Error> {
     use std::sync::mpsc;
 
@@ -162,10 +152,15 @@ pub fn open_live_session(
     use crate::wait_new_pair_pin;
 
     let window = Duration::from_secs(remote_debug_host::PAIR_WINDOW_SECS);
+    let target = if req.target.trim().is_empty() {
+        remote_debug_host::DEFAULT_ADV_NAME
+    } else {
+        req.target.as_str()
+    };
     let transport = if let Some(pin) = req.pin {
         let passkey: std::sync::Arc<dyn PasskeySource> =
             std::sync::Arc::new(FixedPasskey::new(pin));
-        connect(&req.name, passkey).map_err(map_ble)?
+        connect(target, passkey).map_err(map_ble)?
     } else {
         let port = req.port.clone();
         let (tx, rx) = mpsc::channel();
@@ -198,7 +193,7 @@ pub fn open_live_session(
         });
         let passkey: std::sync::Arc<dyn PasskeySource> =
             std::sync::Arc::new(ChannelPasskey::new(rx, window));
-        connect_with(&req.name, passkey, move || {
+        connect_with(target, passkey, move || {
             let _ = start_tx.send(());
         })
         .map_err(map_ble)?
@@ -206,7 +201,7 @@ pub fn open_live_session(
     Ok(remote_debug_host::Session::new(transport, req.remember))
 }
 
-fn remember_from_req(layout: &Layout, req: &ConnectReq) -> Result<(), Error> {
+fn remember_from_req(layout: &Layout, req: &ConnectRequest) -> Result<(), Error> {
     use crate::detect;
     use crate::usb_serial_from_port;
 

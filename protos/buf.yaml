@@ -1,0 +1,12 @@
+# Copyright 2026 canardleteer
+#
+# Lint STANDARD + COMMENTS with zero exemptions. Every service, rpc,
+# message, field, enum, and enum value must have a comment.
+
+version: v2
+modules:
+  - path: .
+lint:
+  use:
+    - STANDARD
+    - COMMENTS

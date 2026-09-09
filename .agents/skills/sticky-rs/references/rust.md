@@ -252,8 +252,8 @@ that image advertises from splash on every boot. UART reprints
 `pair pin=` every 5 s on splash or the pair card until `pair ok`.
 `cargo xtask remote-debug` is a live BLE ask (UART auto-PIN when
 a CH343 is present: QinHeng TTY, or usbfs still sees a unique
-`1a86:55d3` after `cdc-acm` was left detached). A Unix-socket
-broker in `sticky-host` owns
+`1a86:55d3` after `cdc-acm` was left detached). A ConnectRPC
+owner in `remote-debug-broker` holds
 the `Session` (`connect` auto-starts a detached serve). CLI
 leaves and `--mcp` are clients.
 `host/remote-debug-host` wraps Linux `bluer` (Connect, not Pair).

@@ -8,7 +8,8 @@
 | `host/` | Default-members. Host libraries and future host CLIs (not `xtask`) |
 | `host/sticky-host/` | Host library (`publish = true`, not crates.io yet). Detect, factory backup / confirm / restore, `build-fw`, `flash-app`, learn-uart, monitor, remote-debug UART PIN / allowlist / page-space PNG. Wraps the generic broker with xtask `remote-debug serve` argv and the Sticky flock dir. Callers pass `Layout`; live methods take the UART lock |
 | `host/remote-debug-host/` | Generic BLE central (`publish = true`). No clap, no UART, no Sticky pins. Linux uses `bluer` (Connect, not Pair) |
-| `host/remote-debug-broker/` | Length-prefixed JSON over a Unix socket (`publish = true`). Owns one GATT `Session`. `serve_with` + `SpawnSpec` (exe + argv). No clap, no UART, no Seeed crate |
+| `host/remote-debug-broker/` | ConnectRPC owner (`publish = true`). Holds 0..N GATT `Session`s keyed by advertise name. Loopback HTTP + `remote-debug.connect` endpoint file. `serve_with` + `SpawnSpec` (exe + argv). No clap, no UART, no Seeed crate |
+| `protos/` | Shared IDL (`sticky.remote.shared.v1`, GATT `Envelope`, ConnectRPC control). `buf lint` STANDARD+COMMENTS. Generated trees are committed; `REGEN_PROTO=1` rewrites |
 | `xtask/` | Clap front-end at the repo root (`cargo xtask`). Maps flags to `sticky-host`; `repo_root()` is the parent of this package. `remote-debug --mcp` is a clap-mcp subtree, not the full CLI |
 | `developer-data/` | Gitignored private / personalized files. Sealed dumps under `developer-data/backups/` (`original/<serial>/`, `captures/<unit-id>/<slug>/`). Learn-uart YAML under `uart-inspection-records/<serial>/`. Confirm reports under `confirm-records/<serial>/`. Remote-debug allowlist and snapshot planes under `remote-debug/`. Private scratch notes stay here too. Not in git. Leftover repo-root `backups/` is also ignored; do not use it |
 | `firmware/*` | Workspace members, not default-members. ELFs in workspace `target/`. [Firmware examples as tutorial code](../../../../firmware/AGENTS.md#firmware-examples-as-tutorial-code) |
@@ -26,7 +27,7 @@ tagged-touch companions (`ExpectedFrame`, `TouchSource`; not methods on
 (`sticky.remote.v1.Envelope`, u32 LE length, one frozen snapshot
 slot) plus documented GATT UUIDs and ATT reassembly; it does not own
 planes. `remote-debug-host` is the generic Linux central.
-`remote-debug-broker` is the Unix-socket process model. Board specifics —
+`remote-debug-broker` is the ConnectRPC owner process. Board specifics —
 pins, latch, rails, transforms, and typed spaces
 (`DigitizerSample`, `FramebufferPoint`, `GlassPoint`,
 `PagePoint`, `HitRect`) — belong in `seeed-reterminal-sticky`
@@ -78,7 +79,8 @@ pins, latch, rails, transforms, and typed spaces
   `cargo fmt --check` (the default host trio). `cargo xtask ci` is the
   full gate: that trio, host `--all-features` and
   `ssd1677-gray4 --no-default-features`, firmware `cargo +esp` clippy,
-  `rumdl check`, `cargo machete`, and `cargo audit`. Do not advertise
+  `rumdl check`, `buf lint` (cwd `protos/`), `cargo machete`, and
+  `cargo audit`. Do not advertise
   `cargo test --workspace` (that pulls Xtensa firmware members).
   rust-analyzer excludes those packages via
   [rust-analyzer.toml](../../../../rust-analyzer.toml). Owned Markdown

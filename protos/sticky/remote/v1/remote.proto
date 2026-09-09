@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package sticky.remote.v1;
+
+import "sticky/remote/shared/v1/shared.proto";
+
+// Desk-debug GATT wire. One framed message is a little-endian uint32
+// size then this Envelope. SoftAP, BLE, or a later UART side-channel
+// pick the byte stream. Shared inject / snapshot types live in
+// `sticky.remote.shared.v1`.
+
+// One framed message. `version` is ENVELOPE_VERSION (1).
+message Envelope {
+  // Codec version. Writers send 1; readers reject any other value.
+  uint32 version = 1;
+  // Exactly one body. Field numbers stay stable for ATT reassembly.
+  oneof body {
+    // Host to device: synthetic tap or slide.
+    sticky.remote.shared.v1.InjectTouch inject_touch = 10;
+    // Host to device: product-key edge.
+    sticky.remote.shared.v1.InjectButton inject_button = 11;
+    // Host to device: arm the frozen LAST planes.
+    sticky.remote.shared.v1.GetSnapshot get_snapshot = 12;
+    // Device to host: one frozen compose.
+    sticky.remote.shared.v1.Snapshot snapshot = 13;
+    // Host to device: release the armed nonce.
+    sticky.remote.shared.v1.SnapshotAck snapshot_ack = 14;
+    // Host to device: operator abort (no nonce).
+    sticky.remote.shared.v1.SnapshotClear snapshot_clear = 15;
+    // Device to host: slot already armed or LAST never published.
+    sticky.remote.shared.v1.SnapshotBusy snapshot_busy = 16;
+    // Device to host: copy of one UART format_event line.
+    sticky.remote.shared.v1.LogLine log_line = 17;
+    // Host to device: software-reset the embedded MCU, not the host.
+    // After this the GATT session is dead. RAM SMP bonds do not survive.
+    // Implementing firmware SHOULD re-advertise after that reset so a
+    // central can Connect and pair again. Do not persist keys to factory
+    // NVS. Hosts must not assume a remembered LTK still works.
+    sticky.remote.shared.v1.Reboot reboot = 18;
+    // Device to host: ACK before the MCU software-reset so ATT can flush.
+    sticky.remote.shared.v1.RebootAck reboot_ack = 19;
+  }
+}

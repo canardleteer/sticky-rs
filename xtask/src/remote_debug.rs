@@ -1,4 +1,4 @@
-//! `cargo xtask remote-debug` — CLI and MCP clients of the Unix-socket broker.
+//! `cargo xtask remote-debug` — CLI and MCP clients of the ConnectRPC owner.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -9,11 +9,10 @@ use clap_mcp::{
     parse_or_serve_mcp_with_state, AsStructured, ClapMcp, ClapMcpConfigProvider, ClapMcpRunOptions,
 };
 use remote_debug_host::DEFAULT_ADV_NAME;
-use serde::Serialize;
+use serde_json::Value;
 use sticky_host::{
-    broker_runtime_dir, ensure_broker, refuse_if_legacy_backups_at_repo_root, resolve_broker_exe,
-    rpc, serve_live, write_snapshot_planes, BrokerPhase, BrokerReply, BrokerRequest, ConnectReq,
-    Error, Layout, RebootReq,
+    broker_runtime_dir, control, ensure_broker, refuse_if_legacy_backups_at_repo_root,
+    resolve_broker_exe, serve_live, shared, write_snapshot_planes, ControlClient, Error, Layout,
 };
 
 use crate::cli::repo_root;
@@ -21,16 +20,17 @@ use crate::cli::repo_root;
 /// Live BLE remote-debug. Pair then hold. Encrypted GATT. Never a MAC.
 pub const ABOUT: &str = "\
 Live BLE remote-debug (encrypted GATT after DisplayOnly pair). Advertise \
-name `sticky-rs`. BlueZ Connect, not Pair(). A Unix-socket broker owns the \
-GATT session (assembler, last nonce, remember-me). `connect` starts a \
-detached broker if needed and returns `pairing`; poll `status` until \
-`connected` or `pair failed`. Later leaves are RPC. \
-`serve` is an optional foreground log. `disconnect` (or serve Ctrl-C) \
-is the only GATT close. Default `connect` scrapes a new UART `pair pin=` when a Sticky \
-CH343 is present (UART lock only for that scrape; fails if `monitor` \
-holds it). `--pin` skips UART. `--remember` allowlists this unit \
-(factory / USB serial in gitignored developer-data/remote-debug/; never \
-a MAC, never the PIN).
+name `sticky-rs`. BlueZ Connect, not Pair(). A ConnectRPC owner holds \
+0..N GATT sessions (assembler, last nonce, remember-me) keyed by \
+advertise name, never a MAC. `connect` starts a detached owner if needed \
+and returns `pairing`; poll `status` until `connected` or `pair failed`. \
+Later leaves are RPC. `serve` is an optional foreground log. \
+`disconnect` drops one session; `Shutdown` (empty map / sit over, or \
+serve Ctrl-C) ends the owner. Default `connect` scrapes a new UART \
+`pair pin=` when a Sticky CH343 is present (UART lock only for that \
+scrape; fails if `monitor` holds it). `--pin` skips UART. `--remember` \
+allowlists this unit (factory / USB serial in gitignored \
+developer-data/remote-debug/; never a MAC, never the PIN).
 
 `reboot` software-resets the embedded MCU (not this host) and re-pairs \
 unless `--no-reconnect`. After reset, UART may reprint `pair pin=` every \
@@ -78,13 +78,13 @@ pub struct RemoteDebugCli {
     pub command: RemoteDebugCommand,
 }
 
-/// Advertise name + hidden socket dir (same broker for every leaf).
+/// Advertise name + hidden owner dir (same owner for every leaf).
 #[derive(Debug, Clone, Args)]
 pub struct BrokerTarget {
-    /// Advertise name (socket key; default `sticky-rs`). Never a MAC.
+    /// Advertise name (`target`; default `sticky-rs`). Never a MAC.
     #[arg(long, default_value = DEFAULT_ADV_NAME)]
     pub name: String,
-    /// Runtime dir for the broker socket (tests).
+    /// Runtime dir for the owner endpoint (tests).
     #[arg(long, hide = true)]
     pub socket_dir: Option<PathBuf>,
 }
@@ -94,13 +94,13 @@ pub struct BrokerTarget {
 #[clap_mcp(reinvocation_safe, parallel_safe = false)]
 #[clap_mcp_output_from_with_state = "run"]
 #[clap_mcp_state_type = "Mutex<RemoteDebugState>"]
-#[clap_mcp_output_type = "RemoteDebugOutput"]
+#[clap_mcp_output_type = "serde_json::Value"]
 pub enum RemoteDebugCommand {
     /// Foreground broker (desk log). Ctrl-C disconnects
     Serve(ServeArgs),
     /// Start pair (returns `pairing`; poll `status` until `connected`)
     #[command(long_about = "\
-Start the Unix-socket broker if needed and begin BlueZ Connect (not Pair()). \
+Start the ConnectRPC owner if needed and begin BlueZ Connect (not Pair()). \
 Returns pairing immediately. Poll status until connected or pair failed. \
 UART auto-PIN unless --pin. Stay on splash. No --remember unless asked. \
 Never a MAC. After a fresh flash, retry on le-connection-abort-by-local \
@@ -137,6 +137,9 @@ arm is SnapshotBusy; snapshot-clear then retry. Ack when done.")]
     /// `pairing` / `connected` / `disconnected` / `pair failed`
     #[clap_mcp(read_only, idempotent)]
     Status(BrokerTarget),
+    /// Advertise names the owner currently tracks
+    #[clap_mcp(read_only, idempotent)]
+    ListTargets(ListTargetsArgs),
     /// Software-reset the embedded MCU (not this host)
     #[command(long_about = "\
 Software-reset the embedded MCU, not this host. GATT dies. Leftover BlueZ \
@@ -151,10 +154,15 @@ LTK must not be reused. Re-pairs unless --no-reconnect. Stay on splash.")]
 /// `serve` flags.
 #[derive(Debug, Clone, Args)]
 pub struct ServeArgs {
-    /// Advertise name (socket key; default `sticky-rs`). Never a MAC.
-    #[arg(long, default_value = DEFAULT_ADV_NAME)]
-    pub name: String,
-    /// Runtime dir for the broker socket (tests).
+    /// Runtime dir for the owner endpoint (tests).
+    #[arg(long, hide = true)]
+    pub socket_dir: Option<PathBuf>,
+}
+
+/// `list-targets` flags.
+#[derive(Debug, Clone, Args)]
+pub struct ListTargetsArgs {
+    /// Runtime dir for the owner endpoint (tests).
     #[arg(long, hide = true)]
     pub socket_dir: Option<PathBuf>,
 }
@@ -174,7 +182,7 @@ pub struct ConnectArgs {
     /// Keep the BlueZ bond; write this unit into gitignored allowlist.
     #[arg(long)]
     pub remember: bool,
-    /// Runtime dir for the broker socket (tests).
+    /// Runtime dir for the owner endpoint (tests).
     #[arg(long, hide = true)]
     pub socket_dir: Option<PathBuf>,
 }
@@ -200,7 +208,7 @@ pub struct InjectTouchArgs {
     /// Advertise name (default `sticky-rs`).
     #[arg(long, default_value = DEFAULT_ADV_NAME)]
     pub name: String,
-    /// Runtime dir for the broker socket (tests).
+    /// Runtime dir for the owner endpoint (tests).
     #[arg(long, hide = true)]
     pub socket_dir: Option<PathBuf>,
 }
@@ -217,7 +225,7 @@ pub struct InjectButtonArgs {
     /// Advertise name (default `sticky-rs`).
     #[arg(long, default_value = DEFAULT_ADV_NAME)]
     pub name: String,
-    /// Runtime dir for the broker socket (tests).
+    /// Runtime dir for the owner endpoint (tests).
     #[arg(long, hide = true)]
     pub socket_dir: Option<PathBuf>,
 }
@@ -231,7 +239,7 @@ pub struct GetSnapshotArgs {
     /// Advertise name (default `sticky-rs`).
     #[arg(long, default_value = DEFAULT_ADV_NAME)]
     pub name: String,
-    /// Runtime dir for the broker socket (tests).
+    /// Runtime dir for the owner endpoint (tests).
     #[arg(long, hide = true)]
     pub socket_dir: Option<PathBuf>,
 }
@@ -245,7 +253,7 @@ pub struct SnapshotAckArgs {
     /// Advertise name (default `sticky-rs`).
     #[arg(long, default_value = DEFAULT_ADV_NAME)]
     pub name: String,
-    /// Runtime dir for the broker socket (tests).
+    /// Runtime dir for the owner endpoint (tests).
     #[arg(long, hide = true)]
     pub socket_dir: Option<PathBuf>,
 }
@@ -268,7 +276,7 @@ pub struct RebootArgs {
     /// Keep the BlueZ bond after the new pair; write this unit into allowlist.
     #[arg(long)]
     pub remember: bool,
-    /// Runtime dir for the broker socket (tests).
+    /// Runtime dir for the owner endpoint (tests).
     #[arg(long, hide = true)]
     pub socket_dir: Option<PathBuf>,
 }
@@ -286,50 +294,17 @@ impl RemoteDebugState {
     }
 }
 
-/// Structured tool output (CLI prints `message`).
-#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
-pub struct RemoteDebugOutput {
-    /// Command succeeded.
-    pub ok: bool,
-    /// Human line (no MAC).
-    pub message: String,
-    /// Last snapshot nonce, if any.
-    pub nonce: Option<u64>,
-    /// Whether the broker holds GATT.
-    pub connected: bool,
-    /// `disconnected` / `pairing` / `connected`.
-    pub phase: String,
-    /// Last Target / Scene UART copy (never a MAC).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub last_log: Option<String>,
-    /// `Scene::persist_byte` from the last get.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub scene: Option<u32>,
-    /// Targets walk id from the last get.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub target_step: Option<u32>,
-    /// Expected page X from the last get.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub target_expect_x: Option<u32>,
-    /// Expected page Y from the last get.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub target_expect_y: Option<u32>,
-    /// Product hold token from the last get (0..=3).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub hold: Option<u32>,
-}
-
 /// CLI dispatch when `Cli` parsed `remote-debug` (no `--mcp`).
 pub fn run_cli(cli: RemoteDebugCli) -> Result<(), Error> {
     match cli.command {
         RemoteDebugCommand::Serve(args) => {
             let layout = Layout::from_repo_root(repo_root());
-            serve_live(&layout, &args.name, args.socket_dir.as_deref())
+            serve_live(&layout, args.socket_dir.as_deref())
         }
         command => {
             let state = Mutex::new(RemoteDebugState::new());
             let out = run(command, &state).map_err(Error::RemoteDebug)?;
-            println!("{}", out.0.message);
+            println!("{}", message_of(&out.0));
             Ok(())
         }
     }
@@ -355,7 +330,7 @@ pub fn exec() -> ExitCode {
             command: Some(RemoteDebugCommand::Serve(args)),
         } => {
             let layout = Layout::from_repo_root(repo);
-            match serve_live(&layout, &args.name, args.socket_dir.as_deref()) {
+            match serve_live(&layout, args.socket_dir.as_deref()) {
                 Ok(()) => {
                     println!("disconnected");
                     ExitCode::SUCCESS
@@ -370,7 +345,7 @@ pub fn exec() -> ExitCode {
             command: Some(command),
         } => match run(command, state.as_ref()) {
             Ok(out) => {
-                println!("{}", out.0.message);
+                println!("{}", message_of(&out.0));
                 ExitCode::SUCCESS
             }
             Err(error) => {
@@ -389,7 +364,7 @@ pub fn exec() -> ExitCode {
 fn run_gate(
     cmd: RemoteDebugGate,
     state: &Mutex<RemoteDebugState>,
-) -> Result<AsStructured<RemoteDebugOutput>, String> {
+) -> Result<AsStructured<Value>, String> {
     run(cmd.into_leaf()?, state)
 }
 
@@ -410,173 +385,246 @@ impl RemoteDebugGate {
 pub fn run(
     cmd: RemoteDebugCommand,
     state: &Mutex<RemoteDebugState>,
-) -> Result<AsStructured<RemoteDebugOutput>, String> {
+) -> Result<AsStructured<Value>, String> {
     if matches!(cmd, RemoteDebugCommand::Serve(_)) {
-        return Err("use a terminal; connect auto-starts the broker".into());
+        return Err("use a terminal; connect auto-starts the owner".into());
     }
     let guard = state.lock().map_err(|_| "session lock".to_string())?;
-    let (dir_owned, name, request, start_broker) = request_from_command(cmd);
     let default_dir = broker_runtime_dir();
+    let dir_owned = socket_dir_of(&cmd);
     let dir = dir_owned.as_deref().unwrap_or(&default_dir);
-    if start_broker {
+    if matches!(cmd, RemoteDebugCommand::Connect(_)) {
         let current = std::env::current_exe().map_err(|error| error.to_string())?;
         let exe = resolve_broker_exe(&repo_root(), &current);
-        ensure_broker(dir, &name, &exe).map_err(map_host)?;
+        ensure_broker(dir, &exe).map_err(map_host)?;
     }
-    let reply = rpc(dir, &name, &request).map_err(map_host)?;
-    if let Some(snap) = &reply.snapshot {
-        let path = write_snapshot_planes(
-            &guard.layout,
-            snap.nonce,
-            &snap.bw,
-            snap.red.as_deref(),
-            snap.hold,
-        )
-        .map_err(map_host)?;
-        let message = decorate_message(
-            format!("{} wrote {}", reply.message, path.display()),
-            &reply,
-        );
-        if !reply.ok {
-            return Err(message);
-        }
-        return Ok(AsStructured(tool_output(true, message, &reply)));
-    }
-    if !reply.ok {
-        return Err(reply.message);
-    }
-    Ok(AsStructured(tool_output(
-        true,
-        decorate_message(reply.message.clone(), &reply),
-        &reply,
-    )))
-}
-
-/// Put scene / expect / `last_log` on the printed line (CLI has no JSON).
-fn decorate_message(message: String, reply: &BrokerReply) -> String {
-    let mut out = message;
-    if let Some(snap) = &reply.snapshot {
-        if let Some(scene) = snap.scene {
-            out.push_str(&format!(" scene={scene}"));
-        }
-        if let Some(hold) = snap.hold {
-            out.push_str(&format!(" hold={hold}"));
-        }
-        if let Some(step) = snap.target_step {
-            out.push_str(&format!(" step={step}"));
-        }
-        if let (Some(x), Some(y)) = (snap.target_expect_x, snap.target_expect_y) {
-            out.push_str(&format!(" expect={x},{y}"));
-        }
-    }
-    if let Some(log) = &reply.last_log {
-        out.push_str(" last_log=");
-        out.push_str(log);
-    }
-    out
-}
-
-fn tool_output(ok: bool, message: String, reply: &BrokerReply) -> RemoteDebugOutput {
-    let snap = reply.snapshot.as_ref();
-    RemoteDebugOutput {
-        ok,
-        message,
-        nonce: reply.nonce,
-        connected: reply.connected,
-        phase: phase_name(reply.phase),
-        last_log: reply.last_log.clone(),
-        scene: snap.and_then(|s| s.scene),
-        hold: snap.and_then(|s| s.hold),
-        target_step: snap.and_then(|s| s.target_step),
-        target_expect_x: snap.and_then(|s| s.target_expect_x),
-        target_expect_y: snap.and_then(|s| s.target_expect_y),
-    }
-}
-
-fn phase_name(phase: BrokerPhase) -> String {
-    match phase {
-        BrokerPhase::Disconnected => "disconnected",
-        BrokerPhase::Pairing => "pairing",
-        BrokerPhase::Connected => "connected",
-    }
-    .into()
-}
-
-fn request_from_command(cmd: RemoteDebugCommand) -> (Option<PathBuf>, String, BrokerRequest, bool) {
+    let client = ControlClient::open(dir).map_err(map_broker)?;
     match cmd {
         RemoteDebugCommand::Serve(_) => unreachable!("serve is not RPC"),
-        RemoteDebugCommand::Connect(args) => (
-            args.socket_dir.clone(),
-            args.name.clone(),
-            BrokerRequest::Connect(ConnectReq {
-                pin: args.pin,
-                port: args.port,
-                name: args.name,
-                remember: args.remember,
-            }),
-            true,
-        ),
-        RemoteDebugCommand::InjectTouch(args) => (
-            args.socket_dir,
-            args.name,
-            BrokerRequest::InjectTouch {
-                x: args.x,
-                y: args.y,
-                slot: args.slot,
-                phase: args.phase,
-                page: args.page,
-            },
-            false,
-        ),
-        RemoteDebugCommand::InjectButton(args) => (
-            args.socket_dir,
-            args.name,
-            BrokerRequest::InjectButton {
-                key: args.key,
-                down: args.down,
-            },
-            false,
-        ),
-        RemoteDebugCommand::GetSnapshot(args) => (
-            args.socket_dir,
-            args.name,
-            BrokerRequest::GetSnapshot { nonce: args.nonce },
-            false,
-        ),
-        RemoteDebugCommand::SnapshotAck(args) => (
-            args.socket_dir,
-            args.name,
-            BrokerRequest::SnapshotAck { nonce: args.nonce },
-            false,
-        ),
-        RemoteDebugCommand::SnapshotClear(target) => (
-            target.socket_dir,
-            target.name,
-            BrokerRequest::SnapshotClear,
-            false,
-        ),
-        RemoteDebugCommand::Status(target) => {
-            (target.socket_dir, target.name, BrokerRequest::Status, false)
+        RemoteDebugCommand::Connect(args) => value(client.connect(args.into())),
+        RemoteDebugCommand::Status(target) => value(client.status(target.into())),
+        RemoteDebugCommand::ListTargets(_) => {
+            value(client.list_targets(control::ListTargetsRequest::default()))
         }
-        RemoteDebugCommand::Reboot(args) => (
-            args.socket_dir.clone(),
-            args.name.clone(),
-            BrokerRequest::Reboot(RebootReq {
-                no_reconnect: args.no_reconnect,
-                pin: args.pin,
-                port: args.port,
-                name: args.name,
-                remember: args.remember,
-            }),
-            false,
-        ),
-        RemoteDebugCommand::Disconnect(target) => (
-            target.socket_dir,
-            target.name,
-            BrokerRequest::Disconnect,
-            false,
-        ),
+        RemoteDebugCommand::InjectTouch(args) => {
+            value(client.inject_touch(inject_touch_request(args)?))
+        }
+        RemoteDebugCommand::InjectButton(args) => {
+            value(client.inject_button(inject_button_request(args)?))
+        }
+        RemoteDebugCommand::GetSnapshot(args) => {
+            let mut resp = client.get_snapshot(args.into()).map_err(map_broker)?;
+            if resp.snapshot.is_set() {
+                let snap = &*resp.snapshot;
+                let red = if snap.red.is_empty() {
+                    None
+                } else {
+                    Some(snap.red.as_slice())
+                };
+                let path =
+                    write_snapshot_planes(&guard.layout, snap.nonce, &snap.bw, red, snap.hold)
+                        .map_err(map_host)?;
+                resp.message = decorate_snapshot(
+                    format!("{} wrote {}", resp.message, path.display()),
+                    snap,
+                    resp.last_log.as_deref(),
+                );
+            }
+            json_value(resp)
+        }
+        RemoteDebugCommand::SnapshotAck(args) => value(client.snapshot_ack(args.into())),
+        RemoteDebugCommand::SnapshotClear(target) => value(client.snapshot_clear(target.into())),
+        RemoteDebugCommand::Reboot(args) => value(client.reboot(args.into())),
+        RemoteDebugCommand::Disconnect(target) => {
+            let resp = client.disconnect(target.into()).map_err(map_broker)?;
+            if resp.remaining == 0 {
+                let _ = client.shutdown(control::ShutdownRequest::default());
+            }
+            json_value(resp)
+        }
     }
+}
+
+fn socket_dir_of(cmd: &RemoteDebugCommand) -> Option<PathBuf> {
+    match cmd {
+        RemoteDebugCommand::Serve(args) => args.socket_dir.clone(),
+        RemoteDebugCommand::Connect(args) => args.socket_dir.clone(),
+        RemoteDebugCommand::InjectTouch(args) => args.socket_dir.clone(),
+        RemoteDebugCommand::InjectButton(args) => args.socket_dir.clone(),
+        RemoteDebugCommand::GetSnapshot(args) => args.socket_dir.clone(),
+        RemoteDebugCommand::SnapshotAck(args) => args.socket_dir.clone(),
+        RemoteDebugCommand::SnapshotClear(target) => target.socket_dir.clone(),
+        RemoteDebugCommand::Status(target) => target.socket_dir.clone(),
+        RemoteDebugCommand::ListTargets(args) => args.socket_dir.clone(),
+        RemoteDebugCommand::Reboot(args) => args.socket_dir.clone(),
+        RemoteDebugCommand::Disconnect(target) => target.socket_dir.clone(),
+    }
+}
+
+impl From<ConnectArgs> for control::ConnectRequest {
+    fn from(args: ConnectArgs) -> Self {
+        Self {
+            target: args.name,
+            pin: args.pin,
+            port: args.port,
+            remember: args.remember,
+            ..Self::default()
+        }
+    }
+}
+
+impl From<BrokerTarget> for control::StatusRequest {
+    fn from(target: BrokerTarget) -> Self {
+        Self {
+            target: target.name,
+            ..Self::default()
+        }
+    }
+}
+
+impl From<BrokerTarget> for control::SnapshotClearRequest {
+    fn from(target: BrokerTarget) -> Self {
+        Self {
+            target: target.name,
+            ..Self::default()
+        }
+    }
+}
+
+impl From<BrokerTarget> for control::DisconnectRequest {
+    fn from(target: BrokerTarget) -> Self {
+        Self {
+            target: target.name,
+            ..Self::default()
+        }
+    }
+}
+
+impl From<GetSnapshotArgs> for control::GetSnapshotRequest {
+    fn from(args: GetSnapshotArgs) -> Self {
+        Self {
+            target: args.name,
+            nonce: args.nonce,
+            ..Self::default()
+        }
+    }
+}
+
+impl From<SnapshotAckArgs> for control::SnapshotAckRequest {
+    fn from(args: SnapshotAckArgs) -> Self {
+        Self {
+            target: args.name,
+            nonce: args.nonce,
+            ..Self::default()
+        }
+    }
+}
+
+impl From<RebootArgs> for control::RebootRequest {
+    fn from(args: RebootArgs) -> Self {
+        Self {
+            target: args.name,
+            no_reconnect: args.no_reconnect,
+            pin: args.pin,
+            port: args.port,
+            remember: args.remember,
+            ..Self::default()
+        }
+    }
+}
+
+fn inject_touch_request(args: InjectTouchArgs) -> Result<control::InjectTouchRequest, String> {
+    let phase = match args.phase.as_deref() {
+        None | Some("down") => shared::TouchPhase::TOUCH_PHASE_DOWN,
+        Some("move") => shared::TouchPhase::TOUCH_PHASE_MOVE,
+        Some("up") => shared::TouchPhase::TOUCH_PHASE_UP,
+        Some(_) => return Err("phase must be down, move, or up".into()),
+    };
+    let space = if args.page {
+        shared::TouchSpace::TOUCH_SPACE_PAGE
+    } else {
+        shared::TouchSpace::TOUCH_SPACE_FRAMEBUFFER
+    };
+    Ok(control::InjectTouchRequest {
+        target: args.name,
+        inject: shared::InjectTouch {
+            x: u32::from(args.x),
+            y: u32::from(args.y),
+            slot: args.slot.map(u32::from),
+            phase: phase.into(),
+            space: space.into(),
+            ..shared::InjectTouch::default()
+        }
+        .into(),
+        ..control::InjectTouchRequest::default()
+    })
+}
+
+fn inject_button_request(args: InjectButtonArgs) -> Result<control::InjectButtonRequest, String> {
+    let key = match args.key.to_ascii_lowercase().as_str() {
+        "ok" | "4" => shared::ProductKey::PRODUCT_KEY_OK,
+        "page-up" | "pageup" | "5" => shared::ProductKey::PRODUCT_KEY_PAGE_UP,
+        "page-down" | "pagedown" | "6" => shared::ProductKey::PRODUCT_KEY_PAGE_DOWN,
+        _ => return Err("key must be ok, page-up, or page-down".into()),
+    };
+    Ok(control::InjectButtonRequest {
+        target: args.name,
+        inject: shared::InjectButton {
+            key: key.into(),
+            down: args.down,
+            ..shared::InjectButton::default()
+        }
+        .into(),
+        ..control::InjectButtonRequest::default()
+    })
+}
+
+fn decorate_snapshot(
+    mut message: String,
+    snap: &shared::Snapshot,
+    last_log: Option<&str>,
+) -> String {
+    if let Some(scene) = snap.scene {
+        message.push_str(&format!(" scene={scene}"));
+    }
+    if let Some(hold) = snap.hold {
+        message.push_str(&format!(" hold={hold}"));
+    }
+    if let Some(step) = snap.target_step {
+        message.push_str(&format!(" step={step}"));
+    }
+    if let (Some(x), Some(y)) = (snap.target_expect_x, snap.target_expect_y) {
+        message.push_str(&format!(" expect={x},{y}"));
+    }
+    if let Some(log) = last_log {
+        message.push_str(" last_log=");
+        message.push_str(log);
+    }
+    message
+}
+
+fn value<T: serde::Serialize>(
+    result: Result<T, remote_debug_broker::Error>,
+) -> Result<AsStructured<Value>, String> {
+    json_value(result.map_err(map_broker)?)
+}
+
+fn json_value<T: serde::Serialize>(body: T) -> Result<AsStructured<Value>, String> {
+    serde_json::to_value(body)
+        .map(AsStructured)
+        .map_err(|error| error.to_string())
+}
+
+fn message_of(value: &Value) -> String {
+    value
+        .get("message")
+        .and_then(Value::as_str)
+        .unwrap_or("ok")
+        .to_string()
+}
+
+fn map_broker(error: remote_debug_broker::Error) -> String {
+    map_host(Error::from(error))
 }
 
 fn map_host(error: Error) -> String {
@@ -632,6 +680,12 @@ mod tests {
             leaves.iter().any(|n| n.contains("reboot")),
             "leaves={leaves:?}"
         );
+        assert!(
+            leaves
+                .iter()
+                .any(|n| n.contains("list-targets") || n.contains("list_targets")),
+            "leaves={leaves:?}"
+        );
     }
 
     #[test]
@@ -651,23 +705,31 @@ mod tests {
     }
 
     #[test]
-    fn remote_debug_serve_parses_name() {
-        let cli = RemoteDebugMcpRoot::try_parse_from([
-            "xtask",
-            "remote-debug",
-            "serve",
-            "--name",
-            "sticky-rs",
-        ])
-        .expect("parse");
+    fn remote_debug_serve_parses_without_name() {
+        let cli =
+            RemoteDebugMcpRoot::try_parse_from(["xtask", "remote-debug", "serve"]).expect("parse");
         match cli.command {
             RemoteDebugGate::RemoteDebug { command } => match command {
                 Some(RemoteDebugCommand::Serve(args)) => {
-                    assert_eq!(args.name, "sticky-rs");
+                    assert!(args.socket_dir.is_none());
                 }
                 other => panic!("{other:?}"),
             },
         }
+    }
+
+    #[test]
+    fn connect_args_map_to_control_request() {
+        let req = control::ConnectRequest::from(ConnectArgs {
+            pin: Some(123456),
+            port: Some("/dev/ttyUSB0".into()),
+            name: "sticky-rs".into(),
+            remember: true,
+            socket_dir: None,
+        });
+        assert_eq!(req.target, "sticky-rs");
+        assert_eq!(req.pin, Some(123456));
+        assert!(req.remember);
     }
 
     #[test]

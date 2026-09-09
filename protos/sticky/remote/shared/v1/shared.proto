@@ -1,124 +1,142 @@
 syntax = "proto3";
 
-package sticky.remote.v1;
+package sticky.remote.shared.v1;
 
-// Desk-debug wire for last-compose snapshot and faux physical inject.
-// Transport is not specified: length-delimited Envelope only
-// (uint32 little-endian size, then this message).
+// Shared desk-debug messages for last-compose snapshot and faux
+// physical inject. GATT `Envelope` and the host ConnectRPC service
+// both import this package. Transport is not specified here.
 
 // Who produced a tap. Injects must be SYNTHETIC.
 enum TouchSource {
+  // Protobuf zero value. Rejected by inject mapping.
   TOUCH_SOURCE_UNSPECIFIED = 0;
+  // Glass / GT911 sample. Host injects must not send this.
   TOUCH_SOURCE_PHYSICAL = 1;
+  // Host-synthesized tap or slide. Required for inject-touch.
   TOUCH_SOURCE_SYNTHETIC = 2;
 }
 
 // Right-edge keys. Firmware maps these to GPIO; the schema stays
 // product names, not pad numbers.
 enum ProductKey {
+  // Protobuf zero value. Rejected by inject mapping.
   PRODUCT_KEY_UNSPECIFIED = 0;
+  // Sticky AI Voice / OK (GPIO4).
   PRODUCT_KEY_OK = 1;
+  // Sticky Page Up (GPIO5).
   PRODUCT_KEY_PAGE_UP = 2;
+  // Sticky Page Down (GPIO6).
   PRODUCT_KEY_PAGE_DOWN = 3;
 }
 
 // How many 1-bit planes the frozen compose used.
 enum FrameKind {
+  // Protobuf zero value. Rejected by snapshot mapping.
   FRAME_KIND_UNSPECIFIED = 0;
+  // Black/white only. `red` must be empty.
   FRAME_KIND_MONO = 1;
+  // Four-gray dual plane. `red` holds the second packed plane.
   FRAME_KIND_GRAY4 = 2;
 }
 
 // Finger phase. Unset is a tap (DOWN). MOVE does not re-edge dots.
 enum TouchPhase {
+  // Protobuf zero value. Treated as a tap (DOWN) by inject mapping.
   TOUCH_PHASE_UNSPECIFIED = 0;
+  // Finger down or a one-shot tap when MOVE/UP never follow.
   TOUCH_PHASE_DOWN = 1;
+  // Slide midpoint. Does not re-edge a targets dot.
   TOUCH_PHASE_MOVE = 2;
+  // Finger up. Ends a slide stroke.
   TOUCH_PHASE_UP = 3;
 }
 
 // Coordinate space of InjectTouch x/y. Unset is framebuffer.
 enum TouchSpace {
+  // Protobuf zero value. Treated as framebuffer by inject mapping.
   TOUCH_SPACE_UNSPECIFIED = 0;
+  // Pre-rotation native 800x480 on the Sticky.
   TOUCH_SPACE_FRAMEBUFFER = 1;
+  // Page pixels for the last compose hold (gray4 hit-test inverse).
   TOUCH_SPACE_PAGE = 2;
 }
 
 // Targets walk mark. Unset when the card is not targets.
 enum TargetKind {
+  // Protobuf zero value. Card is not targets, or kind is unknown.
   TARGET_KIND_UNSPECIFIED = 0;
+  // Single tap mark.
   TARGET_KIND_DOT = 1;
+  // Horizontal slide.
   TARGET_KIND_SLIDE_X = 2;
+  // Vertical slide.
   TARGET_KIND_SLIDE_Y = 3;
 }
 
-// One framed message. `version` is ENVELOPE_VERSION (1).
-message Envelope {
-  uint32 version = 1;
-  oneof body {
-    InjectTouch inject_touch = 10;
-    InjectButton inject_button = 11;
-    GetSnapshot get_snapshot = 12;
-    Snapshot snapshot = 13;
-    SnapshotAck snapshot_ack = 14;
-    SnapshotClear snapshot_clear = 15;
-    SnapshotBusy snapshot_busy = 16;
-    LogLine log_line = 17;
-    // MCU software reset of the **embedded device**, not the host.
-    // After this the GATT session is dead. RAM SMP bonds do not survive.
-    // Implementing firmware SHOULD re-advertise after that reset so a
-    // central can Connect and pair again. Do not persist keys to factory
-    // NVS. Hosts must not assume a remembered LTK still works.
-    Reboot reboot = 18;
-    RebootAck reboot_ack = 19;
-  }
-}
-
-// Pre-rotation framebuffer tap (native 800×480 on the Sticky),
+// Pre-rotation framebuffer tap (native 800x480 on the Sticky),
 // or page pixels when space=PAGE. Not UART p0= / glass, not raw GT911.
 message InjectTouch {
+  // Horizontal coordinate in `space`.
   uint32 x = 1;
+  // Vertical coordinate in `space`.
   uint32 y = 2;
+  // Optional GT911 slot 0..=4. Unset is the default slot.
   optional uint32 slot = 3;
+  // Who produced the tap. Injects must be SYNTHETIC.
   TouchSource source = 4;
+  // Finger phase. Unset is a tap (DOWN).
   TouchPhase phase = 5;
+  // Coordinate space of x/y. Unset is framebuffer.
   TouchSpace space = 6;
 }
 
 // Short key edge. Firmware applies the same short-press walk as GPIO;
 // hold-to-standby / sleep stays on the physical pins.
 message InjectButton {
+  // Product key (ok / page-up / page-down). Unspecified is rejected.
   ProductKey key = 1;
+  // Press (`true`) or release.
   bool down = 2;
 }
 
 // Host-chosen pull id. Zero is invalid and does not arm.
 message GetSnapshot {
+  // Host nonce that arms the frozen LAST slot.
   fixed64 nonce = 1;
 }
 
 // One frozen compose. Planes are packed 1-bit, width/8 stride.
 // Encode from the armed static buffers; do not heap-clone on device.
 message Snapshot {
+  // Host nonce that armed the slot.
   fixed64 nonce = 1;
+  // Packed width in pixels.
   uint32 width = 2;
+  // Packed height in pixels.
   uint32 height = 3;
+  // Mono or gray4. Unspecified is rejected.
   FrameKind kind = 4;
   // Product hold token (Sticky PageRotation discriminant), or unset.
   optional uint32 hold = 5;
+  // Black/white packed plane.
   bytes bw = 6;
+  // Red/gray packed plane when kind is gray4. Empty on mono.
   bytes red = 7;
   // embassy-debug Scene::persist_byte (splash=0 … targets=7).
   optional uint32 scene = 8;
   // targets::STEP 0..=6 when scene is targets.
   optional uint32 target_step = 9;
+  // Dot / slide, or unspecified off the card.
   TargetKind target_kind = 10;
+  // Expected page X for the current mark.
   optional uint32 target_expect_x = 11;
+  // Expected page Y for the current mark.
   optional uint32 target_expect_y = 12;
 }
 
 // Host received Snapshot for this nonce. Mismatch does not free the slot.
 message SnapshotAck {
+  // Nonce from the Snapshot that the host accepted.
   fixed64 nonce = 1;
 }
 
@@ -128,17 +146,20 @@ message SnapshotClear {}
 // Slot already armed for a different nonce, or LAST was never published.
 // `nonce` is the armed pull (0 when nothing is armed / never published).
 message SnapshotBusy {
+  // Armed pull nonce, or 0 when nothing is armed.
   fixed64 nonce = 1;
 }
 
 // Copy of one plaintext UART format_event line (no second schema).
 message LogLine {
+  // Device milliseconds since boot when the line was formatted.
   uint32 t_ms = 1;
+  // UART text. Never a MAC.
   string text = 2;
 }
 
-// Host → device: reset the embedded MCU (not the desk host).
+// Host to device: reset the embedded MCU (not the desk host).
 message Reboot {}
 
-// Device → host: ACK before the MCU software-reset so ATT can flush.
+// Device to host: ACK before the MCU software-reset so ATT can flush.
 message RebootAck {}

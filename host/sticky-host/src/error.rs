@@ -277,7 +277,6 @@ impl From<remote_debug_broker::Error> for Error {
     fn from(error: remote_debug_broker::Error) -> Self {
         match error {
             remote_debug_broker::Error::Io(inner) => Self::Io(inner),
-            remote_debug_broker::Error::Json(inner) => Self::Json(inner),
             remote_debug_broker::Error::Message(msg) => Self::RemoteDebug(msg),
         }
     }

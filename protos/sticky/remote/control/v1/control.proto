@@ -1,0 +1,278 @@
+syntax = "proto3";
+
+package sticky.remote.control.v1;
+
+import "sticky/remote/shared/v1/shared.proto";
+
+// Host-to-owner ConnectRPC control plane. One owner process holds
+// 0..N GATT sessions keyed by BLE advertise name (`target`). Never a
+// MAC. Client hangup does not drop GATT. `Disconnect` drops one
+// session; `Shutdown` ends the owner.
+
+// Session meter for one advertise-name target.
+enum SessionPhase {
+  // Protobuf zero value. Readers treat this as disconnected.
+  SESSION_PHASE_UNSPECIFIED = 0;
+  // No GATT and no in-flight pair for this target.
+  SESSION_PHASE_DISCONNECTED = 1;
+  // Opener worker is running (BlueZ / UART / other).
+  SESSION_PHASE_PAIRING = 2;
+  // Owner holds GATT for this target.
+  SESSION_PHASE_CONNECTED = 3;
+}
+
+// Unary RPCs that own GATT. BLE is central-out; a bidi stream does
+// not fit. Each method has its own request and response types.
+service RemoteDebugControlService {
+  // Start pair on `target`. Returns pairing immediately. Poll Status.
+  rpc Connect(ConnectRequest) returns (ConnectResponse);
+  // Session meter for one advertise name.
+  rpc Status(StatusRequest) returns (StatusResponse);
+  // Every target the owner currently tracks.
+  rpc ListTargets(ListTargetsRequest) returns (ListTargetsResponse);
+  // Synthetic tap or slide on a connected target.
+  rpc InjectTouch(InjectTouchRequest) returns (InjectTouchResponse);
+  // Synthetic product-key edge on a connected target.
+  rpc InjectButton(InjectButtonRequest) returns (InjectButtonResponse);
+  // Arm LAST DRAW and return packed planes (caller writes files).
+  rpc GetSnapshot(GetSnapshotRequest) returns (GetSnapshotResponse);
+  // Release the armed snapshot nonce.
+  rpc SnapshotAck(SnapshotAckRequest) returns (SnapshotAckResponse);
+  // Operator abort (no nonce).
+  rpc SnapshotClear(SnapshotClearRequest) returns (SnapshotClearResponse);
+  // Software-reset the embedded MCU (not this host).
+  rpc Reboot(RebootRequest) returns (RebootResponse);
+  // Drop GATT for one advertise name. Owner keeps listening.
+  rpc Disconnect(DisconnectRequest) returns (DisconnectResponse);
+  // Stop the owner process after dropping every session.
+  rpc Shutdown(ShutdownRequest) returns (ShutdownResponse);
+}
+
+// Arguments for Connect. `pin` / `port` / `remember` are Sticky opener
+// hints; a foreign opener may ignore them.
+message ConnectRequest {
+  // BLE advertise name (default sticky-rs). Never a MAC.
+  string target = 1;
+  // Six-digit PIN (skip a UART or other scrape). Optional.
+  optional uint32 pin = 2;
+  // Serial device or other opener hint. Optional.
+  optional string port = 3;
+  // Keep the host BLE bond; opener / remember hook decide what that means.
+  bool remember = 4;
+}
+
+// Immediate pair start. Poll Status until connected or pair failed.
+message ConnectResponse {
+  // Human line (no MAC). Usually pairing / already connected.
+  string message = 1;
+  // Session meter after accepting the RPC.
+  SessionPhase phase = 2;
+  // Whether the owner already holds GATT for this target.
+  bool connected = 3;
+  // Last snapshot nonce, if any.
+  optional uint64 nonce = 4;
+  // Last Target / Scene LogLine (never a MAC).
+  optional string last_log = 5;
+}
+
+// Arguments for Status.
+message StatusRequest {
+  // BLE advertise name. Never a MAC.
+  string target = 1;
+}
+
+// pairing / connected / disconnected / pair failed.
+message StatusResponse {
+  // Human line (no MAC).
+  string message = 1;
+  // Session meter.
+  SessionPhase phase = 2;
+  // Whether the owner holds GATT for this target.
+  bool connected = 3;
+  // Last snapshot nonce, if any.
+  optional uint64 nonce = 4;
+  // Last Target / Scene LogLine (never a MAC).
+  optional string last_log = 5;
+}
+
+// Arguments for ListTargets. Empty; the owner lists every slot.
+message ListTargetsRequest {}
+
+// One advertise-name slot in the owner's map.
+message TargetInfo {
+  // BLE advertise name. Never a MAC.
+  string target = 1;
+  // Session meter for this name.
+  SessionPhase phase = 2;
+  // Whether the owner holds GATT for this name.
+  bool connected = 3;
+}
+
+// Every target the owner currently tracks (including pairing).
+message ListTargetsResponse {
+  // Slots keyed by advertise name.
+  repeated TargetInfo targets = 1;
+}
+
+// Arguments for InjectTouch.
+message InjectTouchRequest {
+  // BLE advertise name. Never a MAC.
+  string target = 1;
+  // Shared inject body (framebuffer or page space).
+  sticky.remote.shared.v1.InjectTouch inject = 2;
+}
+
+// Inject queued on the connected session.
+message InjectTouchResponse {
+  // Human line (no MAC).
+  string message = 1;
+  // Session meter.
+  SessionPhase phase = 2;
+  // Whether the owner holds GATT.
+  bool connected = 3;
+  // Last snapshot nonce, if any.
+  optional uint64 nonce = 4;
+  // Last Target / Scene LogLine (never a MAC).
+  optional string last_log = 5;
+}
+
+// Arguments for InjectButton.
+message InjectButtonRequest {
+  // BLE advertise name. Never a MAC.
+  string target = 1;
+  // Shared product-key body.
+  sticky.remote.shared.v1.InjectButton inject = 2;
+}
+
+// Inject queued on the connected session.
+message InjectButtonResponse {
+  // Human line (no MAC).
+  string message = 1;
+  // Session meter.
+  SessionPhase phase = 2;
+  // Whether the owner holds GATT.
+  bool connected = 3;
+  // Last snapshot nonce, if any.
+  optional uint64 nonce = 4;
+  // Last Target / Scene LogLine (never a MAC).
+  optional string last_log = 5;
+}
+
+// Arguments for GetSnapshot.
+message GetSnapshotRequest {
+  // BLE advertise name. Never a MAC.
+  string target = 1;
+  // Host nonce. Omit to use a time-based non-zero value.
+  optional uint64 nonce = 2;
+}
+
+// LAST planes on the wire (not a file path). Caller writes files.
+message GetSnapshotResponse {
+  // Human line (no MAC). Snapshot busy is a Connect error, not this body.
+  string message = 1;
+  // Session meter.
+  SessionPhase phase = 2;
+  // Whether the owner holds GATT.
+  bool connected = 3;
+  // Host nonce that armed the slot.
+  optional uint64 nonce = 4;
+  // Last Target / Scene LogLine (never a MAC).
+  optional string last_log = 5;
+  // Frozen compose when the pull succeeded.
+  optional sticky.remote.shared.v1.Snapshot snapshot = 6;
+}
+
+// Arguments for SnapshotAck.
+message SnapshotAckRequest {
+  // BLE advertise name. Never a MAC.
+  string target = 1;
+  // Nonce from the last get when omitted.
+  optional uint64 nonce = 2;
+}
+
+// Slot released (or mismatch sent; device does not free on miss).
+message SnapshotAckResponse {
+  // Human line (no MAC).
+  string message = 1;
+  // Session meter.
+  SessionPhase phase = 2;
+  // Whether the owner holds GATT.
+  bool connected = 3;
+  // Acked nonce.
+  optional uint64 nonce = 4;
+  // Last Target / Scene LogLine (never a MAC).
+  optional string last_log = 5;
+}
+
+// Arguments for SnapshotClear.
+message SnapshotClearRequest {
+  // BLE advertise name. Never a MAC.
+  string target = 1;
+}
+
+// Operator abort completed.
+message SnapshotClearResponse {
+  // Human line (no MAC).
+  string message = 1;
+  // Session meter.
+  SessionPhase phase = 2;
+  // Whether the owner holds GATT.
+  bool connected = 3;
+  // Last snapshot nonce, if any.
+  optional uint64 nonce = 4;
+  // Last Target / Scene LogLine (never a MAC).
+  optional string last_log = 5;
+}
+
+// Arguments for Reboot. Optional pin / port / remember apply to reconnect.
+message RebootRequest {
+  // BLE advertise name. Never a MAC.
+  string target = 1;
+  // Do not Connect again after the MCU reset.
+  bool no_reconnect = 2;
+  // Six-digit PIN for reconnect (skip scrape).
+  optional uint32 pin = 3;
+  // Serial device for reconnect scrape. Optional.
+  optional string port = 4;
+  // Keep the host BLE bond after the new pair.
+  bool remember = 5;
+}
+
+// Device reboot sent. Phase is pairing when reconnect starts.
+message RebootResponse {
+  // Human line (no MAC). Names the embedded MCU, not this host.
+  string message = 1;
+  // Session meter after the reset (pairing or disconnected).
+  SessionPhase phase = 2;
+  // Always false; GATT died with the MCU reset.
+  bool connected = 3;
+  // Last Target / Scene LogLine (never a MAC).
+  optional string last_log = 4;
+}
+
+// Arguments for Disconnect. Drops one GATT session only.
+message DisconnectRequest {
+  // BLE advertise name. Never a MAC.
+  string target = 1;
+}
+
+// GATT dropped for `target`. Owner is still listening.
+message DisconnectResponse {
+  // Human line (no MAC).
+  string message = 1;
+  // Always disconnected for this target.
+  SessionPhase phase = 2;
+  // Always false.
+  bool connected = 3;
+  // How many other targets the owner still tracks.
+  uint32 remaining = 4;
+}
+
+// Arguments for Shutdown. Empty; ends the owner process.
+message ShutdownRequest {}
+
+// Owner is exiting. Clients should treat the endpoint file as stale.
+message ShutdownResponse {
+  // Human line (no MAC).
+  string message = 1;
+}

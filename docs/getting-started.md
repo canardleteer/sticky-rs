@@ -238,7 +238,8 @@ charge enable, latch timing, and sleep current remain human-approved work.
 | `firmware/embassy-debug` | ESP32-S3 Embassy event logger. Same membership; panel always on |
 | `host/sticky-host/` | Host library: detect, factory backup, confirm, restore, `build-fw`, `flash-app`, learn-uart, monitor, remote-debug UART PIN / allowlist / PNG (`Layout` in; UART lock inside live methods) |
 | `host/remote-debug-host/` | Generic Linux BLE central for framed remote-debug envelopes (no clap, no UART) |
-| `host/remote-debug-broker/` | Length-prefixed JSON over a Unix socket that owns one GATT `Session` (`SpawnSpec`; no clap, no UART) |
+| `host/remote-debug-broker/` | ConnectRPC owner that holds 0..N GATT `Session`s (`SpawnSpec`; no clap, no UART) |
+| `protos/` | Shared remote-debug IDL (`buf lint` STANDARD+COMMENTS) |
 | `xtask/` | Clap front-end at the repo root (`cargo xtask`) over `sticky-host` |
 | `developer-data/` | Gitignored private / personalized files. Sealed snapshots in `developer-data/backups/`; learn-uart YAML in `uart-inspection-records/<serial>/`; confirm reports in `confirm-records/<serial>/`; remote-debug allowlist and planes in `remote-debug/`; not in git |
 

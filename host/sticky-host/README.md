@@ -9,8 +9,8 @@ snapshot PNG.
 This crate is the **Sticky desk**, not the generic GATT stack.
 Framed envelopes and BlueZ Connect live in
 [`remote-debug-host`](https://github.com/canardleteer/sticky-rs/blob/main/host/remote-debug-host).
-The Unix-socket broker (length-prefixed JSON, `serve_with`,
-`SpawnSpec`) lives
+The ConnectRPC owner (`serve_with`, `SpawnSpec`, loopback
+endpoint file) lives
 in
 [`remote-debug-broker`](https://github.com/canardleteer/sticky-rs/blob/main/host/remote-debug-broker).
 A foreign firmware host should depend on those two crates, not on

@@ -1,0 +1,24 @@
+# Run from the workspace root:
+# `buf generate --template protos/buf.gen.broker.yaml`
+version: v2
+clean: true
+inputs:
+  - directory: .
+plugins:
+  - local: protoc-gen-buffa
+    out: ../host/remote-debug-broker/src/gen/buffa
+    opt:
+      - views=true
+      - json=true
+  - local: protoc-gen-buffa-packaging
+    out: ../host/remote-debug-broker/src/gen/buffa
+    strategy: all
+  - local: protoc-gen-connect-rust
+    out: ../host/remote-debug-broker/src/gen/connect
+    opt:
+      - buffa_module=crate::proto
+  - local: protoc-gen-buffa-packaging
+    out: ../host/remote-debug-broker/src/gen/connect
+    strategy: all
+    opt:
+      - filter=services

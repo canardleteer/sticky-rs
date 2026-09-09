@@ -2,9 +2,10 @@
 
 Host library. Callers pass a `Layout` (developer-data / backups root),
 not a hardcoded repo path. `cargo xtask` is the clap front-end; do not
-put clap types here. The remote-debug Unix-socket broker lives here
-(advertise name, never a MAC); `connect` auto-starts a detached
-`serve` and returns `pairing`. Poll `status` until `connected`.
+put clap types here. The remote-debug ConnectRPC owner is a
+client of `remote-debug-broker` (advertise name, never a MAC);
+`connect` auto-starts a detached `serve` and returns `pairing`.
+Poll `status` until `connected`.
 Clap stays in xtask.
 
 Live methods that reset or listen take the UART session lock. Do not

@@ -17,11 +17,12 @@ It is **not** the full xtask CLI: `flash-app`, restore, and backup
 are never tools.
 
 The server is **stateful** (`reinvocation_safe`,
-`parallel_safe = false`) as a **client** of the CLI Unix-socket
-broker. GATT, the notify assembler, and `last_nonce` live in
-that broker (`connect` auto-starts a detached `serve`), not
-in the stdio process. A new stdio session with no broker
-reports `no broker; run connect or serve` plus the socket path.
+`parallel_safe = false`) as a **client** of the ConnectRPC
+owner. GATT, the notify assembler, and `last_nonce` live in
+that owner (`connect` auto-starts a detached `serve`), not
+in the stdio process. A new stdio session with no owner
+reports `no broker; run connect or serve` plus the endpoint
+path (`$XDG_RUNTIME_DIR/sticky-rs/remote-debug.connect`).
 
 stdio attaches at **process launch**. After you change xtask,
 clap-mcp wiring, instructions / prompts / resources, or the
@@ -42,13 +43,13 @@ the filename; no serial).
 
 Stay on splash for pair (Ferris never shows the PIN). Do not ask
 the operator to pair from a phone. Tools are `connect`, `status`,
-`inject-touch`, `inject-button`, `get-snapshot`, `snapshot-ack`,
-`snapshot-clear`, `reboot`, `disconnect` (not `remote-debug_*`).
-Do not run `monitor` during auto-PIN. No `--remember` unless the
-human asked. New clap tools need a new agent. A host notify /
-broker change is enough with `cargo build -p xtask`, then
-`disconnect` / `connect` (the detached broker is on-disk
-`target/debug/xtask`).
+`list-targets`, `inject-touch`, `inject-button`, `get-snapshot`,
+`snapshot-ack`, `snapshot-clear`, `reboot`, `disconnect` (not
+`remote-debug_*`). Do not run `monitor` during auto-PIN. No
+`--remember` unless the human asked. New clap tools need a new
+agent. A host notify / owner change is enough with
+`cargo build -p xtask`, then `disconnect` / `connect` (the
+detached owner is on-disk `target/debug/xtask`).
 
 1. Stay on splash. `status` — `no broker` until `connect`.
 2. `connect` → `pairing`. Poll `status` until `connected`
@@ -76,7 +77,9 @@ broker change is enough with `cargo build -p xtask`, then
    `target_step` is 0. `last_log` is one line: `target loop`
    is emitted, then `target show id=0` overwrites it on the
    same refresh.
-6. `disconnect` when the sit is over.
+6. `list-targets` shows advertise names the owner holds.
+   `disconnect` when the sit is over (empty map also shuts
+   the owner down).
 
 Never a MAC.
 
@@ -89,15 +92,16 @@ Leaves match the CLI:
 
 | Tool | Role |
 | --- | --- |
-| `connect` | Starts a detached broker if needed; returns `pairing`. BlueZ **Connect** (not `Pair()`). UART auto-PIN unless `pin` |
+| `connect` | Starts a detached owner if needed; returns `pairing`. BlueZ **Connect** (not `Pair()`). UART auto-PIN unless `pin`. `--name` is advertise `target` |
 | `status` | `pairing` / `connected` / `disconnected` / `pair failed` |
+| `list-targets` | Advertise names the owner currently tracks (never a MAC) |
 | `inject-touch` | Framebuffer tap, or `--page` page pixels; `--phase` for slides. Not UART `p0=` |
 | `inject-button` | `ok` / `page-up` / `page-down` short-press (`down` true). Wait for compose |
 | `get-snapshot` | Arm LAST DRAW; write `snap-<hex>.bw` / `.red` / page `.png`; scene / hold / expect |
 | `snapshot-ack` | Release the armed nonce |
 | `snapshot-clear` | Operator abort (no nonce); use after a failed get |
 | `reboot` | Software-reset the **embedded MCU**, then re-pair unless `no_reconnect` |
-| `disconnect` | Drop GATT; unknown units lose the BlueZ bond |
+| `disconnect` | Drop one GATT session; empty map also shuts the owner down. Unknown units lose the BlueZ bond |
 
 stdio also advertises initialize **instructions**, prompts
 `desk-sit` / `targets-walk` / `after-failed-snapshot`, and
@@ -105,8 +109,8 @@ resources `sticky-rs://remote-debug/pickup` /
 `tools` / `snapshot`. A new agent process is required after
 those clap-mcp serve options change.
 
-Structured output is `ok` / `message` / `nonce` / `connected` /
-`phase`. `message` must not include a MAC.
+Structured output is the generated ConnectRPC `*Response` JSON.
+`message` must not include a MAC.
 
 ## Self-test
 
@@ -209,11 +213,11 @@ edges under [Difficult / crude](#difficult--crude).
 
 - clap-mcp exposes only the `remote-debug` gate. There is no
   stdio path for `flash-app` or restore (on purpose).
-- The CLI broker owns the session. stdio MCP is a client of
-  the same Unix socket as `cargo xtask remote-debug status`.
-  Do not treat an in-process mutex as the GATT owner.
+- The CLI owner holds the session. stdio MCP is a client of
+  the same ConnectRPC endpoint as `cargo xtask remote-debug
+  status`. Do not treat an in-process mutex as the GATT owner.
 - Parallel tool calls still set `parallel_safe = false`; the
-  broker serializes GATT so two snapshot/inject RPCs cannot
+  owner serializes GATT so two snapshot/inject RPCs cannot
   interleave ATT chunks.
 - Auto-PIN and `monitor` share the UART lock. A sit that needs
   both will fail; use `--pin` or stop listen first.
@@ -226,7 +230,7 @@ edges under [Difficult / crude](#difficult--crude).
 - `connect` spawns on-disk `target/debug/xtask` when that file
   exists so a deleted MCP inode is not required to start serve.
   New clap tools still need a new agent process. Detached serve
-  logs to `$XDG_RUNTIME_DIR/sticky-rs/remote-debug-<name>.log`
+  logs to `$XDG_RUNTIME_DIR/sticky-rs/remote-debug.log`
   (does not inherit CLI/MCP stdio).
 - Fresh MCP attach (2026-09-08): `status` reached the broker.
   With no `XDG_RUNTIME_DIR` the socket used to be

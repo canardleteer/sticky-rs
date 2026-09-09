@@ -1,15 +1,13 @@
-//! Recoverable broker failures. Never include a MAC in the display text.
+//! Recoverable owner failures. Never include a MAC in the display text.
 
 use std::fmt;
 use std::io;
 
-/// Unix-socket RPC or serve failure.
+/// ConnectRPC client or serve failure.
 #[derive(Debug)]
 pub enum Error {
-    /// Filesystem or socket I/O.
+    /// Filesystem or loopback I/O.
     Io(io::Error),
-    /// JSON encode or decode.
-    Json(serde_json::Error),
     /// Human line (no MAC).
     Message(String),
 }
@@ -26,7 +24,6 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Io(error) => write!(f, "{error}"),
-            Self::Json(error) => write!(f, "{error}"),
             Self::Message(msg) => write!(f, "{msg}"),
         }
     }
@@ -40,9 +37,9 @@ impl From<io::Error> for Error {
     }
 }
 
-impl From<serde_json::Error> for Error {
-    fn from(error: serde_json::Error) -> Self {
-        Self::Json(error)
+impl From<connectrpc::ConnectError> for Error {
+    fn from(error: connectrpc::ConnectError) -> Self {
+        Self::Message(error.to_string())
     }
 }
 

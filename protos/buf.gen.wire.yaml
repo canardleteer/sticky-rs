@@ -1,0 +1,17 @@
+# Run from the workspace root:
+# `buf generate --template protos/buf.gen.wire.yaml`
+version: v2
+clean: true
+inputs:
+  - directory: .
+    paths:
+      - sticky/remote/shared/v1/shared.proto
+      - sticky/remote/v1/remote.proto
+plugins:
+  - local: protoc-gen-buffa
+    out: ../crates/remote-debug-wire/src/gen
+    opt:
+      - views=true
+  - local: protoc-gen-buffa-packaging
+    out: ../crates/remote-debug-wire/src/gen
+    strategy: all

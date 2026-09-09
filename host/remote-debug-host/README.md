@@ -42,7 +42,7 @@ host), waits for `RebootAck` or a drop, and forgets the BlueZ bond.
 
 Allowlisted long-term bonds and UART `pair pin=` scraping live in the
 caller (`sticky-host` / `cargo xtask remote-debug`), not here. The
-Unix-socket process model is
+ConnectRPC owner process is
 [`remote-debug-broker`](https://github.com/canardleteer/sticky-rs/blob/main/host/remote-debug-broker).
 
 License: MIT

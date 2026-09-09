@@ -38,6 +38,7 @@ pub fn run(repo_root: &Path) -> Result<(), Error> {
 
     require_on_path("rumdl", "cargo install rumdl")?;
     step(repo_root, "rumdl", &["check"])?;
+    buf_lint(repo_root)?;
 
     require_on_path("cargo-machete", "cargo install cargo-machete")?;
     // `cargo machete` from inside `cargo xtask` forwards `machete` as a search
@@ -121,6 +122,21 @@ fn executable_on_path(name: &str) -> bool {
         return false;
     };
     env::split_paths(&paths).any(|dir| dir.join(name).is_file())
+}
+
+fn buf_lint(repo_root: &Path) -> Result<(), Error> {
+    let buf = buf_tools::buf_bin_path();
+    eprintln!("==> {} lint", buf.display());
+    let status = Command::new(&buf)
+        .arg("lint")
+        .current_dir(repo_root.join("protos"))
+        .status()
+        .map_err(|error| Error::Device(format!("failed to spawn buf: {error}")))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(Error::Device("ci failed: buf lint".into()))
+    }
 }
 
 fn step(repo_root: &Path, program: &str, args: &[&str]) -> Result<(), Error> {

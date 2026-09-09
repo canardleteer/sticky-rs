@@ -9,10 +9,10 @@ use rmcp::model::{PromptMessage, Role};
 
 /// Initialize / discover instructions for a desk sit.
 pub const INSTRUCTIONS: &str = "\
-You are a client of the sticky-rs remote-debug broker (encrypted GATT after \
+You are a client of the sticky-rs remote-debug owner (encrypted GATT after \
 DisplayOnly pair). This process does not own GATT. Tools are clap leaves: \
-connect, status, inject-touch, inject-button, get-snapshot, snapshot-ack, \
-snapshot-clear, reboot, disconnect. Not remote-debug_*.
+connect, status, list-targets, inject-touch, inject-button, get-snapshot, \
+snapshot-ack, snapshot-clear, reboot, disconnect. Not remote-debug_*.
 
 Stay on splash for pair (Ferris never shows the PIN). Do not ask the operator \
 to pair from a phone. Do not run monitor during auto-PIN. No --remember unless \
@@ -41,7 +41,7 @@ const PICKUP: &str = "\
 Stay on splash. Do not ask the operator to pair from a phone.
 No monitor during auto-PIN. No --remember unless asked. Never a MAC.
 
-1. status — no broker until connect.
+1. status — no owner until connect (endpoint file missing).
 2. connect → pairing. Poll status until connected (or pair failed).
 3. inject-button page-down / page-up, or inject-touch --page at expect.
    --phase down / move / up (unset = tap). Wait ~2–3 s. Do not tap START.
@@ -50,7 +50,8 @@ No monitor during auto-PIN. No --remember unless asked. Never a MAC.
    SnapshotBusy → snapshot-clear, then retry.
 5. Targets: seven page-downs to scene=7. Tap --page at expect. Slides use
    --phase. After id 6, target_step=0. last_log may be target show id=0.
-6. disconnect when the sit is over.
+6. list-targets shows advertise names the owner holds. disconnect when
+   the sit is over (empty map also shuts the owner down).
 ";
 
 const TOOLS: &str = "\
@@ -58,19 +59,19 @@ const TOOLS: &str = "\
 
 | Tool | How to use it |
 | --- | --- |
-| connect | Starts the broker if needed. Returns pairing. BlueZ Connect, not Pair(). UART auto-PIN unless pin. |
+| connect | Starts the owner if needed. Returns pairing. BlueZ Connect, not Pair(). UART auto-PIN unless pin. `--name` is advertise `target`. |
 | status | pairing / connected / disconnected / pair failed. last_log is Target / Scene only. |
+| list-targets | Advertise names the owner currently tracks (never a MAC). |
 | inject-touch | Default x/y are framebuffer. page=true treats x/y as page pixels. phase down/move/up; unset is a tap. Not UART p0=. |
 | inject-button | key ok / page-up / page-down. down true is a short press. Wait for compose. |
 | get-snapshot | Arms LAST DRAW. Writes snap-<hex>.bw/.red/.png. scene / hold / step / expect on the line. |
 | snapshot-ack | Release the armed nonce. |
 | snapshot-clear | Abort with no nonce. Use after a failed get. |
 | reboot | Software-reset the embedded MCU (not this host). Re-pairs unless no_reconnect. |
-| disconnect | Drop GATT and stop the broker. Unknown units lose the BlueZ bond. |
+| disconnect | Drop one GATT session. Empty map also shuts the owner down. Unknown units lose the BlueZ bond. |
 
-Structured fields: ok, message, nonce, connected, phase, last_log, scene, \
-hold, target_step, target_expect_x, target_expect_y. message must not include \
-a MAC.
+Structured output is the generated ConnectRPC `*Response` JSON. `message` \
+must not include a MAC.
 ";
 
 const SNAPSHOT: &str = "\

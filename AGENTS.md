@@ -119,7 +119,7 @@ same DisplayOnly pair), a phone pair is optional. When the human
 already asked for a host desk sit, do not pause to ask them to
 pair from a phone. The host desk session is a separate live ask
 (`cargo xtask remote-debug` or `remote-debug --mcp`).
-`connect` starts a detached Unix-socket broker that owns GATT
+`connect` starts a detached ConnectRPC owner that holds GATT
 and returns `pairing`; poll `status` until `connected` or
 `pair failed`. Later leaves are RPC. `serve` is an optional
 foreground log. Do not also run `monitor` while auto-PIN
@@ -248,7 +248,8 @@ and the README list.
   `cargo fmt --check` (the default host trio). `cargo xtask ci` is the
   full gate: that trio, host `--all-features` and
   `ssd1677-gray4 --no-default-features`, firmware `cargo +esp` clippy,
-  `rumdl check`, `cargo machete`, and `cargo audit`. Do not advertise
+  `rumdl check`, `buf lint` (cwd `protos/`), `cargo machete`, and
+  `cargo audit`. Do not advertise
   `cargo test --workspace` (that pulls Xtensa firmware members).
   rust-analyzer excludes those packages via
   [rust-analyzer.toml](rust-analyzer.toml). Owned Markdown is checked

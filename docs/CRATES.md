@@ -49,7 +49,7 @@ in the lockfile).
 | [`embassy-debug`](../crates/embassy-debug) | Timestamped button / touch / IMU / mic / radio / BLE pair-card / Wi-Fi survey + SoftAP / touch-validation (`target show` / `hit` / `miss` / `loop`) / read-only SD identify / charge-sit lines and [`IdleListen`](../crates/embassy-debug/src/idle.rs) for unattended `vet-idle-log`. `--features remote-debug` appends `src=phys` / `src=syn` on `touch` lines, `src=syn` on synthetic `btn` edges, and `snap` / `touch drop` lines; default image omits those tokens. Host-tested because the Xtensa image cannot run `cargo test` on the host compiler. |
 | [`remote-debug-wire`](../crates/remote-debug-wire) | Transport-agnostic protobuf codec (`Envelope`, inject, one frozen snapshot slot) plus documented GATT UUIDs and ATT reassembly. UART stays plaintext. Generated `buffa` types are committed so host and firmware clippy stay offline. |
 | [`remote-debug-host`](../host/remote-debug-host) | Generic Linux BLE central for those framed envelopes. No clap, no UART, no Sticky pins. Other codebases implement the same GATT UUIDs after their own pairing policy. |
-| [`remote-debug-broker`](../host/remote-debug-broker) | Length-prefixed JSON over a Unix socket that owns one `Session` (not JSON-RPC 2.0). No clap, no UART, no Sticky pins. Callers pass a `SpawnSpec` (exe + argv) and an opener; they do not take `xtask`. |
+| [`remote-debug-broker`](../host/remote-debug-broker) | ConnectRPC owner that holds 0..N `Session`s keyed by advertise name (never a MAC). Loopback HTTP + endpoint file. No clap, no UART, no Sticky pins. Callers pass a `SpawnSpec` (exe + argv) and an opener; they do not take `xtask`. |
 
 ## Infrastructure
 

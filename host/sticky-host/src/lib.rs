@@ -52,9 +52,9 @@ pub use remote_debug::{
     scan_pair_uart, usb_serial_from_port, wait_new_pair_pin, write_snapshot_planes, RememberedUnit,
 };
 pub use remote_debug_broker::{
-    broker_log_path, broker_runtime_dir, broker_socket_path, ensure_broker, parse_product_key,
-    resolve_broker_exe, rpc, serve_live, serve_with, wait_for_broker, BrokerPhase, BrokerReply,
-    BrokerRequest, ConnectReq, RebootReq, ServeOpts, SnapshotWire, SpawnSpec, NO_BROKER,
+    broker_log_path, broker_runtime_dir, control, endpoint_path, ensure_broker, parse_product_key,
+    resolve_broker_exe, serve_live, serve_with, shared, wait_for_broker, wait_for_owner,
+    ControlClient, ServeOpts, SpawnSpec, NO_BROKER,
 };
 pub use uart_lock::{default_lock_dir, try_acquire, UartSession, UART_LOCK_ENV};
 

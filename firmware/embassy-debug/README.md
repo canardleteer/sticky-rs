@@ -497,7 +497,7 @@ GATT link (advertise still stops). The MCU walkthrough is
 You can pair from your own phone first (same pair card as
 above). The host desk session is a second path. Do not run
 `monitor` while `connect` scrapes `pair pin=` (that scrape takes
-the UART lock, then releases it). A Unix-socket broker owns the
+the UART lock, then releases it). A ConnectRPC owner holds the
 GATT session so later commands can run from any terminal.
 
 Do not combine with `mic`, `radio`, `charge`, or `sd`.

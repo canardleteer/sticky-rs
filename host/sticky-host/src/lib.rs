@@ -54,7 +54,7 @@ pub use remote_debug::{
 pub use remote_debug_broker::{
     broker_log_path, broker_runtime_dir, broker_socket_path, ensure_broker, parse_product_key,
     resolve_broker_exe, rpc, serve_live, serve_with, wait_for_broker, BrokerPhase, BrokerReply,
-    BrokerRequest, ConnectReq, RebootReq, ServeOpts, SnapshotWire, NO_BROKER,
+    BrokerRequest, ConnectReq, RebootReq, ServeOpts, SnapshotWire, SpawnSpec, NO_BROKER,
 };
 pub use uart_lock::{default_lock_dir, try_acquire, UartSession, UART_LOCK_ENV};
 

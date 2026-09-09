@@ -3376,6 +3376,7 @@ version = "3.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42b6914fac0be956fe704a38239c3f44a9f841d1b06a5713d2f638065593f5b5"
 dependencies = [
+ "base64 0.23.1",
  "chrono",
  "futures",
  "indexmap",
@@ -3905,6 +3906,7 @@ dependencies = [
  "remote-debug-host",
  "remote-debug-wire",
  "rustix",
+ "seeed-reterminal-sticky",
  "serde",
  "serde_json",
  "serialport",
@@ -4754,6 +4756,7 @@ dependencies = [
  "panel-view",
  "remote-debug-host",
  "remote-debug-wire",
+ "rmcp",
  "schemars",
  "serde",
  "simple-debug",

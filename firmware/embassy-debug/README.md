@@ -800,8 +800,8 @@ A desk host with `--features remote-debug` can do the same
 walk without UART: `get-snapshot` reports `scene` and
 `target_step`; `inject-touch --page --x --y` taps expect;
 slides use `--phase down` / `move` / `up`. Tap the snapshot
-`expect` (a portrait hold still looks landscape in the
-framebuffer PNG). `status` `last_log` is the latest Target /
+`expect` (same origin as the page-space snapshot PNG).
+`status` `last_log` is the latest Target /
 Scene line; after the last slide you should see the centre
 disk again (`target_step=0`). UART still prints `target loop`
 just before that show.

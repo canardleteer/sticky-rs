@@ -7,6 +7,9 @@ use std::fs;
 use std::io::Read;
 use std::time::{Duration, Instant};
 
+use seeed_reterminal_sticky::display::{
+    page_to_framebuffer, screen_to_framebuffer, PageRotation, HEIGHT, WIDTH,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::identity::{parse_usb_serial_from_port, validate_factory_serial};
@@ -201,6 +204,7 @@ pub fn write_snapshot_planes(
     nonce: u64,
     bw: &[u8],
     red: Option<&[u8]>,
+    hold: Option<u32>,
 ) -> Result<std::path::PathBuf, Error> {
     let dir = layout.remote_debug_snapshots();
     fs::create_dir_all(&dir)?;
@@ -209,15 +213,75 @@ pub fn write_snapshot_planes(
     if let Some(red) = red {
         fs::write(stem.with_extension("red"), red)?;
     }
-    if let Ok(png) = framebuffer_png(bw, red, 800, 480) {
+    let png = match hold.and_then(hold_rotation) {
+        Some(rotation) => page_png(bw, red, rotation),
+        None => framebuffer_png(bw, red, u32::from(WIDTH), u32::from(HEIGHT)),
+    };
+    if let Ok(png) = png {
         fs::write(stem.with_extension("png"), png)?;
     }
     Ok(stem)
 }
 
+/// Snapshot `hold` token from embassy-debug (`0..=3`).
+fn hold_rotation(hold: u32) -> Option<PageRotation> {
+    match hold {
+        0 => Some(PageRotation::Portrait0),
+        1 => Some(PageRotation::Portrait180),
+        2 => Some(PageRotation::Landscape0),
+        3 => Some(PageRotation::Landscape180),
+        _ => None,
+    }
+}
+
+/// MSB-first 1-bit on an 800-wide plane.
+fn plane_bit(plane: &[u8], x: u16, y: u16) -> bool {
+    if x >= WIDTH || y >= HEIGHT {
+        return false;
+    }
+    let stride = (WIDTH / 8) as usize;
+    let i = usize::from(y) * stride + usize::from(x) / 8;
+    plane
+        .get(i)
+        .is_some_and(|byte| (byte >> (7 - (x % 8))) & 1 != 0)
+}
+
+/// Uncompressed RGB PNG in **page** space (same origin as `--page` / expect).
+///
+/// Gray4 DRAW already stores Seeed OTP 180° (`set_gray`). Mono does not.
+fn page_png(bw: &[u8], red: Option<&[u8]>, rotation: PageRotation) -> Result<Vec<u8>, Error> {
+    let (page_w, page_h) = rotation.page_size();
+    let gray4 = red.is_some();
+    let mut raw = Vec::with_capacity(((u32::from(page_w) * 3 + 1) * u32::from(page_h)) as usize);
+    for py in 0..page_h {
+        raw.push(0);
+        for px in 0..page_w {
+            let Some((hx, hy)) = page_to_framebuffer(px, py, rotation) else {
+                return Err(Error::RemoteDebug("png map".into()));
+            };
+            let (fx, fy) = if gray4 {
+                screen_to_framebuffer(hx, hy).ok_or_else(|| Error::RemoteDebug("png map".into()))?
+            } else {
+                (hx, hy)
+            };
+            let bit = plane_bit(bw, fx, fy);
+            let rbit = red.is_some_and(|plane| plane_bit(plane, fx, fy));
+            let (r, g, b) = if rbit {
+                (180, 40, 40)
+            } else if bit {
+                (20, 20, 20)
+            } else {
+                (250, 250, 250)
+            };
+            raw.extend_from_slice(&[r, g, b]);
+        }
+    }
+    Ok(encode_rgb_png(u32::from(page_w), u32::from(page_h), &raw))
+}
+
 /// Uncompressed RGB PNG in inject/framebuffer space (MSB-first 1-bit).
 ///
-/// Ink is black; red-plane bits paint red. Same origin as `inject-touch`.
+/// Fallback when `hold` is missing. Prefer [`page_png`].
 fn framebuffer_png(
     bw: &[u8],
     red: Option<&[u8]>,
@@ -349,6 +413,49 @@ mod tests {
         let png = framebuffer_png(&bw, None, 8, 4).expect("png");
         assert_eq!(&png[..8], &[137, 80, 78, 71, 13, 10, 26, 10]);
         assert!(png.len() > 32);
+    }
+
+    fn png_size(png: &[u8]) -> (u32, u32) {
+        let w = u32::from_be_bytes(png[16..20].try_into().unwrap());
+        let h = u32::from_be_bytes(png[20..24].try_into().unwrap());
+        (w, h)
+    }
+
+    fn set_plane_bit(plane: &mut [u8], x: u16, y: u16) {
+        let stride = (WIDTH / 8) as usize;
+        let i = usize::from(y) * stride + usize::from(x) / 8;
+        plane[i] |= 1 << (7 - (x % 8));
+    }
+
+    #[test]
+    fn page_png_is_portrait_for_hold_0() {
+        let need = (WIDTH as usize / 8) * HEIGHT as usize;
+        let mut bw = vec![0u8; need];
+        let (hx, hy) = page_to_framebuffer(0, 0, PageRotation::Portrait0).expect("map");
+        set_plane_bit(&mut bw, hx, hy);
+        let png = page_png(&bw, None, PageRotation::Portrait0).expect("png");
+        assert_eq!(png_size(&png), (480, 800));
+        assert_eq!(&png[..8], &[137, 80, 78, 71, 13, 10, 26, 10]);
+    }
+
+    #[test]
+    fn page_png_is_landscape_for_hold_2() {
+        let need = (WIDTH as usize / 8) * HEIGHT as usize;
+        let bw = vec![0u8; need];
+        let png = page_png(&bw, None, PageRotation::Landscape0).expect("png");
+        assert_eq!(png_size(&png), (800, 480));
+    }
+
+    #[test]
+    fn gray4_page_png_undoes_otp_180() {
+        let need = (WIDTH as usize / 8) * HEIGHT as usize;
+        let mut bw = vec![0u8; need];
+        let red = vec![0u8; need];
+        let (hx, hy) = page_to_framebuffer(0, 0, PageRotation::Portrait0).expect("map");
+        let (fx, fy) = screen_to_framebuffer(hx, hy).expect("otp");
+        set_plane_bit(&mut bw, fx, fy);
+        let png = page_png(&bw, Some(&red), PageRotation::Portrait0).expect("png");
+        assert_eq!(png_size(&png), (480, 800));
     }
 
     #[test]

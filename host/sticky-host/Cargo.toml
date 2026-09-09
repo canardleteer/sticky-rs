@@ -34,6 +34,7 @@ simple-debug = { path = "../../crates/simple-debug", version = "0.1.0" }
 remote-debug-host = { path = "../remote-debug-host", version = "0.1.0" }
 remote-debug-wire = { path = "../../crates/remote-debug-wire", version = "0.1.0" }
 panel-view = { path = "../../crates/panel-view", version = "0.1.0" }
+seeed-reterminal-sticky = { path = "../../crates/seeed-reterminal-sticky", version = "0.1.0" }
 # Enumeration needs libudev; we only open ESPFLASH_PORT. Same as espflash.
 serialport = { version = "4.7.2", default-features = false }
 sha2 = "0.10.9"

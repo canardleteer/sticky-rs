@@ -24,9 +24,10 @@ in the stdio process. A new stdio session with no broker
 reports `no broker; run connect or serve` plus the socket path.
 
 stdio attaches at **process launch**. After you change xtask,
-clap-mcp wiring, or the `--features remote-debug` image, start a
-**new** agent process before the next sit. An already-running
-session keeps the old binary and the old tool table.
+clap-mcp wiring, instructions / prompts / resources, or the
+`--features remote-debug` image, start a **new** agent process
+before the next sit. An already-running session keeps the old
+binary and the old tool table.
 
 Do not also run `monitor` during auto-PIN. Default `connect` takes
 the UART lock only while scraping a new `pair pin=`. `--pin` skips
@@ -61,15 +62,15 @@ broker change is enough with `cargo build -p xtask`, then
    on the Wi-Fi cards unless asked.
 4. `get-snapshot` — LAST DRAW plus `scene` / `hold` /
    `target_step` / expect page. Writes `.bw` / `.red` /
-   framebuffer `.png` under
+   **page-space** `.png` (portrait 480×800 or landscape
+   800×480) under
    `developer-data/remote-debug/snapshots/`. `status`
    `last_log` is the last Target / Scene UART copy. A leftover
    arm is `SnapshotBusy`; `snapshot-clear` then retry. Ack
-   when done.
+   when done. Read `sticky-rs://remote-debug/pickup`.
 5. Targets walk (no `monitor`): seven Page Downs to
    `scene=targets` (persist `7`). Tap `--page` at snapshot
-   `expect`, not a guessed landscape centre (a portrait hold
-   still looks landscape in the framebuffer PNG). Dot: one
+   `expect` (same origin as the page PNG). Dot: one
    tap. Slide: `--phase down` at one inset, `move` at mid
    and the other inset, `up`. After id 6 the snapshot
    `target_step` is 0. `last_log` is one line: `target loop`
@@ -92,11 +93,17 @@ Leaves match the CLI:
 | `status` | `pairing` / `connected` / `disconnected` / `pair failed` |
 | `inject-touch` | Framebuffer tap, or `--page` page pixels; `--phase` for slides. Not UART `p0=` |
 | `inject-button` | `ok` / `page-up` / `page-down` short-press (`down` true). Wait for compose |
-| `get-snapshot` | Arm LAST DRAW; write `snap-<hex>.bw` / `.red` / `.png`; scene / target fields |
+| `get-snapshot` | Arm LAST DRAW; write `snap-<hex>.bw` / `.red` / page `.png`; scene / hold / expect |
 | `snapshot-ack` | Release the armed nonce |
 | `snapshot-clear` | Operator abort (no nonce); use after a failed get |
 | `reboot` | Software-reset the **embedded MCU**, then re-pair unless `no_reconnect` |
 | `disconnect` | Drop GATT; unknown units lose the BlueZ bond |
+
+stdio also advertises initialize **instructions**, prompts
+`desk-sit` / `targets-walk` / `after-failed-snapshot`, and
+resources `sticky-rs://remote-debug/pickup` /
+`tools` / `snapshot`. A new agent process is required after
+those clap-mcp serve options change.
 
 Structured output is `ok` / `message` / `nonce` / `connected` /
 `phase`. `message` must not include a MAC.
@@ -189,6 +196,14 @@ edges under [Difficult / crude](#difficult--crude).
   `last_log` `target show id=0` (`target loop` was the previous
   line). CLI `get-snapshot` now prints `scene=` / `step=` /
   `expect=` / `last_log=` on the same line.
+- Page PNG (2026-09-08): `.png` is rematerialized from
+  `Snapshot.hold` via `page_to_framebuffer` (portrait
+  480×800, landscape 800×480). `.bw` / `.red` stay the
+  800×480 planes. stdio initialize carries sit
+  instructions; prompts `desk-sit` / `targets-walk` /
+  `after-failed-snapshot`; resources
+  `sticky-rs://remote-debug/pickup` / `tools` /
+  `snapshot`.
 
 ## Difficult / crude
 

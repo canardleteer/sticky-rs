@@ -5,7 +5,9 @@ use std::process::ExitCode;
 use std::sync::{Arc, Mutex};
 
 use clap::{Args, Parser, Subcommand};
-use clap_mcp::{AsStructured, ClapMcp, ParseOrServeMcpWithState};
+use clap_mcp::{
+    parse_or_serve_mcp_with_state, AsStructured, ClapMcp, ClapMcpConfigProvider, ClapMcpRunOptions,
+};
 use remote_debug_host::DEFAULT_ADV_NAME;
 use serde::Serialize;
 use sticky_host::{
@@ -35,7 +37,8 @@ unless `--no-reconnect`. After reset, UART may reprint `pair pin=` every \
 5s on splash or the pair card until `pair ok`.
 
 `--mcp` is the same client (this subtree only; not flash-app / restore). \
-Do not also run `monitor` during auto-PIN. Coordinates are framebuffer.";
+Do not also run `monitor` during auto-PIN. `inject-touch --page` is page \
+pixels. Snapshot PNG is page space. Read `sticky-rs://remote-debug/pickup`.";
 
 /// Root used so `cargo xtask remote-debug --mcp` is valid argv.
 #[derive(Debug, Parser, ClapMcp)]
@@ -96,22 +99,52 @@ pub enum RemoteDebugCommand {
     /// Foreground broker (desk log). Ctrl-C disconnects
     Serve(ServeArgs),
     /// Start pair (returns `pairing`; poll `status` until `connected`)
+    #[command(long_about = "\
+Start the Unix-socket broker if needed and begin BlueZ Connect (not Pair()). \
+Returns pairing immediately. Poll status until connected or pair failed. \
+UART auto-PIN unless --pin. Stay on splash. No --remember unless asked. \
+Never a MAC. After a fresh flash, retry on le-connection-abort-by-local \
+or CDC busy.")]
+    #[clap_mcp(open_world)]
     Connect(ConnectArgs),
-    /// Synthetic framebuffer tap
+    /// Synthetic tap. --page is page pixels; --phase for slides
+    #[command(long_about = "\
+Synthetic tap. Default --x/--y are pre-rotation framebuffer. --page treats \
+them as page pixels for the last compose hold (gray4 hit-test inverse, \
+same origin as snapshot expect / page PNG). --phase down/move/up; unset \
+is a tap. Not UART p0=. Wait ~2–3 s for compose. Do not tap Wi-Fi START \
+unless asked.")]
     InjectTouch(InjectTouchArgs),
-    /// Synthetic product-key edge
+    /// Short-press ok / page-up / page-down
+    #[command(long_about = "\
+Synthetic product-key edge. --key ok / page-up / page-down. --down true \
+is a short press. Wait ~2–3 s for compose before the next inject or \
+get-snapshot. Seven page-downs from splash reach scene=targets.")]
     InjectButton(InjectButtonArgs),
-    /// Arm the frozen LAST planes
+    /// Arm LAST DRAW; write page-space PNG plus scene / expect
+    #[command(long_about = "\
+Arm the frozen LAST DRAW slot. Writes snap-<hex>.bw/.red and a page-space \
+.png (portrait 480×800 or landscape 800×480 from hold). Message includes \
+scene / hold / step / expect / last_log. Tap --page at expect. A leftover \
+arm is SnapshotBusy; snapshot-clear then retry. Ack when done.")]
     GetSnapshot(GetSnapshotArgs),
     /// Release the snapshot slot
+    #[clap_mcp(idempotent)]
     SnapshotAck(SnapshotAckArgs),
-    /// Operator abort (no nonce)
+    /// Operator abort (no nonce); use after a failed get
+    #[clap_mcp(idempotent)]
     SnapshotClear(BrokerTarget),
     /// `pairing` / `connected` / `disconnected` / `pair failed`
+    #[clap_mcp(read_only, idempotent)]
     Status(BrokerTarget),
     /// Software-reset the embedded MCU (not this host)
+    #[command(long_about = "\
+Software-reset the embedded MCU, not this host. GATT dies. Leftover BlueZ \
+LTK must not be reused. Re-pairs unless --no-reconnect. Stay on splash.")]
+    #[clap_mcp(destructive, open_world)]
     Reboot(RebootArgs),
     /// Drop GATT and stop the broker; unknown units lose the BlueZ bond
+    #[clap_mcp(destructive)]
     Disconnect(BrokerTarget),
 }
 
@@ -281,6 +314,9 @@ pub struct RemoteDebugOutput {
     /// Expected page Y from the last get.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_expect_y: Option<u32>,
+    /// Product hold token from the last get (0..=3).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hold: Option<u32>,
 }
 
 /// CLI dispatch when `Cli` parsed `remote-debug` (no `--mcp`).
@@ -307,7 +343,13 @@ pub fn exec() -> ExitCode {
         return ExitCode::FAILURE;
     }
     let state = Arc::new(Mutex::new(RemoteDebugState::new()));
-    let parsed = RemoteDebugMcpRoot::parse_or_serve_mcp_with_state(state.clone());
+    let parsed = parse_or_serve_mcp_with_state::<RemoteDebugMcpRoot>(
+        ClapMcpRunOptions {
+            config: RemoteDebugMcpRoot::clap_mcp_config(),
+            serve: crate::remote_debug_mcp::serve_options(),
+        },
+        state.clone(),
+    );
     match parsed.command {
         RemoteDebugGate::RemoteDebug {
             command: Some(RemoteDebugCommand::Serve(args)),
@@ -383,8 +425,14 @@ pub fn run(
     }
     let reply = rpc(dir, &name, &request).map_err(map_host)?;
     if let Some(snap) = &reply.snapshot {
-        let path = write_snapshot_planes(&guard.layout, snap.nonce, &snap.bw, snap.red.as_deref())
-            .map_err(map_host)?;
+        let path = write_snapshot_planes(
+            &guard.layout,
+            snap.nonce,
+            &snap.bw,
+            snap.red.as_deref(),
+            snap.hold,
+        )
+        .map_err(map_host)?;
         let message = decorate_message(
             format!("{} wrote {}", reply.message, path.display()),
             &reply,
@@ -411,6 +459,9 @@ fn decorate_message(message: String, reply: &BrokerReply) -> String {
         if let Some(scene) = snap.scene {
             out.push_str(&format!(" scene={scene}"));
         }
+        if let Some(hold) = snap.hold {
+            out.push_str(&format!(" hold={hold}"));
+        }
         if let Some(step) = snap.target_step {
             out.push_str(&format!(" step={step}"));
         }
@@ -435,6 +486,7 @@ fn tool_output(ok: bool, message: String, reply: &BrokerReply) -> RemoteDebugOut
         phase: phase_name(reply.phase),
         last_log: reply.last_log.clone(),
         scene: snap.and_then(|s| s.scene),
+        hold: snap.and_then(|s| s.hold),
         target_step: snap.and_then(|s| s.target_step),
         target_expect_x: snap.and_then(|s| s.target_expect_x),
         target_expect_y: snap.and_then(|s| s.target_expect_y),

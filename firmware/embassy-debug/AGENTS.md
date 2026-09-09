@@ -284,9 +284,8 @@ separate live ask. stdio MCP how-to:
    for compose before the next inject or snapshot.
 5. `get-snapshot` freezes LAST DRAW plus `scene` /
    `target_step` / expect page (`snap-<hex>.bw` / `.red` /
-   framebuffer `.png`). Tap `--page` at that expect — a
-   portrait hold still looks landscape in the framebuffer
-   PNG. `status` `last_log` is the latest Target / Scene
+   page-space `.png`). Tap `--page` at that expect (PNG
+   origin matches the page). `status` `last_log` is the latest Target / Scene
    UART line (never a PIN); `target loop` is overwritten by
    the following `target show id=0`. `snapshot-ack` or
    `snapshot-clear` releases the slot. A failed get can leave

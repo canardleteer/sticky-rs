@@ -616,11 +616,22 @@ fn json_value<T: serde::Serialize>(body: T) -> Result<AsStructured<Value>, Strin
 }
 
 fn message_of(value: &Value) -> String {
-    value
-        .get("message")
-        .and_then(Value::as_str)
-        .unwrap_or("ok")
-        .to_string()
+    if let Some(message) = value.get("message").and_then(Value::as_str) {
+        if !message.is_empty() {
+            return message.to_string();
+        }
+    }
+    if let Some(targets) = value.get("targets").and_then(Value::as_array) {
+        let names: Vec<&str> = targets
+            .iter()
+            .filter_map(|target| target.get("target").and_then(Value::as_str))
+            .collect();
+        if names.is_empty() {
+            return "no targets".into();
+        }
+        return format!("targets={}", names.join(","));
+    }
+    "ok".to_string()
 }
 
 fn map_broker(error: remote_debug_broker::Error) -> String {
@@ -744,5 +755,15 @@ mod tests {
     #[test]
     fn map_host_strips_prefix_on_no_broker() {
         assert_eq!(map_host(Error::RemoteDebug(NO_BROKER.into())), NO_BROKER);
+    }
+
+    #[test]
+    fn message_of_lists_advertise_names() {
+        let value = serde_json::json!({
+            "targets": [
+                {"target": "sticky-rs", "connected": true}
+            ]
+        });
+        assert_eq!(message_of(&value), "targets=sticky-rs");
     }
 }

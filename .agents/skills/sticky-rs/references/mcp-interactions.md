@@ -72,8 +72,10 @@ detached owner is on-disk `target/debug/xtask`).
 5. Targets walk (no `monitor`): seven Page Downs to
    `scene=targets` (persist `7`). Tap `--page` at snapshot
    `expect` (same origin as the page PNG). Dot: one
-   tap. Slide: `--phase down` at one inset, `move` at mid
-   and the other inset, `up`. After id 6 the snapshot
+   tap. Slide: `--phase down` at one **page-end** inset
+   (`TARGET_SLIDE_END_INSET` 80), `move` at mid and the
+   other inset (`page_len − 80`), then `up`. Painted `r=`
+   is the mark, not the span. After id 6 the snapshot
    `target_step` is 0. `last_log` is one line: `target loop`
    is emitted, then `target show id=0` overwrites it on the
    same refresh.
@@ -208,6 +210,25 @@ edges under [Difficult / crude](#difficult--crude).
   `after-failed-snapshot`; resources
   `sticky-rs://remote-debug/pickup` / `tools` /
   `snapshot`.
+- ConnectRPC owner sit (2026-09-08): CLI of the new binary
+  (`target/debug/xtask remote-debug`) revalidated the prior
+  loops. `status` with no owner is `no broker`. `connect` →
+  `pairing` → `connected`. A later process `status` /
+  `list-targets` still saw GATT (`targets=sticky-rs`; empty
+  `message` used to print `ok`). `reboot` → `pairing` →
+  `connected`; splash PNG was Ferris, no PIN boxes
+  (`scene=0 hold=0`, page 480×800). Second `get-snapshot`
+  while armed is Connect `FailedPrecondition` (`snapshot
+  busy`); `snapshot-clear` then retry. Seven `page-down`
+  reached `scene=7`. Dots at snapshot `expect`. Slides that
+  used painted `r=` did not advance; page-end insets 80 /
+  `page_len−80` did. After id 6, `target_step=0` and
+  `last_log` `target show id=0`. `disconnect` emptied the
+  map and stopped the owner. stdio on the new binary lists
+  `list-targets` and ConnectRPC instructions. A later
+  attach kept those initialize / pickup cards but had an
+  empty tool table; the same sit used CLI `run()` (same
+  leaf map as MCP).
 
 ## Difficult / crude
 

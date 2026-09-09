@@ -59,7 +59,7 @@ pub const RADIO_REPORT_SECS: u32 = 10;
 /// UART and the idle pair card print the same string. Not a MAC.
 /// Default image advertises only on the pair card. `--features
 /// remote-debug` advertises from splash so a desk Connect does not
-/// need a walk.
+/// need a walk. Must match `remote_debug_wire::StickyLayout::ADV_NAME`.
 #[cfg(feature = "pair")]
 pub const PAIR_ADV_NAME: &str = "sticky-rs";
 

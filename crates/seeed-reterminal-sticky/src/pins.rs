@@ -25,12 +25,15 @@ pub const TOUCH_I2C_SDA: u8 = 3;
 /// GPIO4, active low. The `ext1` wake source. Firmware name: AI / OK / power.
 /// Seeed appearance diagram (glass facing you, USB-C down): **AI Voice Button**,
 /// top of the three keys on the right edge.
+/// Same id as remote-debug `StickyLayout` / `PRODUCT_KEY_OK`.
 pub const BUTTON_OK: u8 = 4;
 /// GPIO5, active low. Firmware name: Up / left.
 /// Seeed: **Page Up Button**, middle of the three on the right edge.
+/// Same id as remote-debug `StickyLayout` / `PRODUCT_KEY_PAGE_UP`.
 pub const BUTTON_UP: u8 = 5;
 /// GPIO6, active low. Firmware name: Down / right.
 /// Seeed: **Page Down Button**, bottom of the three on the right edge.
+/// Same id as remote-debug `StickyLayout` / `PRODUCT_KEY_PAGE_DOWN`.
 pub const BUTTON_DOWN: u8 = 6;
 
 /// Shared interrupt net: LSM6DS3TR-C INT1 and BQ27220 GPOUT (schematic

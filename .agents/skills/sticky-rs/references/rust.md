@@ -245,6 +245,7 @@ sits (`mic` / `radio` / `charge` / `sd`) build with
 `--no-default-features`.
 `remote-debug` is **not** exclusive of `pair` (insecure desk
 snapshot + synthetic tap / key mux + `remote-debug-wire` codec +
+`remote-debug-peripheral` `Device` / optional Trouble GATT +
 encrypted GATT after pair; not default). After `pair ok` that
 image holds the bonded link when walking off the pair card.
 A `Reboot` envelope software-resets the **MCU** (not the host);

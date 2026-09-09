@@ -3,7 +3,7 @@ name = "remote-debug-host"
 version = "0.1.0"
 description = "Generic BLE central for remote-debug framed Envelope (Linux BlueZ)"
 readme = "README.md"
-publish = true
+publish = false
 edition.workspace = true
 # Matches xtask / sticky-host. Workspace no_std crates stay 1.85.
 rust-version = "1.88"

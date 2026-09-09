@@ -3,7 +3,7 @@ name = "remote-debug-broker"
 version = "0.1.0"
 description = "ConnectRPC owner that holds 0..N remote-debug GATT Sessions"
 readme = "README.md"
-publish = true
+publish = false
 edition.workspace = true
 # Matches sticky-host / remote-debug-host. Workspace no_std crates stay 1.85.
 rust-version = "1.88"

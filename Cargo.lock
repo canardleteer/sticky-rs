@@ -1156,6 +1156,7 @@ dependencies = [
  "esp-rtos",
  "heapless 0.8.0",
  "lsm6ds3tr",
+ "remote-debug-peripheral",
  "remote-debug-wire",
  "seeed-reterminal-sticky",
  "ssd1677-gray4",
@@ -3375,6 +3376,16 @@ dependencies = [
  "remote-debug-wire",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "remote-debug-peripheral"
+version = "0.1.0"
+dependencies = [
+ "panel-view",
+ "remote-debug-wire",
+ "static_cell",
+ "trouble-host",
 ]
 
 [[package]]

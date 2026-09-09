@@ -63,7 +63,9 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use bt_hci::cmd::le::{LeSetAdvData, LeSetAdvEnable, LeSetAdvParams, LeSetScanResponseData};
 use bt_hci::controller::ControllerCmdSync;
 use embassy_debug::{Event, PairFailWhy, Scene, PAIR_ADV_NAME, PAIR_FAIL_HOLD_MS};
-use embassy_futures::select::{select, select3, Either, Either3};
+use embassy_futures::select::{select, Either};
+#[cfg(feature = "remote-debug")]
+use embassy_futures::select::{select3, Either3};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::blocking_mutex::Mutex;
 use embassy_sync::signal::Signal;
@@ -237,30 +239,9 @@ struct Server {
     remote: RemoteDebugService,
 }
 
-/// Encrypted remote-debug GATT (local UUIDs; not SIG).
-///
-/// `rx` is written in ATT-sized chunks; [`remote_debug_wire::FrameAssembler`]
-/// reassembles one u32-LE frame. `tx` notifies chunks the same way.
-/// The stored GATT value is a dummy byte; writes and
-/// `notify_raw(..., store=false)` carry the ATT payload.
-/// *The Embedded Rust Book*: do not hold a 48 KiB plane in the table.
+/// Encrypted remote-debug GATT (UUIDs from `remote-debug-peripheral`).
 #[cfg(feature = "remote-debug")]
-#[gatt_service(uuid = "c81e1000-5c8a-4f0e-9c3a-2e7b1a0d4f11")]
-struct RemoteDebugService {
-    #[characteristic(
-        uuid = "c81e1001-5c8a-4f0e-9c3a-2e7b1a0d4f11",
-        write,
-        write_without_response,
-        permissions(encrypted)
-    )]
-    rx: u8,
-    #[characteristic(
-        uuid = "c81e1002-5c8a-4f0e-9c3a-2e7b1a0d4f11",
-        notify,
-        permissions(encrypted)
-    )]
-    tx: u8,
-}
+use remote_debug_peripheral::RemoteDebugService;
 
 /// Local 128-bit service so Settings pairing has a GATT target.
 ///
@@ -641,15 +622,38 @@ async fn on_remote_rx<P: PacketPool>(
     };
     match crate::remote_debug::handle_envelope(&frame) {
         Ok(crate::remote_debug::EnvelopeOutcome::Snapshot) => {
-            notify_armed_snapshot(gatt, server).await;
+            remote_debug_peripheral::notify_armed_snapshot(
+                gatt,
+                &server.remote.tx,
+                || crate::remote_debug::with_armed_snapshot_meta(|opt| opt),
+                |bw, off, n, dest| {
+                    crate::remote_debug::with_armed_frame(|opt| {
+                        let Some((_, frame)) = opt else {
+                            return 0;
+                        };
+                        let src = if bw {
+                            frame.bw
+                        } else {
+                            frame.red.unwrap_or(&[])
+                        };
+                        if off >= src.len() {
+                            return 0;
+                        }
+                        let n = n.min(src.len() - off);
+                        dest[..n].copy_from_slice(&src[off..off + n]);
+                        n
+                    })
+                },
+            )
+            .await;
         }
         Ok(crate::remote_debug::EnvelopeOutcome::Busy { armed }) => {
             let bytes = remote_debug_wire::encode_snapshot_busy(armed);
-            notify_bytes(gatt, &server.remote.tx, &bytes).await;
+            remote_debug_peripheral::notify_bytes(gatt, &server.remote.tx, &bytes).await;
         }
         Ok(crate::remote_debug::EnvelopeOutcome::Reboot) => {
             let bytes = remote_debug_wire::encode_reboot_ack();
-            notify_bytes(gatt, &server.remote.tx, &bytes).await;
+            remote_debug_peripheral::notify_bytes(gatt, &server.remote.tx, &bytes).await;
             Timer::after(Duration::from_millis(100)).await;
             esp_hal::system::software_reset();
         }
@@ -667,98 +671,7 @@ async fn notify_pending_logs<P: PacketPool>(gatt: &GattConnection<'_, '_, P>, se
             continue;
         };
         let bytes = remote_debug_wire::encode_log_line(t_ms, line);
-        notify_bytes(gatt, &server.remote.tx, &bytes).await;
-    }
-}
-
-/// Stream the frozen LAST planes as ATT notify chunks.
-///
-/// Copies one ATT payload at a time under the snapshot lock, then
-/// awaits notify (*The Embassy Book*: do not hold a critical-section
-/// mutex across an await).
-#[cfg(feature = "remote-debug")]
-async fn notify_armed_snapshot<P: PacketPool>(
-    gatt: &GattConnection<'_, '_, P>,
-    server: &Server<'_>,
-) {
-    let Some((meta, bw_len, red_len)) = crate::remote_debug::with_armed_snapshot_meta(|opt| opt)
-    else {
-        let bytes = remote_debug_wire::encode_snapshot_busy(0);
-        notify_bytes(gatt, &server.remote.tx, &bytes).await;
-        return;
-    };
-    let mut preamble = [0u8; 96];
-    if let Ok(n) =
-        remote_debug_wire::snapshot_preamble_to_slice(meta, bw_len, red_len, &mut preamble)
-    {
-        notify_bytes(gatt, &server.remote.tx, &preamble[..n]).await;
-    }
-    notify_plane_chunks(gatt, server, true, bw_len).await;
-    if red_len != 0 {
-        let mut hdr = [0u8; 8];
-        if let Ok(n) = remote_debug_wire::bytes_field_header_to_slice(7, red_len, &mut hdr) {
-            notify_bytes(gatt, &server.remote.tx, &hdr[..n]).await;
-        }
-        notify_plane_chunks(gatt, server, false, red_len).await;
-    }
-}
-
-/// Notify `len` bytes of LAST `bw` (`true`) or `red` (`false`).
-#[cfg(feature = "remote-debug")]
-async fn notify_plane_chunks<P: PacketPool>(
-    gatt: &GattConnection<'_, '_, P>,
-    server: &Server<'_>,
-    bw: bool,
-    len: usize,
-) {
-    let max = notify_payload_max(gatt);
-    let mut off = 0;
-    while off < len {
-        let n = (len - off).min(max);
-        let mut chunk = [0u8; 244];
-        let copied = crate::remote_debug::with_armed_frame(|opt| {
-            let Some((_, frame)) = opt else {
-                return 0;
-            };
-            let src = if bw {
-                frame.bw
-            } else {
-                frame.red.unwrap_or(&[])
-            };
-            if off >= src.len() {
-                return 0;
-            }
-            let n = n.min(src.len() - off);
-            chunk[..n].copy_from_slice(&src[off..off + n]);
-            n
-        });
-        if copied == 0 {
-            return;
-        }
-        notify_bytes(gatt, &server.remote.tx, &chunk[..copied]).await;
-        off += copied;
-    }
-}
-
-/// ATT notify payload size for this link (opcode + handle eat 3 bytes).
-#[cfg(feature = "remote-debug")]
-fn notify_payload_max<P: PacketPool>(gatt: &GattConnection<'_, '_, P>) -> usize {
-    (gatt.raw().att_mtu() as usize)
-        .saturating_sub(3)
-        .clamp(20, 244)
-}
-
-/// Notify `bytes` in ATT-sized slices. `store` is false: do not write
-/// a 48 KiB value into the GATT table.
-#[cfg(feature = "remote-debug")]
-async fn notify_bytes<P: PacketPool>(
-    gatt: &GattConnection<'_, '_, P>,
-    tx: &Characteristic<u8>,
-    bytes: &[u8],
-) {
-    let max = notify_payload_max(gatt);
-    for part in bytes.chunks(max) {
-        let _ = tx.notify_raw(gatt, part, false).await;
+        remote_debug_peripheral::notify_bytes(gatt, &server.remote.tx, &bytes).await;
     }
 }
 

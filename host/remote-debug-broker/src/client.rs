@@ -48,7 +48,9 @@ impl ControlClient {
         })
     }
 
-    /// [`RemoteDebugControlServiceClient::connect`].
+    /// Start pair on a worker. Returns `pairing` immediately.
+    ///
+    /// Poll [`Self::status`] until `connected` or `pair failed`.
     ///
     /// # Errors
     ///
@@ -57,7 +59,7 @@ impl ControlClient {
         Ok(block_on(self.inner.connect(request))?.into_owned())
     }
 
-    /// [`RemoteDebugControlServiceClient::status`].
+    /// Session meter: `pairing` / `connected` / `disconnected` / `pair failed`.
     ///
     /// # Errors
     ///
@@ -66,7 +68,7 @@ impl ControlClient {
         Ok(block_on(self.inner.status(request))?.into_owned())
     }
 
-    /// [`RemoteDebugControlServiceClient::list_targets`].
+    /// Advertise names the owner currently tracks (never a MAC).
     ///
     /// # Errors
     ///
@@ -75,7 +77,7 @@ impl ControlClient {
         Ok(block_on(self.inner.list_targets(request))?.into_owned())
     }
 
-    /// [`RemoteDebugControlServiceClient::inject_touch`].
+    /// Synthetic tap or slide (framebuffer or page space).
     ///
     /// # Errors
     ///
@@ -84,7 +86,7 @@ impl ControlClient {
         Ok(block_on(self.inner.inject_touch(request))?.into_owned())
     }
 
-    /// [`RemoteDebugControlServiceClient::inject_button`].
+    /// Product-key edge (`ok` / `page-up` / `page-down`).
     ///
     /// # Errors
     ///
@@ -96,7 +98,7 @@ impl ControlClient {
         Ok(block_on(self.inner.inject_button(request))?.into_owned())
     }
 
-    /// [`RemoteDebugControlServiceClient::get_snapshot`].
+    /// Arm LAST DRAW. Reply includes plane bytes; the caller writes files.
     ///
     /// # Errors
     ///
@@ -105,7 +107,7 @@ impl ControlClient {
         Ok(block_on(self.inner.get_snapshot(request))?.into_owned())
     }
 
-    /// [`RemoteDebugControlServiceClient::snapshot_ack`].
+    /// Release the armed snapshot nonce.
     ///
     /// # Errors
     ///
@@ -114,7 +116,7 @@ impl ControlClient {
         Ok(block_on(self.inner.snapshot_ack(request))?.into_owned())
     }
 
-    /// [`RemoteDebugControlServiceClient::snapshot_clear`].
+    /// Operator abort (no nonce). Use after a failed get.
     ///
     /// # Errors
     ///
@@ -126,7 +128,7 @@ impl ControlClient {
         Ok(block_on(self.inner.snapshot_clear(request))?.into_owned())
     }
 
-    /// [`RemoteDebugControlServiceClient::reboot`].
+    /// Software-reset the embedded MCU (not this host).
     ///
     /// # Errors
     ///
@@ -135,7 +137,7 @@ impl ControlClient {
         Ok(block_on(self.inner.reboot(request))?.into_owned())
     }
 
-    /// [`RemoteDebugControlServiceClient::disconnect`].
+    /// Drop one GATT session. Empty map also [`Self::shutdown`]s.
     ///
     /// # Errors
     ///
@@ -144,7 +146,7 @@ impl ControlClient {
         Ok(block_on(self.inner.disconnect(request))?.into_owned())
     }
 
-    /// [`RemoteDebugControlServiceClient::shutdown`].
+    /// Stop the owner and unbind the loopback listener.
     ///
     /// # Errors
     ///

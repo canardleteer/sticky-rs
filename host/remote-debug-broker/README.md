@@ -9,6 +9,12 @@ A second project's CLI or MCP front-end depends on this crate plus
 and supplies its own opener (pairing / passkey policy) and serve
 binary. It does **not** take `xtask`.
 
+Git (not crates.io):
+
+```toml
+remote-debug-broker = { git = "https://github.com/canardleteer/sticky-rs", package = "remote-debug-broker" }
+```
+
 Client hangup does **not** drop GATT.
 `Disconnect` drops one session; `Shutdown` or serve exit drops
 every session and unbinds the loopback listener.

@@ -10,13 +10,16 @@ use remote_debug_wire::v1::{
 };
 use remote_debug_wire::{
     decode_envelope, encode_body, encode_reboot, encode_snapshot_clear, inject_button_gpio,
-    snapshot_expected, FrameAssembler, GATT_RX_UUID, GATT_SERVICE_UUID, GATT_TX_UUID,
+    snapshot_expected, ControlLayout, FrameAssembler, GATT_RX_UUID, GATT_SERVICE_UUID,
+    GATT_TX_UUID,
 };
 
 use crate::{Error, Transport};
 
-/// Default advertise name (embassy-debug pair card).
-pub const DEFAULT_ADV_NAME: &str = "sticky-rs";
+/// In-tree Sticky advertise name ([`remote_debug_wire::StickyLayout`]).
+///
+/// A second device passes its own `ConnectRequest.target` / `--name`.
+pub const DEFAULT_ADV_NAME: &str = remote_debug_wire::StickyLayout::ADV_NAME;
 
 /// Documented GATT UUIDs (same strings as `remote-debug-wire`).
 #[must_use]

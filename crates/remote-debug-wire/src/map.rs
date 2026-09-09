@@ -1,16 +1,67 @@
-//! Map proto injects onto [`panel_view`] types and product GPIO numbers.
+//! Map proto injects onto [`panel_view`] types and a [`ControlLayout`].
 
 use panel_view::{ExpectedFrame, FrameKind, TouchSample, TouchSource};
 
 use crate::v1::{self, ProductKey, TouchPhase, TouchSpace};
 
-/// Sticky AI Voice / OK (GPIO4).
+/// Product sizes and key ids for the remote-debug protocol.
+///
+/// A second board implements this and keeps the same `Envelope`.
+/// Page↔framebuffer lives on the board crate (Sticky:
+/// `seeed_reterminal_sticky::display::inject_framebuffer_for_page`).
+pub trait ControlLayout {
+    /// BLE advertise name (never a MAC). Pass `--name` on the host.
+    const ADV_NAME: &'static str;
+
+    /// Packed LAST plane size `(width, height)` in pre-rotation pixels.
+    fn framebuffer_size() -> (u16, u16);
+
+    /// Product key → firmware action id (Sticky: GPIO 4 / 5 / 6).
+    fn product_key_id(key: ProductKey) -> Option<u8>;
+
+    /// Inverse of [`Self::product_key_id`].
+    fn product_key_from_id(id: u8) -> Option<ProductKey>;
+}
+
+/// Seeed reTerminal Sticky: 800×480 planes, advertise `sticky-rs`.
+///
+/// Key ids match [`seeed_reterminal_sticky::pins`] `BUTTON_OK` / `UP` /
+/// `DOWN`. Page inject uses that crate’s `inject_framebuffer_for_page`.
+pub struct StickyLayout;
+
+impl ControlLayout for StickyLayout {
+    const ADV_NAME: &'static str = "sticky-rs";
+
+    fn framebuffer_size() -> (u16, u16) {
+        (800, 480)
+    }
+
+    fn product_key_id(key: ProductKey) -> Option<u8> {
+        match key {
+            ProductKey::PRODUCT_KEY_OK => Some(PRODUCT_KEY_OK_GPIO),
+            ProductKey::PRODUCT_KEY_PAGE_UP => Some(PRODUCT_KEY_PAGE_UP_GPIO),
+            ProductKey::PRODUCT_KEY_PAGE_DOWN => Some(PRODUCT_KEY_PAGE_DOWN_GPIO),
+            ProductKey::PRODUCT_KEY_UNSPECIFIED => None,
+        }
+    }
+
+    fn product_key_from_id(id: u8) -> Option<ProductKey> {
+        match id {
+            PRODUCT_KEY_OK_GPIO => Some(ProductKey::PRODUCT_KEY_OK),
+            PRODUCT_KEY_PAGE_UP_GPIO => Some(ProductKey::PRODUCT_KEY_PAGE_UP),
+            PRODUCT_KEY_PAGE_DOWN_GPIO => Some(ProductKey::PRODUCT_KEY_PAGE_DOWN),
+            _ => None,
+        }
+    }
+}
+
+/// Sticky AI Voice / OK (GPIO4). Same as board `BUTTON_OK`.
 pub const PRODUCT_KEY_OK_GPIO: u8 = 4;
 
-/// Sticky Page Up (GPIO5).
+/// Sticky Page Up (GPIO5). Same as board `BUTTON_UP`.
 pub const PRODUCT_KEY_PAGE_UP_GPIO: u8 = 5;
 
-/// Sticky Page Down (GPIO6).
+/// Sticky Page Down (GPIO6). Same as board `BUTTON_DOWN`.
 pub const PRODUCT_KEY_PAGE_DOWN_GPIO: u8 = 6;
 
 /// Why an inject could not be mapped.
@@ -76,29 +127,33 @@ pub fn inject_touch_space(msg: &v1::InjectTouch) -> TouchSpace {
     }
 }
 
-/// Product key → Sticky GPIO. Unspecified is [`MapError::Key`].
+/// Product key → [`ControlLayout::product_key_id`].
+///
+/// # Errors
+///
+/// [`MapError::Key`] when the enum is unspecified or the layout
+/// does not map it.
+pub fn inject_button_id<L: ControlLayout>(
+    key: &buffa::EnumValue<ProductKey>,
+) -> Result<u8, MapError> {
+    key.as_known()
+        .and_then(L::product_key_id)
+        .ok_or(MapError::Key)
+}
+
+/// Product key → Sticky GPIO ([`StickyLayout`]).
 ///
 /// # Errors
 ///
 /// [`MapError::Key`] when the enum is unspecified or unknown.
 pub fn inject_button_gpio(key: &buffa::EnumValue<ProductKey>) -> Result<u8, MapError> {
-    match key.as_known() {
-        Some(ProductKey::PRODUCT_KEY_OK) => Ok(PRODUCT_KEY_OK_GPIO),
-        Some(ProductKey::PRODUCT_KEY_PAGE_UP) => Ok(PRODUCT_KEY_PAGE_UP_GPIO),
-        Some(ProductKey::PRODUCT_KEY_PAGE_DOWN) => Ok(PRODUCT_KEY_PAGE_DOWN_GPIO),
-        _ => Err(MapError::Key),
-    }
+    inject_button_id::<StickyLayout>(key)
 }
 
-/// GPIO 4/5/6 → product key. Other pads are [`None`].
+/// Sticky GPIO 4/5/6 → product key. Other pads are [`None`].
 #[must_use]
 pub fn product_key_from_gpio(gpio: u8) -> Option<ProductKey> {
-    match gpio {
-        PRODUCT_KEY_OK_GPIO => Some(ProductKey::PRODUCT_KEY_OK),
-        PRODUCT_KEY_PAGE_UP_GPIO => Some(ProductKey::PRODUCT_KEY_PAGE_UP),
-        PRODUCT_KEY_PAGE_DOWN_GPIO => Some(ProductKey::PRODUCT_KEY_PAGE_DOWN),
-        _ => None,
-    }
+    StickyLayout::product_key_from_id(gpio)
 }
 
 /// Pass-through for a product hold token (`optional uint32`).

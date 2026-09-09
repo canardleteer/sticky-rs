@@ -7,8 +7,8 @@
 | `crates/*` | Default-members. Host-testable format crates and (when present) `no_std` `embedded-hal` 1.0 drivers |
 | `host/` | Default-members. Host libraries and future host CLIs (not `xtask`) |
 | `host/sticky-host/` | Host library (`publish = true`, not crates.io yet). Detect, factory backup / confirm / restore, `build-fw`, `flash-app`, learn-uart, monitor, remote-debug UART PIN / allowlist / page-space PNG. Wraps the generic broker with xtask `remote-debug serve` argv and the Sticky flock dir. Callers pass `Layout`; live methods take the UART lock |
-| `host/remote-debug-host/` | Generic BLE central (`publish = true`). No clap, no UART, no Sticky pins. Linux uses `bluer` (Connect, not Pair) |
-| `host/remote-debug-broker/` | ConnectRPC owner (`publish = true`). Holds 0..N GATT `Session`s keyed by advertise name. Loopback HTTP + `remote-debug.connect` endpoint file. `serve_with` + `SpawnSpec` (exe + argv). No clap, no UART, no Seeed crate |
+| `host/remote-debug-host/` | Generic BLE central (`publish = false`; git dep). No clap, no UART, no Sticky pins. Linux uses `bluer` (Connect, not Pair) |
+| `host/remote-debug-broker/` | ConnectRPC owner (`publish = false`; git dep). Holds 0..N GATT `Session`s keyed by advertise name. Loopback HTTP + `remote-debug.connect` endpoint file. `serve_with` + `SpawnSpec` (exe + argv). No clap, no UART, no Seeed crate |
 | `protos/` | Shared IDL (`sticky.remote.shared.v1`, GATT `Envelope`, ConnectRPC control). `buf lint` STANDARD+COMMENTS. Generated trees are committed; `REGEN_PROTO=1` rewrites |
 | `xtask/` | Clap front-end at the repo root (`cargo xtask`). Maps flags to `sticky-host`; `repo_root()` is the parent of this package. `remote-debug --mcp` is a clap-mcp subtree, not the full CLI |
 | `developer-data/` | Gitignored private / personalized files. Sealed dumps under `developer-data/backups/` (`original/<serial>/`, `captures/<unit-id>/<slug>/`). Learn-uart YAML under `uart-inspection-records/<serial>/`. Confirm reports under `confirm-records/<serial>/`. Remote-debug allowlist and snapshot planes under `remote-debug/`. Private scratch notes stay here too. Not in git. Leftover repo-root `backups/` is also ignored; do not use it |
@@ -25,9 +25,12 @@ tagged-touch companions (`ExpectedFrame`, `TouchSource`; not methods on
 `PanelView`). Do not put `HitRect` or the four point types on
 `PanelView` this pass. `remote-debug-wire` is the protobuf codec
 (`sticky.remote.v1.Envelope`, u32 LE length, one frozen snapshot
-slot) plus documented GATT UUIDs and ATT reassembly; it does not own
-planes. `remote-debug-host` is the generic Linux central.
-`remote-debug-broker` is the ConnectRPC owner process. Board specifics —
+slot) plus documented GATT UUIDs, ATT reassembly, and
+`ControlLayout`; it does not own planes.
+`remote-debug-peripheral` is device-side dispatch (optional
+`gatt`). `remote-debug-host` is the generic Linux central.
+`remote-debug-broker` is the ConnectRPC owner process.
+Git consumer: [remote-debug-consumer.md](remote-debug-consumer.md). Board specifics —
 pins, latch, rails, transforms, and typed spaces
 (`DigitizerSample`, `FramebufferPoint`, `GlassPoint`,
 `PagePoint`, `HitRect`) — belong in `seeed-reterminal-sticky`

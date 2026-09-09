@@ -8,6 +8,12 @@ A second codebase implements the same documented 128-bit service
 (`remote-debug-wire` `GATT_*` UUIDs) after *its* pairing policy and
 feeds six-digit passkeys through [`PasskeySource`].
 
+Git (not crates.io):
+
+```toml
+remote-debug-host = { git = "https://github.com/canardleteer/sticky-rs", package = "remote-debug-host" }
+```
+
 On Linux the transport is [`bluer`](https://crates.io/crates/bluer)
 (BlueZ). Connect the advertise name (default `sticky-rs` is an
 in-tree example; pass your own); do **not** call BlueZ

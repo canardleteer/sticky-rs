@@ -59,6 +59,7 @@ embassy-futures = "0.1.2"
 seeed-reterminal-sticky = { path = "../../crates/seeed-reterminal-sticky" }
 embassy-debug = { path = "../../crates/embassy-debug" }
 remote-debug-wire = { path = "../../crates/remote-debug-wire", optional = true }
+remote-debug-peripheral = { path = "../../crates/remote-debug-peripheral", optional = true }
 bq25616 = { path = "../../crates/bq25616" }
 bq27220 = { path = "../../crates/bq27220", optional = true }
 
@@ -100,6 +101,8 @@ remote-debug = [
   "pair",
   "embassy-debug/remote-debug",
   "dep:remote-debug-wire",
+  "dep:remote-debug-peripheral",
+  "remote-debug-peripheral/gatt",
 ]
 # Enable MicRail + I2S PDM RX and print `mic rms=` / `peak=` lines.
 # Community 16 kHz / 16-bit / left recipe; unconfirmed on this unit.

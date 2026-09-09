@@ -46,6 +46,29 @@ pub enum PageRotation {
 }
 
 impl PageRotation {
+    /// Proto `Snapshot.hold` token (0..=3). Not a GPIO.
+    #[must_use]
+    pub const fn hold_token(self) -> u32 {
+        match self {
+            Self::Portrait0 => 0,
+            Self::Portrait180 => 1,
+            Self::Landscape0 => 2,
+            Self::Landscape180 => 3,
+        }
+    }
+
+    /// Inverse of [`Self::hold_token`].
+    #[must_use]
+    pub const fn from_hold_token(token: u32) -> Option<Self> {
+        match token {
+            0 => Some(Self::Portrait0),
+            1 => Some(Self::Portrait180),
+            2 => Some(Self::Landscape0),
+            3 => Some(Self::Landscape180),
+            _ => None,
+        }
+    }
+
     /// Logical page size for this hold, `(width, height)`.
     #[must_use]
     pub const fn page_size(self) -> (u16, u16) {
@@ -176,6 +199,15 @@ pub const fn inject_framebuffer_for_page(
         return None;
     };
     gray4_touch_framebuffer(hx, hy, rotation)
+}
+
+/// [`inject_framebuffer_for_page`] from a proto `Snapshot.hold` token.
+#[must_use]
+pub const fn inject_framebuffer_for_hold(px: u16, py: u16, hold: u32) -> Option<(u16, u16)> {
+    let Some(rotation) = PageRotation::from_hold_token(hold) else {
+        return None;
+    };
+    inject_framebuffer_for_page(px, py, rotation)
 }
 
 /// Last RAM X address unit for a full-width window (`8.3` address units).
@@ -382,6 +414,24 @@ mod tests {
             Some((799, 479))
         );
         assert_eq!(page_to_framebuffer(480, 0, PageRotation::Portrait180), None);
+    }
+
+    #[test]
+    fn hold_token_round_trips_and_page_inject_uses_it() {
+        for rot in [
+            PageRotation::Portrait0,
+            PageRotation::Portrait180,
+            PageRotation::Landscape0,
+            PageRotation::Landscape180,
+        ] {
+            assert_eq!(PageRotation::from_hold_token(rot.hold_token()), Some(rot));
+            assert_eq!(
+                inject_framebuffer_for_hold(0, 0, rot.hold_token()),
+                inject_framebuffer_for_page(0, 0, rot)
+            );
+        }
+        assert_eq!(PageRotation::from_hold_token(99), None);
+        assert_eq!(inject_framebuffer_for_hold(0, 0, 99), None);
     }
 
     #[test]

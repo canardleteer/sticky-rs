@@ -63,12 +63,11 @@ use embassy_sync::blocking_mutex::Mutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::signal::Signal;
 use esp_println::println;
-use remote_debug_wire::v1::envelope::Body;
+use remote_debug_peripheral::{handle_envelope as dispatch_envelope, Device};
 use remote_debug_wire::v1::{TargetKind as WireTargetKind, TouchPhase, TouchSpace};
 use remote_debug_wire::{
-    decode_envelope, frame_kind_to_wire, inject_button_gpio, inject_touch_phase,
-    inject_touch_sample, inject_touch_space, AckOutcome, FrameError, GetOutcome, SnapshotMeta,
-    SnapshotSlot,
+    frame_kind_to_wire, AckOutcome, ClearOutcome, FrameError, GetOutcome, SnapshotMeta,
+    SnapshotSlot, StickyLayout,
 };
 use seeed_reterminal_sticky::display::{self, inject_framebuffer_for_page, PageRotation};
 
@@ -467,12 +466,7 @@ fn expected_from_last(last: &LastInner) -> ExpectedFrame<'_, PageRotation> {
 /// Portrait180 = 1, Landscape0 = 2, Landscape180 = 3.
 #[allow(dead_code)]
 pub(crate) fn hold_token(rotation: PageRotation) -> u32 {
-    match rotation {
-        PageRotation::Portrait0 => 0,
-        PageRotation::Portrait180 => 1,
-        PageRotation::Landscape0 => 2,
-        PageRotation::Landscape180 => 3,
-    }
+    rotation.hold_token()
 }
 
 /// Queue one framebuffer tap for [`crate::touch_task`].
@@ -572,81 +566,81 @@ pub(crate) fn framebuffer_to_uart_screen(fx: u16, fy: u16) -> Option<(u16, u16)>
     seeed_reterminal_sticky::display::screen_to_framebuffer(fx, fy)
 }
 
-/// What the BLE (or later SoftAP) path should send after a handle.
-///
-/// Inject / Ack / Clear have no envelope reply. Get arms the slot
-/// and asks the transport to stream [`EnvelopeOutcome::Snapshot`]
-/// or a tiny [`EnvelopeOutcome::Busy`].
-#[derive(Clone, Copy)]
-pub(crate) enum EnvelopeOutcome {
-    /// No device→host envelope (inject, ack, clear, ignore).
-    None,
-    /// Stream the frozen LAST planes as a framed `Snapshot`.
-    Snapshot,
-    /// `SnapshotBusy` echoing `armed` (0 when the get was empty/zero).
-    Busy {
-        /// Nonce already holding the slot, or 0.
-        armed: u64,
-    },
-    /// Host asked to software-reset the **embedded MCU** (not the host).
-    Reboot,
+pub(crate) use remote_debug_peripheral::EnvelopeOutcome;
+
+/// Sticky image callbacks for [`dispatch_envelope`].
+struct FwDevice;
+
+impl Device for FwDevice {
+    fn on_inject_touch(&mut self, sample: TouchSample, phase: TouchPhase, space: TouchSpace) {
+        handle_inject_touch_mapped(sample, phase, space);
+    }
+
+    fn on_inject_button(&mut self, key_id: u8, down: bool) {
+        handle_inject_button_id(key_id, down);
+    }
+
+    fn last_ready(&self) -> bool {
+        REMOTE.lock(|cell| cell.borrow().last.as_ref().is_some_and(|last| last.ready))
+    }
+
+    fn slot_get(&mut self, nonce: u64, last_ready: bool) -> GetOutcome {
+        let outcome = REMOTE.lock(|cell| cell.borrow_mut().slot.on_get(nonce, last_ready));
+        let (op, n) = match outcome {
+            GetOutcome::Armed => (SnapOp::Get, nonce),
+            GetOutcome::Retry => (SnapOp::Retry, nonce),
+            GetOutcome::Busy { armed } => (SnapOp::Busy { armed }, nonce),
+            GetOutcome::Empty => (SnapOp::Empty, nonce),
+            GetOutcome::Zero => (SnapOp::GetZero, 0),
+        };
+        emit_snap(op, n);
+        outcome
+    }
+
+    fn slot_ack(&mut self, nonce: u64) -> AckOutcome {
+        let outcome = REMOTE.lock(|cell| cell.borrow_mut().slot.on_ack(nonce));
+        let (op, n) = match outcome {
+            AckOutcome::Released => (SnapOp::Ack, nonce),
+            AckOutcome::Miss { armed } => (SnapOp::AckMiss { armed }, nonce),
+            AckOutcome::Stale => (SnapOp::AckStale, nonce),
+            AckOutcome::Zero => (SnapOp::AckZero, 0),
+        };
+        emit_snap(op, n);
+        outcome
+    }
+
+    fn slot_clear(&mut self) -> ClearOutcome {
+        REMOTE.lock(|cell| {
+            let _ = cell.borrow_mut().slot.on_clear();
+        });
+        emit_snap(SnapOp::Clear, 0);
+        ClearOutcome::Cleared
+    }
+
+    fn on_reboot(&mut self) {
+        crate::emit(Event::RemoteReboot {
+            t_ms: crate::now_ms(),
+        });
+    }
 }
 
-/// Decode one framed [`remote_debug_wire::v1::Envelope`] and apply it.
+/// Decode one framed Envelope and apply it through [`FwDevice`].
 ///
 /// Injects go to the tap / key mux. Snapshot Get / Ack / Clear
 /// update the frozen slot and emit the `snap` UART line. `Reboot`
 /// emits `remote reboot` and asks the BLE task to ACK then
-/// software-reset the **MCU** (*The Embassy Book*: keep protocol
-/// out of the display task).
+/// software-reset the **MCU**.
 ///
 /// # Errors
 ///
 /// [`FrameError`] when the bytes are not one version-1 envelope.
 pub(crate) fn handle_envelope(bytes: &[u8]) -> Result<EnvelopeOutcome, FrameError> {
-    let env = decode_envelope(bytes)?;
-    let outcome = match env.body {
-        Some(Body::InjectTouch(msg)) => {
-            handle_inject_touch(&msg);
-            EnvelopeOutcome::None
-        }
-        Some(Body::InjectButton(msg)) => {
-            handle_inject_button(&msg);
-            EnvelopeOutcome::None
-        }
-        Some(Body::GetSnapshot(msg)) => handle_get(msg.nonce),
-        Some(Body::SnapshotAck(msg)) => {
-            handle_ack(msg.nonce);
-            EnvelopeOutcome::None
-        }
-        Some(Body::SnapshotClear(_)) => {
-            handle_clear();
-            EnvelopeOutcome::None
-        }
-        Some(Body::Reboot(_)) => {
-            crate::emit(Event::RemoteReboot {
-                t_ms: crate::now_ms(),
-            });
-            EnvelopeOutcome::Reboot
-        }
-        Some(Body::Snapshot(_) | Body::SnapshotBusy(_) | Body::LogLine(_) | Body::RebootAck(_))
-        | None => EnvelopeOutcome::None,
-    };
-    Ok(outcome)
+    dispatch_envelope::<FwDevice, StickyLayout>(&mut FwDevice, bytes)
 }
 
-/// Map `InjectTouch` and queue it, or emit `touch drop src=syn`.
-///
-/// Out of 800×480, a failed map, or a full [`SYNTHETIC`] channel
-/// are all drops. UART always logs the drop so a desk log is not
-/// silent (*The Embedded Rust Book*: ignore is not silence).
-fn handle_inject_touch(msg: &remote_debug_wire::v1::InjectTouch) {
-    let Ok(mut sample) = inject_touch_sample(msg) else {
-        emit_touch_drop();
-        return;
-    };
-    let phase = inject_touch_phase(msg);
-    if inject_touch_space(msg) == TouchSpace::TOUCH_SPACE_PAGE {
+/// Queue a decoded tap, or emit `touch drop src=syn`.
+fn handle_inject_touch_mapped(mut sample: TouchSample, phase: TouchPhase, space: TouchSpace) {
+    if space == TouchSpace::TOUCH_SPACE_PAGE {
         let Some((fx, fy)) = inject_framebuffer_for_page(sample.x, sample.y, last_hold()) else {
             emit_touch_drop();
             return;
@@ -663,65 +657,15 @@ fn handle_inject_touch(msg: &remote_debug_wire::v1::InjectTouch) {
     }
 }
 
-/// Map `InjectButton`, print `btn … src=syn`, and queue a short press.
-///
-/// An unspecified key is dropped without a UART line (nothing to
-/// map). A full [`BUTTONS`] channel still printed the edge so the
-/// inject is visible; the walk does not run.
-fn handle_inject_button(msg: &remote_debug_wire::v1::InjectButton) {
-    let Ok(gpio) = inject_button_gpio(&msg.key) else {
-        return;
-    };
+/// Print `btn … src=syn` and queue a short press.
+fn handle_inject_button_id(gpio: u8, down: bool) {
     crate::emit(Event::Button {
         t_ms: crate::now_ms(),
         gpio,
-        down: msg.down,
+        down,
         source: TouchSource::Synthetic,
     });
-    let _ = inject_button(gpio, msg.down);
-}
-
-/// Arm or refuse `GetSnapshot`. Always logs. Tells the transport
-/// whether to stream LAST or send `SnapshotBusy`.
-fn handle_get(nonce: u64) -> EnvelopeOutcome {
-    let outcome = REMOTE.lock(|cell| {
-        let mut remote = cell.borrow_mut();
-        let last_ready = remote.last.as_ref().is_some_and(|last| last.ready);
-        remote.slot.on_get(nonce, last_ready)
-    });
-    let (op, n, reply) = match outcome {
-        GetOutcome::Armed => (SnapOp::Get, nonce, EnvelopeOutcome::Snapshot),
-        GetOutcome::Retry => (SnapOp::Retry, nonce, EnvelopeOutcome::Snapshot),
-        GetOutcome::Busy { armed } => (
-            SnapOp::Busy { armed },
-            nonce,
-            EnvelopeOutcome::Busy { armed },
-        ),
-        GetOutcome::Empty => (SnapOp::Empty, nonce, EnvelopeOutcome::Busy { armed: 0 }),
-        GetOutcome::Zero => (SnapOp::GetZero, 0, EnvelopeOutcome::Busy { armed: 0 }),
-    };
-    emit_snap(op, n);
-    reply
-}
-
-/// Release on a matching Ack. Mismatch / zero / stale log and stay.
-fn handle_ack(nonce: u64) {
-    let outcome = REMOTE.lock(|cell| cell.borrow_mut().slot.on_ack(nonce));
-    let (op, n) = match outcome {
-        AckOutcome::Released => (SnapOp::Ack, nonce),
-        AckOutcome::Miss { armed } => (SnapOp::AckMiss { armed }, nonce),
-        AckOutcome::Stale => (SnapOp::AckStale, nonce),
-        AckOutcome::Zero => (SnapOp::AckZero, 0),
-    };
-    emit_snap(op, n);
-}
-
-/// Operator abort. Always logs `snap clear`.
-fn handle_clear() {
-    REMOTE.lock(|cell| {
-        let _ = cell.borrow_mut().slot.on_clear();
-    });
-    emit_snap(SnapOp::Clear, 0);
+    let _ = inject_button(gpio, down);
 }
 
 /// One `snap` UART line (`format_event` contract).

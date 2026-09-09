@@ -1,6 +1,18 @@
 # remote-debug-wire
 
-Protobuf codec for Sticky remote-debug snapshot and inject.
+Protobuf codec for remote-debug snapshot and inject.
+
+Git (not crates.io):
+
+```toml
+remote-debug-wire = { git = "https://github.com/canardleteer/sticky-rs", package = "remote-debug-wire" }
+```
+
+A second board implements [`ControlLayout`](https://github.com/canardleteer/sticky-rs/blob/main/crates/remote-debug-wire/src/map.rs)
+(advertise name, plane size, key ids) and keeps this Envelope.
+`StickyLayout` is the in-tree Seeed reTerminal Sticky profile
+(`sticky-rs`, 800×480, GPIO 4/5/6). Page↔framebuffer stays on
+the board crate.
 
 This crate is the **codec**, not a transport. One framed message is a
 little-endian `u32` length plus a `sticky.remote.v1.Envelope`. SoftAP,

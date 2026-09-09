@@ -1,0 +1,37 @@
+[package]
+name = "remote-debug-peripheral"
+version = "0.1.0"
+description = "Device-side Envelope dispatch and optional Trouble GATT for remote-debug"
+readme = "README.md"
+publish = false
+edition.workspace = true
+# trouble-host (gatt feature) tracks the host/firmware MSRV, not 1.85.
+rust-version = "1.88"
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+default = []
+# Trouble `RemoteDebugService` + ATT notify helpers. The image still
+# owns the radio stack (esp-radio / BleConnector).
+gatt = ["dep:static_cell", "dep:trouble-host"]
+
+[dependencies]
+panel-view = { path = "../panel-view", version = "0.1.0" }
+remote-debug-wire = { path = "../remote-debug-wire", version = "0.1.0" }
+static_cell = { version = "2.1.1", optional = true }
+trouble-host = { version = "0.7.0", optional = true, default-features = false, features = [
+  "default-packet-pool-mtu-255",
+  "peripheral",
+  "gatt",
+  "security",
+  "legacy-pairing",
+  "derive",
+  "central",
+] }
+
+[lints]
+workspace = true

@@ -142,7 +142,10 @@ Live-ask, never-erase, and flash I/O: root
   (`to_screen`); a synthetic tap converts framebuffer → glass with
   the 180° involution (`screen_to_framebuffer`). Codec is
   [`remote-debug-wire`](../../crates/remote-debug-wire) (u32 LE
-  length + `Envelope`). Encrypted GATT RX/TX (local UUIDs, not the
+  length + `Envelope`) plus
+  [`remote-debug-peripheral`](../../crates/remote-debug-peripheral)
+  (`Device` / `StickyLayout` / Trouble `RemoteDebugService`).
+  Encrypted GATT RX/TX (local UUIDs, not the
   pair-card token) after DisplayOnly pair. ATT chunks reassemble
   one frame; Snapshot streams LAST in ATT-sized notifies. No UART
   RX parser and no SoftAP framebuffer protocol. Walkthrough:

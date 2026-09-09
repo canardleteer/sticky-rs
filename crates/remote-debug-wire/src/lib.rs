@@ -81,9 +81,9 @@ pub use frame::{
 pub use gatt::{GATT_RX_UUID, GATT_SERVICE_UUID, GATT_TX_UUID};
 pub use map::{
     frame_kind_from_wire, frame_kind_to_wire, hold_from_u32, hold_to_u32, inject_button_gpio,
-    inject_touch_phase, inject_touch_sample, inject_touch_space, product_key_from_gpio,
-    snapshot_expected, MapError, PRODUCT_KEY_OK_GPIO, PRODUCT_KEY_PAGE_DOWN_GPIO,
-    PRODUCT_KEY_PAGE_UP_GPIO,
+    inject_button_id, inject_touch_phase, inject_touch_sample, inject_touch_space,
+    product_key_from_gpio, snapshot_expected, ControlLayout, MapError, StickyLayout,
+    PRODUCT_KEY_OK_GPIO, PRODUCT_KEY_PAGE_DOWN_GPIO, PRODUCT_KEY_PAGE_UP_GPIO,
 };
 pub use reassemble::{FrameAssembler, DEVICE_RX_MAX, HOST_RX_MAX};
 pub use slot::{AckOutcome, ClearOutcome, GetOutcome, SnapshotSlot};
@@ -184,6 +184,8 @@ mod tests {
         };
         assert_eq!(inject_button_gpio(&got.key), Ok(6));
         assert!(got.down);
+        assert_eq!(StickyLayout::ADV_NAME, "sticky-rs");
+        assert_eq!(StickyLayout::framebuffer_size(), (800, 480));
     }
 
     #[test]

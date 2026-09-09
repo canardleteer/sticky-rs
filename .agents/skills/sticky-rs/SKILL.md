@@ -38,6 +38,8 @@ copy of that gate is the root `AGENTS.md`.
    next desk sit).
    Snapshot how-to:
    [firmware-snapshot-management.md](../../../docs/firmware-snapshot-management.md).
+   Git consumer (second firmware / host, no crates.io):
+   [references/remote-debug-consumer.md](references/remote-debug-consumer.md).
 2. **Draw and hit-test** —
    [draw-and-touch.md](../seeed-sticky-hardware/references/draw-and-touch.md)
    (board facts) plus this crate’s
@@ -90,8 +92,8 @@ A device may be attached for unrelated reasons; ignore it.
 | --- | --- |
 | `crates/*` | Default-members. Host-testable, `no_std` / format crates |
 | `host/sticky-host/` | Host library (`publish = true`, not crates.io yet). Live methods take the UART lock; callers pass `Layout`. Sticky remote-debug desk (UART PIN, allowlist, PNG); wraps the generic broker |
-| `host/remote-debug-host/` | Generic BLE central (`publish = true`). No clap, no UART, no Sticky pins. Linux uses `bluer` |
-| `host/remote-debug-broker/` | ConnectRPC owner (`publish = true`). Holds 0..N `Session`s by advertise name. `SpawnSpec` exe + argv; no clap, no UART |
+| `host/remote-debug-host/` | Generic BLE central (`publish = false`; git dep). No clap, no UART, no Sticky pins. Linux uses `bluer` |
+| `host/remote-debug-broker/` | ConnectRPC owner (`publish = false`; git dep). Holds 0..N `Session`s by advertise name. `SpawnSpec` exe + argv; no clap, no UART |
 | `protos/` | Shared IDL + `buf lint`. Committed gen; `REGEN_PROTO=1` rewrites |
 | `xtask/` | Clap front-end at the repo root (`cargo xtask`, `publish = false`). `remote-debug --mcp` is this subtree only |
 | `developer-data/` | Gitignored private / personalized files. Sealed per-unit originals under `developer-data/backups/`; learn-uart YAML under `uart-inspection-records/<serial>/`; confirm reports under `confirm-records/<serial>/`; remote-debug allowlist and snapshot planes under `remote-debug/`. Private scratch notes stay here too. Not in git |
@@ -102,8 +104,9 @@ Chip drivers (`bq25616`, `bq27220`, `ssd1677-gray4`) stay MCU-agnostic.
 companions (remap only; no `HitRect`). `remote-debug-wire` is the
 protobuf codec plus documented GATT UUIDs / ATT reassembly for an
 insecure desk snapshot / inject (UART stays plaintext).
-`remote-debug-host` is the generic Linux central.
-`remote-debug-broker` is the ConnectRPC owner process. Board pins,
+`remote-debug-peripheral` is device-side Envelope dispatch
+(optional Trouble GATT). `remote-debug-host` is the generic Linux
+central. `remote-debug-broker` is the ConnectRPC owner process. Board pins,
 latch, rails, and typed spaces
 (`DigitizerSample`, `FramebufferPoint`, `GlassPoint`,
 `PagePoint`, `HitRect`) belong in `seeed-reterminal-sticky`.

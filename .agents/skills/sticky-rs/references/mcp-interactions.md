@@ -261,6 +261,15 @@ edges under [Difficult / crude](#difficult--crude).
 - Fresh attach (2026-09-09): `connect` → splash `png` (Ferris,
   `scene=0 hold=0`, no `bw` / `red` keys) → `page-down` →
   shapes `png` (`scene=1`) → ack → `disconnect`.
+- Landscape180 sit (2026-09-09, USB-C left, `hold=3`): page
+  PNGs were 800×480 (not 480×800). Splash Ferris, shapes Koch,
+  legend, and tones rematerialized upright. Seven `page-down`
+  reached `scene=7`. First expect was landscape centre
+  `400,240` (portrait `240,400` would miss). Dots at
+  `400,240` / `80,80` / `720,80` / `80,400` / `720,400`.
+  `slide_x` insets `80` / `720` at `y=240`; `slide_y` insets
+  `80` / `400` at `x=400`. After id 6, `target_step=0` and
+  `last_log` `target show id=0`.
 
 ## Difficult / crude
 

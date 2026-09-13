@@ -63,7 +63,7 @@ exactly one QinHeng CH343 (`1a86:55d3`).
 | `build-fw` | no | Host-only. `cargo +esp` + `save-image` for `simple-debug` or `embassy-debug`. Default embassy-debug includes `pair` + `wifi`. `--features operator` / `mic` / `radio` / `pair` / `wifi` / `spi20` / `sd` / `charge` / `remote-debug` |
 | `ci` | no | Host-only CI gate (fmt, host clippy/test, firmware clippy, rumdl, `buf lint`, machete, audit) |
 | `monitor` | yes | UART0 at 115200 |
-| `remote-debug` | live BLE; UART on auto-PIN | Encrypted GATT after DisplayOnly pair. `connect` starts a detached ConnectRPC owner and returns `pairing`; poll `status` until `connected`. Inject / snapshot / `list-targets` are RPC. `disconnect` drops one GATT session (empty map also shuts the owner down). `serve` is an optional foreground log. `reboot` resets the embedded MCU. `--mcp` is the same client, this subtree only |
+| `remote-debug` | live BLE; UART on auto-PIN | Encrypted GATT after DisplayOnly pair. `connect` starts a detached ConnectRPC owner and returns `pairing`; poll `status` until `connected` (CLI `--wait` polls). Inject / snapshot / `logs` / `list-targets` are RPC. `disconnect` drops one GATT session (empty map also shuts the owner down). `serve` is an optional foreground log. `reboot` resets the embedded MCU. `--mcp` is the same client, this subtree only |
 
 ## License
 

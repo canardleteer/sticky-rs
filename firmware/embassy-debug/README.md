@@ -546,10 +546,11 @@ if needed and returns `pairing`. Run `status` until you see
 ```shell
 cargo xtask remote-debug connect
 cargo xtask remote-debug status
+# or: cargo xtask remote-debug connect --wait
 ```
 
 You should see `pairing` from `connect`, then `connected` from
-`status`. `--pin 000042` skips UART if you
+`status`. `--wait` stays in that process until one of those. `--pin 000042` skips UART if you
 already know the six digits. `--remember` keeps the BlueZ bond
 for this unit (factory / USB serial in gitignored
 `developer-data/remote-debug/`; never a MAC).
@@ -581,10 +582,10 @@ cargo xtask remote-debug snapshot-ack
 
 A tap should print `touch … src=syn` on UART if you later listen,
 and the page should react as if you touched that framebuffer
-pixel. `inject-button --key page-down` (default `--down`) is a
-short press: splash → shapes → legend → tones → pair → Wi-Fi
-cards → targets. Do not tap START on a Wi-Fi card unless you
-mean to start the radio.
+pixel. `inject-button --key page-down` is a short press
+(`--release` is the up edge): splash → shapes → legend →
+tones → pair → Wi-Fi cards → targets. Do not tap START on a
+Wi-Fi card unless you mean to start the radio.
 
 `get-snapshot` writes `snap-<hex>.bw` and `.red` under
 `developer-data/remote-debug/snapshots/` (hex nonce in the

@@ -983,6 +983,26 @@ pub struct StatusResponseView<'a> {
     ///
     /// Field 5: `last_log`
     pub last_log: ::core::option::Option<&'a str>,
+    /// Last GetSnapshot scene persist byte. Stale after inject until the next pull.
+    ///
+    /// Field 6: `last_scene`
+    pub last_scene: ::core::option::Option<u32>,
+    /// Last GetSnapshot hold token. Stale after inject until the next pull.
+    ///
+    /// Field 7: `last_hold`
+    pub last_hold: ::core::option::Option<u32>,
+    /// Last GetSnapshot targets step. Stale after inject until the next pull.
+    ///
+    /// Field 8: `last_target_step`
+    pub last_target_step: ::core::option::Option<u32>,
+    /// Last GetSnapshot expect page X. Stale after inject until the next pull.
+    ///
+    /// Field 9: `last_expect_x`
+    pub last_expect_x: ::core::option::Option<u32>,
+    /// Last GetSnapshot expect page Y. Stale after inject until the next pull.
+    ///
+    /// Field 10: `last_expect_y`
+    pub last_expect_y: ::core::option::Option<u32>,
     pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
 }
 impl<'a> ::buffa::MessageView<'a> for StatusResponseView<'a> {
@@ -1052,6 +1072,41 @@ impl<'a> ::buffa::MessageView<'a> for StatusResponseView<'a> {
                 )?;
                 view.last_log = Some(::buffa::types::borrow_str(&mut cur)?);
             }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.last_scene = Some(::buffa::types::decode_uint32(&mut cur)?);
+            }
+            7u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.last_hold = Some(::buffa::types::decode_uint32(&mut cur)?);
+            }
+            8u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.last_target_step = Some(::buffa::types::decode_uint32(&mut cur)?);
+            }
+            9u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.last_expect_x = Some(::buffa::types::decode_uint32(&mut cur)?);
+            }
+            10u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.last_expect_y = Some(::buffa::types::decode_uint32(&mut cur)?);
+            }
             _ => {
                 ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
                 let span_len = before_tag.len() - cur.len();
@@ -1079,6 +1134,11 @@ impl<'a> ::buffa::MessageView<'a> for StatusResponseView<'a> {
             connected: self.connected,
             nonce: self.nonce,
             last_log: self.last_log.map(|s| s.to_string()),
+            last_scene: self.last_scene,
+            last_hold: self.last_hold,
+            last_target_step: self.last_target_step,
+            last_expect_x: self.last_expect_x,
+            last_expect_y: self.last_expect_y,
             __buffa_unknown_fields: self.__buffa_unknown_fields.to_owned()?.into(),
             ..::core::default::Default::default()
         })
@@ -1108,6 +1168,21 @@ impl<'a> ::buffa::ViewEncode<'a> for StatusResponseView<'a> {
         if let Some(ref v) = self.last_log {
             size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
         }
+        if let Some(v) = self.last_scene {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(v) as u64;
+        }
+        if let Some(v) = self.last_hold {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(v) as u64;
+        }
+        if let Some(v) = self.last_target_step {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(v) as u64;
+        }
+        if let Some(v) = self.last_expect_x {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(v) as u64;
+        }
+        if let Some(v) = self.last_expect_y {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(v) as u64;
+        }
         size += self.__buffa_unknown_fields.encoded_len() as u64;
         ::buffa::saturate_size(size)
     }
@@ -1136,6 +1211,21 @@ impl<'a> ::buffa::ViewEncode<'a> for StatusResponseView<'a> {
         }
         if let Some(ref v) = self.last_log {
             ::buffa::types::put_string_field(5u32, v, buf);
+        }
+        if let Some(v) = self.last_scene {
+            ::buffa::types::put_uint32_field(6u32, v, buf);
+        }
+        if let Some(v) = self.last_hold {
+            ::buffa::types::put_uint32_field(7u32, v, buf);
+        }
+        if let Some(v) = self.last_target_step {
+            ::buffa::types::put_uint32_field(8u32, v, buf);
+        }
+        if let Some(v) = self.last_expect_x {
+            ::buffa::types::put_uint32_field(9u32, v, buf);
+        }
+        if let Some(v) = self.last_expect_y {
+            ::buffa::types::put_uint32_field(10u32, v, buf);
         }
         self.__buffa_unknown_fields.write_to(buf);
     }
@@ -1172,6 +1262,33 @@ impl<'__a> ::serde::Serialize for StatusResponseView<'__a> {
         }
         if let ::core::option::Option::Some(__v) = self.last_log {
             __map.serialize_entry("lastLog", __v)?;
+        }
+        if let ::core::option::Option::Some(__v) = self.last_scene {
+            __map.serialize_entry("lastScene", &::buffa::json_helpers::ProtoJson(&__v))?;
+        }
+        if let ::core::option::Option::Some(__v) = self.last_hold {
+            __map.serialize_entry("lastHold", &::buffa::json_helpers::ProtoJson(&__v))?;
+        }
+        if let ::core::option::Option::Some(__v) = self.last_target_step {
+            __map
+                .serialize_entry(
+                    "lastTargetStep",
+                    &::buffa::json_helpers::ProtoJson(&__v),
+                )?;
+        }
+        if let ::core::option::Option::Some(__v) = self.last_expect_x {
+            __map
+                .serialize_entry(
+                    "lastExpectX",
+                    &::buffa::json_helpers::ProtoJson(&__v),
+                )?;
+        }
+        if let ::core::option::Option::Some(__v) = self.last_expect_y {
+            __map
+                .serialize_entry(
+                    "lastExpectY",
+                    &::buffa::json_helpers::ProtoJson(&__v),
+                )?;
         }
         __map.end()
     }
@@ -1301,6 +1418,41 @@ impl StatusResponseOwnedView {
     pub fn last_log(&self) -> ::core::option::Option<&'_ str> {
         self.0.reborrow().last_log
     }
+    /// Last GetSnapshot scene persist byte. Stale after inject until the next pull.
+    ///
+    /// Field 6: `last_scene`
+    #[must_use]
+    pub fn last_scene(&self) -> ::core::option::Option<u32> {
+        self.0.reborrow().last_scene
+    }
+    /// Last GetSnapshot hold token. Stale after inject until the next pull.
+    ///
+    /// Field 7: `last_hold`
+    #[must_use]
+    pub fn last_hold(&self) -> ::core::option::Option<u32> {
+        self.0.reborrow().last_hold
+    }
+    /// Last GetSnapshot targets step. Stale after inject until the next pull.
+    ///
+    /// Field 8: `last_target_step`
+    #[must_use]
+    pub fn last_target_step(&self) -> ::core::option::Option<u32> {
+        self.0.reborrow().last_target_step
+    }
+    /// Last GetSnapshot expect page X. Stale after inject until the next pull.
+    ///
+    /// Field 9: `last_expect_x`
+    #[must_use]
+    pub fn last_expect_x(&self) -> ::core::option::Option<u32> {
+        self.0.reborrow().last_expect_x
+    }
+    /// Last GetSnapshot expect page Y. Stale after inject until the next pull.
+    ///
+    /// Field 10: `last_expect_y`
+    #[must_use]
+    pub fn last_expect_y(&self) -> ::core::option::Option<u32> {
+        self.0.reborrow().last_expect_y
+    }
 }
 impl ::core::convert::From<::buffa::OwnedView<StatusResponseView<'static>>>
 for StatusResponseOwnedView {
@@ -1325,6 +1477,873 @@ impl ::buffa::HasMessageView for super::super::StatusResponse {
     type ViewHandle = StatusResponseOwnedView;
 }
 impl ::serde::Serialize for StatusResponseOwnedView {
+    fn serialize<__S: ::serde::Serializer>(
+        &self,
+        __s: __S,
+    ) -> ::core::result::Result<__S::Ok, __S::Error> {
+        ::serde::Serialize::serialize(&self.0, __s)
+    }
+}
+/// Arguments for GetLogs. `limit` caps how many ring entries to return.
+#[derive(Clone, Debug, Default)]
+pub struct GetLogsRequestView<'a> {
+    /// BLE advertise name. Never a MAC.
+    ///
+    /// Field 1: `target`
+    pub target: &'a str,
+    /// Max lines (default 16, the host ring depth). Optional.
+    ///
+    /// Field 2: `limit`
+    pub limit: ::core::option::Option<u32>,
+    pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+}
+impl<'a> ::buffa::MessageView<'a> for GetLogsRequestView<'a> {
+    type Owned = super::super::GetLogsRequest;
+    fn decode_view(buf: &'a [u8]) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+        let __limit = ::core::cell::Cell::new(::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT);
+        let __elem = ::core::cell::Cell::new(::buffa::DEFAULT_ELEMENT_MEMORY_LIMIT);
+        <Self as ::buffa::MessageView>::decode_view_ctx(
+            buf,
+            ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit)
+                .with_element_memory(&__elem),
+        )
+    }
+    fn decode_view_with_ctx(
+        buf: &'a [u8],
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+        <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+    }
+    #[inline]
+    fn merge_view_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        cur: &'a [u8],
+        before_tag: &'a [u8],
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+        let _ = ctx;
+        #[allow(unused_variables)]
+        let view = self;
+        let mut cur = cur;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                view.target = ::buffa::types::borrow_str(&mut cur)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.limit = Some(::buffa::types::decode_uint32(&mut cur)?);
+            }
+            _ => {
+                ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                let span_len = before_tag.len() - cur.len();
+                view.__buffa_unknown_fields.push_record(before_tag, span_len, ctx)?;
+            }
+        }
+        ::core::result::Result::Ok(cur)
+    }
+    fn to_owned_message(
+        &self,
+    ) -> ::core::result::Result<super::super::GetLogsRequest, ::buffa::DecodeError> {
+        self.to_owned_from_source(None)
+    }
+    #[allow(clippy::useless_conversion, clippy::needless_update)]
+    fn to_owned_from_source(
+        &self,
+        __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+    ) -> ::core::result::Result<super::super::GetLogsRequest, ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::alloc::string::ToString as _;
+        let _ = __buffa_src;
+        ::core::result::Result::Ok(super::super::GetLogsRequest {
+            target: self.target.to_string(),
+            limit: self.limit,
+            __buffa_unknown_fields: self.__buffa_unknown_fields.to_owned()?.into(),
+            ..::core::default::Default::default()
+        })
+    }
+}
+impl<'a> ::buffa::ViewEncode<'a> for GetLogsRequestView<'a> {
+    #[allow(clippy::needless_borrow, clippy::let_and_return)]
+    fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.target.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.target) as u64;
+        }
+        if let Some(v) = self.limit {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(v) as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    #[allow(clippy::needless_borrow)]
+    fn write_to(
+        &self,
+        _cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.target.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.target, buf);
+        }
+        if let Some(v) = self.limit {
+            ::buffa::types::put_uint32_field(2u32, v, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+}
+/// Serializes this view as protobuf JSON.
+///
+/// Implicit-presence fields with default values are omitted, `required`
+/// fields are always emitted, explicit-presence (`optional`) fields are
+/// emitted only when set, bytes fields are base64-encoded, and enum
+/// values are their proto name strings.
+///
+/// This impl uses `serialize_map(None)` because the number of emitted
+/// fields depends on default-omission rules; serializers that require
+/// known map lengths (e.g. `bincode`) will return a runtime error.
+/// Use the owned message type for those formats.
+impl<'__a> ::serde::Serialize for GetLogsRequestView<'__a> {
+    fn serialize<__S: ::serde::Serializer>(
+        &self,
+        __s: __S,
+    ) -> ::core::result::Result<__S::Ok, __S::Error> {
+        use ::serde::ser::SerializeMap as _;
+        let mut __map = __s.serialize_map(::core::option::Option::None)?;
+        if !::buffa::json_helpers::skip_if::is_empty_str(self.target) {
+            __map.serialize_entry("target", self.target)?;
+        }
+        if let ::core::option::Option::Some(__v) = self.limit {
+            __map.serialize_entry("limit", &::buffa::json_helpers::ProtoJson(&__v))?;
+        }
+        __map.end()
+    }
+}
+impl<'a> ::buffa::MessageName for GetLogsRequestView<'a> {
+    const PACKAGE: &'static str = "sticky.remote.control.v1";
+    const NAME: &'static str = "GetLogsRequest";
+    const FULL_NAME: &'static str = "sticky.remote.control.v1.GetLogsRequest";
+    const TYPE_URL: &'static str = "type.googleapis.com/sticky.remote.control.v1.GetLogsRequest";
+}
+::buffa::impl_default_view_instance!(GetLogsRequestView);
+::buffa::impl_view_reborrow!(GetLogsRequestView);
+/** Self-contained, `'static` owned view of a `GetLogsRequest` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`GetLogsRequestView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`GetLogsRequestView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+#[derive(Clone, Debug)]
+pub struct GetLogsRequestOwnedView(::buffa::OwnedView<GetLogsRequestView<'static>>);
+impl GetLogsRequestOwnedView {
+    /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+    ///
+    /// The view borrows directly from the buffer's data; the buffer is
+    /// retained inside the returned handle.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+    /// protobuf data.
+    pub fn decode(
+        bytes: ::buffa::bytes::Bytes,
+    ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+        ::core::result::Result::Ok(
+            GetLogsRequestOwnedView(::buffa::OwnedView::decode(bytes)?),
+        )
+    }
+    /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+    /// max message size).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+    /// exceeds the configured limits.
+    pub fn decode_with_options(
+        bytes: ::buffa::bytes::Bytes,
+        opts: &::buffa::DecodeOptions,
+    ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+        ::core::result::Result::Ok(
+            GetLogsRequestOwnedView(
+                ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+            ),
+        )
+    }
+    /// Build from an owned message via an encode → decode round-trip.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+    /// message's encoded size exceeds the 2 GiB protobuf limit, or
+    /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+    /// somehow invalid (should not happen for well-formed messages).
+    pub fn from_owned(
+        msg: &super::super::GetLogsRequest,
+    ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+        ::core::result::Result::Ok(
+            GetLogsRequestOwnedView(::buffa::OwnedView::from_owned(msg)?),
+        )
+    }
+    /// Borrow the full [`GetLogsRequestView`] with its lifetime tied to `&self`.
+    #[must_use]
+    pub fn view(&self) -> &GetLogsRequestView<'_> {
+        self.0.reborrow()
+    }
+    /// Convert to the owned message type.
+    ///
+    /// Infallible: this type's constructors wire-decode their
+    /// buffer, and a view produced by wire decoding always
+    /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+    /// whose contract also governs handles converted from a raw
+    /// [`::buffa::OwnedView`].
+    #[must_use]
+    pub fn to_owned_message(&self) -> super::super::GetLogsRequest {
+        self.0.to_owned_message()
+    }
+    /// The underlying bytes buffer.
+    #[must_use]
+    pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+        self.0.bytes()
+    }
+    /// Consume the handle, returning the underlying bytes buffer.
+    #[must_use]
+    pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+        self.0.into_bytes()
+    }
+    /// BLE advertise name. Never a MAC.
+    ///
+    /// Field 1: `target`
+    #[must_use]
+    pub fn target(&self) -> &'_ str {
+        self.0.reborrow().target
+    }
+    /// Max lines (default 16, the host ring depth). Optional.
+    ///
+    /// Field 2: `limit`
+    #[must_use]
+    pub fn limit(&self) -> ::core::option::Option<u32> {
+        self.0.reborrow().limit
+    }
+}
+impl ::core::convert::From<::buffa::OwnedView<GetLogsRequestView<'static>>>
+for GetLogsRequestOwnedView {
+    fn from(inner: ::buffa::OwnedView<GetLogsRequestView<'static>>) -> Self {
+        GetLogsRequestOwnedView(inner)
+    }
+}
+impl ::core::convert::From<GetLogsRequestOwnedView>
+for ::buffa::OwnedView<GetLogsRequestView<'static>> {
+    fn from(wrapper: GetLogsRequestOwnedView) -> Self {
+        wrapper.0
+    }
+}
+impl ::core::convert::AsRef<::buffa::OwnedView<GetLogsRequestView<'static>>>
+for GetLogsRequestOwnedView {
+    fn as_ref(&self) -> &::buffa::OwnedView<GetLogsRequestView<'static>> {
+        &self.0
+    }
+}
+impl ::buffa::HasMessageView for super::super::GetLogsRequest {
+    type View<'a> = GetLogsRequestView<'a>;
+    type ViewHandle = GetLogsRequestOwnedView;
+}
+impl ::serde::Serialize for GetLogsRequestOwnedView {
+    fn serialize<__S: ::serde::Serializer>(
+        &self,
+        __s: __S,
+    ) -> ::core::result::Result<__S::Ok, __S::Error> {
+        ::serde::Serialize::serialize(&self.0, __s)
+    }
+}
+/// Oldest-first Target / Scene lines still in the host ring.
+#[derive(Clone, Debug, Default)]
+pub struct GetLogsResponseView<'a> {
+    /// Human line (no MAC). Usually `logs n=…`.
+    ///
+    /// Field 1: `message`
+    pub message: &'a str,
+    /// Session meter.
+    ///
+    /// Field 2: `phase`
+    pub phase: ::buffa::EnumValue<super::super::SessionPhase>,
+    /// Whether the owner holds GATT.
+    ///
+    /// Field 3: `connected`
+    pub connected: bool,
+    /// Last snapshot nonce, if any.
+    ///
+    /// Field 4: `nonce`
+    pub nonce: ::core::option::Option<u64>,
+    /// Newest Target / Scene LogLine (never a MAC).
+    ///
+    /// Field 5: `last_log`
+    pub last_log: ::core::option::Option<&'a str>,
+    /// Ring contents, oldest first. Never a PIN or MAC.
+    ///
+    /// Field 6: `lines`
+    pub lines: ::buffa::RepeatedView<
+        'a,
+        super::super::super::super::shared::v1::__buffa::view::LogLineView<'a>,
+    >,
+    /// Last GetSnapshot scene persist byte. Stale after inject until the next pull.
+    ///
+    /// Field 7: `last_scene`
+    pub last_scene: ::core::option::Option<u32>,
+    /// Last GetSnapshot hold token. Stale after inject until the next pull.
+    ///
+    /// Field 8: `last_hold`
+    pub last_hold: ::core::option::Option<u32>,
+    /// Last GetSnapshot targets step. Stale after inject until the next pull.
+    ///
+    /// Field 9: `last_target_step`
+    pub last_target_step: ::core::option::Option<u32>,
+    /// Last GetSnapshot expect page X. Stale after inject until the next pull.
+    ///
+    /// Field 10: `last_expect_x`
+    pub last_expect_x: ::core::option::Option<u32>,
+    /// Last GetSnapshot expect page Y. Stale after inject until the next pull.
+    ///
+    /// Field 11: `last_expect_y`
+    pub last_expect_y: ::core::option::Option<u32>,
+    pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+}
+impl<'a> ::buffa::MessageView<'a> for GetLogsResponseView<'a> {
+    type Owned = super::super::GetLogsResponse;
+    fn decode_view(buf: &'a [u8]) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+        let __limit = ::core::cell::Cell::new(::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT);
+        let __elem = ::core::cell::Cell::new(::buffa::DEFAULT_ELEMENT_MEMORY_LIMIT);
+        <Self as ::buffa::MessageView>::decode_view_ctx(
+            buf,
+            ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit)
+                .with_element_memory(&__elem),
+        )
+    }
+    fn decode_view_with_ctx(
+        buf: &'a [u8],
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+        <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+    }
+    #[inline]
+    fn merge_view_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        cur: &'a [u8],
+        before_tag: &'a [u8],
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+        let _ = ctx;
+        #[allow(unused_variables)]
+        let view = self;
+        let mut cur = cur;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                view.message = ::buffa::types::borrow_str(&mut cur)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.phase = ::buffa::EnumValue::from(
+                    ::buffa::types::decode_int32(&mut cur)?,
+                );
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.connected = ::buffa::types::decode_bool(&mut cur)?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.nonce = Some(::buffa::types::decode_uint64(&mut cur)?);
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                view.last_log = Some(::buffa::types::borrow_str(&mut cur)?);
+            }
+            7u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.last_scene = Some(::buffa::types::decode_uint32(&mut cur)?);
+            }
+            8u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.last_hold = Some(::buffa::types::decode_uint32(&mut cur)?);
+            }
+            9u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.last_target_step = Some(::buffa::types::decode_uint32(&mut cur)?);
+            }
+            10u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.last_expect_x = Some(::buffa::types::decode_uint32(&mut cur)?);
+            }
+            11u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.last_expect_y = Some(::buffa::types::decode_uint32(&mut cur)?);
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let __sub_ctx = ctx.descend()?;
+                let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                ctx.register_element_memory(
+                    ::core::mem::size_of::<
+                        super::super::super::super::shared::v1::__buffa::view::LogLineView,
+                    >(),
+                )?;
+                view.lines
+                    .push(
+                        <super::super::super::super::shared::v1::__buffa::view::LogLineView as ::buffa::MessageView>::decode_view_ctx(
+                            sub,
+                            __sub_ctx,
+                        )?,
+                    );
+            }
+            _ => {
+                ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                let span_len = before_tag.len() - cur.len();
+                view.__buffa_unknown_fields.push_record(before_tag, span_len, ctx)?;
+            }
+        }
+        ::core::result::Result::Ok(cur)
+    }
+    fn to_owned_message(
+        &self,
+    ) -> ::core::result::Result<super::super::GetLogsResponse, ::buffa::DecodeError> {
+        self.to_owned_from_source(None)
+    }
+    #[allow(clippy::useless_conversion, clippy::needless_update)]
+    fn to_owned_from_source(
+        &self,
+        __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+    ) -> ::core::result::Result<super::super::GetLogsResponse, ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::alloc::string::ToString as _;
+        let _ = __buffa_src;
+        ::core::result::Result::Ok(super::super::GetLogsResponse {
+            message: self.message.to_string(),
+            phase: self.phase,
+            connected: self.connected,
+            nonce: self.nonce,
+            last_log: self.last_log.map(|s| s.to_string()),
+            lines: self
+                .lines
+                .iter()
+                .map(|v| v.to_owned_from_source(__buffa_src))
+                .collect::<::core::result::Result<_, ::buffa::DecodeError>>()?,
+            last_scene: self.last_scene,
+            last_hold: self.last_hold,
+            last_target_step: self.last_target_step,
+            last_expect_x: self.last_expect_x,
+            last_expect_y: self.last_expect_y,
+            __buffa_unknown_fields: self.__buffa_unknown_fields.to_owned()?.into(),
+            ..::core::default::Default::default()
+        })
+    }
+}
+impl<'a> ::buffa::ViewEncode<'a> for GetLogsResponseView<'a> {
+    #[allow(clippy::needless_borrow, clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.message.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.message) as u64;
+        }
+        {
+            let val = self.phase.to_i32();
+            if val != 0 {
+                size += 1u64 + ::buffa::types::int32_encoded_len(val) as u64;
+            }
+        }
+        if self.connected {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        if let Some(v) = self.nonce {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(v) as u64;
+        }
+        if let Some(ref v) = self.last_log {
+            size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+        }
+        for v in &self.lines {
+            let __slot = __cache.reserve();
+            let inner_size = v.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if let Some(v) = self.last_scene {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(v) as u64;
+        }
+        if let Some(v) = self.last_hold {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(v) as u64;
+        }
+        if let Some(v) = self.last_target_step {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(v) as u64;
+        }
+        if let Some(v) = self.last_expect_x {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(v) as u64;
+        }
+        if let Some(v) = self.last_expect_y {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(v) as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    #[allow(clippy::needless_borrow)]
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.message.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.message, buf);
+        }
+        {
+            let val = self.phase.to_i32();
+            if val != 0 {
+                ::buffa::types::put_int32_field(2u32, val, buf);
+            }
+        }
+        if self.connected {
+            ::buffa::types::put_bool_field(3u32, self.connected, buf);
+        }
+        if let Some(v) = self.nonce {
+            ::buffa::types::put_uint64_field(4u32, v, buf);
+        }
+        if let Some(ref v) = self.last_log {
+            ::buffa::types::put_string_field(5u32, v, buf);
+        }
+        for v in &self.lines {
+            ::buffa::types::put_len_delimited_header(
+                6u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            v.write_to(__cache, buf);
+        }
+        if let Some(v) = self.last_scene {
+            ::buffa::types::put_uint32_field(7u32, v, buf);
+        }
+        if let Some(v) = self.last_hold {
+            ::buffa::types::put_uint32_field(8u32, v, buf);
+        }
+        if let Some(v) = self.last_target_step {
+            ::buffa::types::put_uint32_field(9u32, v, buf);
+        }
+        if let Some(v) = self.last_expect_x {
+            ::buffa::types::put_uint32_field(10u32, v, buf);
+        }
+        if let Some(v) = self.last_expect_y {
+            ::buffa::types::put_uint32_field(11u32, v, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+}
+/// Serializes this view as protobuf JSON.
+///
+/// Implicit-presence fields with default values are omitted, `required`
+/// fields are always emitted, explicit-presence (`optional`) fields are
+/// emitted only when set, bytes fields are base64-encoded, and enum
+/// values are their proto name strings.
+///
+/// This impl uses `serialize_map(None)` because the number of emitted
+/// fields depends on default-omission rules; serializers that require
+/// known map lengths (e.g. `bincode`) will return a runtime error.
+/// Use the owned message type for those formats.
+impl<'__a> ::serde::Serialize for GetLogsResponseView<'__a> {
+    fn serialize<__S: ::serde::Serializer>(
+        &self,
+        __s: __S,
+    ) -> ::core::result::Result<__S::Ok, __S::Error> {
+        use ::serde::ser::SerializeMap as _;
+        let mut __map = __s.serialize_map(::core::option::Option::None)?;
+        if !::buffa::json_helpers::skip_if::is_empty_str(self.message) {
+            __map.serialize_entry("message", self.message)?;
+        }
+        if !::buffa::json_helpers::skip_if::is_default_enum_value(&self.phase) {
+            __map.serialize_entry("phase", &self.phase)?;
+        }
+        if self.connected {
+            __map.serialize_entry("connected", &self.connected)?;
+        }
+        if let ::core::option::Option::Some(__v) = self.nonce {
+            __map.serialize_entry("nonce", &::buffa::json_helpers::ProtoJson(&__v))?;
+        }
+        if let ::core::option::Option::Some(__v) = self.last_log {
+            __map.serialize_entry("lastLog", __v)?;
+        }
+        if !self.lines.is_empty() {
+            __map.serialize_entry("lines", &*self.lines)?;
+        }
+        if let ::core::option::Option::Some(__v) = self.last_scene {
+            __map.serialize_entry("lastScene", &::buffa::json_helpers::ProtoJson(&__v))?;
+        }
+        if let ::core::option::Option::Some(__v) = self.last_hold {
+            __map.serialize_entry("lastHold", &::buffa::json_helpers::ProtoJson(&__v))?;
+        }
+        if let ::core::option::Option::Some(__v) = self.last_target_step {
+            __map
+                .serialize_entry(
+                    "lastTargetStep",
+                    &::buffa::json_helpers::ProtoJson(&__v),
+                )?;
+        }
+        if let ::core::option::Option::Some(__v) = self.last_expect_x {
+            __map
+                .serialize_entry(
+                    "lastExpectX",
+                    &::buffa::json_helpers::ProtoJson(&__v),
+                )?;
+        }
+        if let ::core::option::Option::Some(__v) = self.last_expect_y {
+            __map
+                .serialize_entry(
+                    "lastExpectY",
+                    &::buffa::json_helpers::ProtoJson(&__v),
+                )?;
+        }
+        __map.end()
+    }
+}
+impl<'a> ::buffa::MessageName for GetLogsResponseView<'a> {
+    const PACKAGE: &'static str = "sticky.remote.control.v1";
+    const NAME: &'static str = "GetLogsResponse";
+    const FULL_NAME: &'static str = "sticky.remote.control.v1.GetLogsResponse";
+    const TYPE_URL: &'static str = "type.googleapis.com/sticky.remote.control.v1.GetLogsResponse";
+}
+::buffa::impl_default_view_instance!(GetLogsResponseView);
+::buffa::impl_view_reborrow!(GetLogsResponseView);
+/** Self-contained, `'static` owned view of a `GetLogsResponse` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`GetLogsResponseView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`GetLogsResponseView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+#[derive(Clone, Debug)]
+pub struct GetLogsResponseOwnedView(::buffa::OwnedView<GetLogsResponseView<'static>>);
+impl GetLogsResponseOwnedView {
+    /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+    ///
+    /// The view borrows directly from the buffer's data; the buffer is
+    /// retained inside the returned handle.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+    /// protobuf data.
+    pub fn decode(
+        bytes: ::buffa::bytes::Bytes,
+    ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+        ::core::result::Result::Ok(
+            GetLogsResponseOwnedView(::buffa::OwnedView::decode(bytes)?),
+        )
+    }
+    /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+    /// max message size).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+    /// exceeds the configured limits.
+    pub fn decode_with_options(
+        bytes: ::buffa::bytes::Bytes,
+        opts: &::buffa::DecodeOptions,
+    ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+        ::core::result::Result::Ok(
+            GetLogsResponseOwnedView(
+                ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+            ),
+        )
+    }
+    /// Build from an owned message via an encode → decode round-trip.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+    /// message's encoded size exceeds the 2 GiB protobuf limit, or
+    /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+    /// somehow invalid (should not happen for well-formed messages).
+    pub fn from_owned(
+        msg: &super::super::GetLogsResponse,
+    ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+        ::core::result::Result::Ok(
+            GetLogsResponseOwnedView(::buffa::OwnedView::from_owned(msg)?),
+        )
+    }
+    /// Borrow the full [`GetLogsResponseView`] with its lifetime tied to `&self`.
+    #[must_use]
+    pub fn view(&self) -> &GetLogsResponseView<'_> {
+        self.0.reborrow()
+    }
+    /// Convert to the owned message type.
+    ///
+    /// Infallible: this type's constructors wire-decode their
+    /// buffer, and a view produced by wire decoding always
+    /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+    /// whose contract also governs handles converted from a raw
+    /// [`::buffa::OwnedView`].
+    #[must_use]
+    pub fn to_owned_message(&self) -> super::super::GetLogsResponse {
+        self.0.to_owned_message()
+    }
+    /// The underlying bytes buffer.
+    #[must_use]
+    pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+        self.0.bytes()
+    }
+    /// Consume the handle, returning the underlying bytes buffer.
+    #[must_use]
+    pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+        self.0.into_bytes()
+    }
+    /// Human line (no MAC). Usually `logs n=…`.
+    ///
+    /// Field 1: `message`
+    #[must_use]
+    pub fn message(&self) -> &'_ str {
+        self.0.reborrow().message
+    }
+    /// Session meter.
+    ///
+    /// Field 2: `phase`
+    #[must_use]
+    pub fn phase(&self) -> ::buffa::EnumValue<super::super::SessionPhase> {
+        self.0.reborrow().phase
+    }
+    /// Whether the owner holds GATT.
+    ///
+    /// Field 3: `connected`
+    #[must_use]
+    pub fn connected(&self) -> bool {
+        self.0.reborrow().connected
+    }
+    /// Last snapshot nonce, if any.
+    ///
+    /// Field 4: `nonce`
+    #[must_use]
+    pub fn nonce(&self) -> ::core::option::Option<u64> {
+        self.0.reborrow().nonce
+    }
+    /// Newest Target / Scene LogLine (never a MAC).
+    ///
+    /// Field 5: `last_log`
+    #[must_use]
+    pub fn last_log(&self) -> ::core::option::Option<&'_ str> {
+        self.0.reborrow().last_log
+    }
+    /// Ring contents, oldest first. Never a PIN or MAC.
+    ///
+    /// Field 6: `lines`
+    #[must_use]
+    pub fn lines(
+        &self,
+    ) -> &::buffa::RepeatedView<
+        '_,
+        super::super::super::super::shared::v1::__buffa::view::LogLineView<'_>,
+    > {
+        &self.0.reborrow().lines
+    }
+    /// Last GetSnapshot scene persist byte. Stale after inject until the next pull.
+    ///
+    /// Field 7: `last_scene`
+    #[must_use]
+    pub fn last_scene(&self) -> ::core::option::Option<u32> {
+        self.0.reborrow().last_scene
+    }
+    /// Last GetSnapshot hold token. Stale after inject until the next pull.
+    ///
+    /// Field 8: `last_hold`
+    #[must_use]
+    pub fn last_hold(&self) -> ::core::option::Option<u32> {
+        self.0.reborrow().last_hold
+    }
+    /// Last GetSnapshot targets step. Stale after inject until the next pull.
+    ///
+    /// Field 9: `last_target_step`
+    #[must_use]
+    pub fn last_target_step(&self) -> ::core::option::Option<u32> {
+        self.0.reborrow().last_target_step
+    }
+    /// Last GetSnapshot expect page X. Stale after inject until the next pull.
+    ///
+    /// Field 10: `last_expect_x`
+    #[must_use]
+    pub fn last_expect_x(&self) -> ::core::option::Option<u32> {
+        self.0.reborrow().last_expect_x
+    }
+    /// Last GetSnapshot expect page Y. Stale after inject until the next pull.
+    ///
+    /// Field 11: `last_expect_y`
+    #[must_use]
+    pub fn last_expect_y(&self) -> ::core::option::Option<u32> {
+        self.0.reborrow().last_expect_y
+    }
+}
+impl ::core::convert::From<::buffa::OwnedView<GetLogsResponseView<'static>>>
+for GetLogsResponseOwnedView {
+    fn from(inner: ::buffa::OwnedView<GetLogsResponseView<'static>>) -> Self {
+        GetLogsResponseOwnedView(inner)
+    }
+}
+impl ::core::convert::From<GetLogsResponseOwnedView>
+for ::buffa::OwnedView<GetLogsResponseView<'static>> {
+    fn from(wrapper: GetLogsResponseOwnedView) -> Self {
+        wrapper.0
+    }
+}
+impl ::core::convert::AsRef<::buffa::OwnedView<GetLogsResponseView<'static>>>
+for GetLogsResponseOwnedView {
+    fn as_ref(&self) -> &::buffa::OwnedView<GetLogsResponseView<'static>> {
+        &self.0
+    }
+}
+impl ::buffa::HasMessageView for super::super::GetLogsResponse {
+    type View<'a> = GetLogsResponseView<'a>;
+    type ViewHandle = GetLogsResponseOwnedView;
+}
+impl ::serde::Serialize for GetLogsResponseOwnedView {
     fn serialize<__S: ::serde::Serializer>(
         &self,
         __s: __S,

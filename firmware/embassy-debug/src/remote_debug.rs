@@ -78,6 +78,13 @@ use seeed_reterminal_sticky::display::{self, inject_framebuffer_for_page, PageRo
 /// cover a five-point slide stroke plus a short desk burst.
 const SYNTHETIC_CAP: usize = 8;
 
+/// How many Target / Scene UART copies wait for a GATT `LogLine`.
+///
+/// Separate from [`SYNTHETIC_CAP`] so a targets walk (`show` / `hit` /
+/// `loop`) can sit in the ring while the BLE task notifies. Overflow
+/// drops the **oldest** line ([`enqueue_log`]), not the newest.
+const LOG_CAP: usize = 16;
+
 /// Injected framebuffer taps (plus phase). [`crate::touch_task`] is the only receiver.
 ///
 /// *The Embassy Book*: a `Channel` is MPMC; `try_send` / `try_receive`
@@ -85,7 +92,10 @@ const SYNTHETIC_CAP: usize = 8;
 static SYNTHETIC: Channel<CriticalSectionRawMutex, SyntheticTouch, SYNTHETIC_CAP> = Channel::new();
 
 /// UART `format_event` copies for GATT `LogLine` (Target / Scene only).
-static LOG_LINES: Channel<CriticalSectionRawMutex, QueuedLog, SYNTHETIC_CAP> = Channel::new();
+///
+/// Depth is [`LOG_CAP`]. [`enqueue_log`] drops the oldest when full
+/// so a burst does not lose the newest `target show`.
+static LOG_LINES: Channel<CriticalSectionRawMutex, QueuedLog, LOG_CAP> = Channel::new();
 
 /// Wake the BLE task when a Target / Scene line is queued.
 static LOG_READY: Signal<CriticalSectionRawMutex, ()> = Signal::new();
@@ -532,9 +542,22 @@ pub(crate) fn queue_log_line(event: &Event) {
         text: [0u8; LINE_CAPACITY],
     };
     queued.text[..line.len()].copy_from_slice(line.as_bytes());
-    if LOG_LINES.try_send(queued).is_ok() {
-        LOG_READY.signal(());
+    enqueue_log(queued);
+}
+
+/// Push one Target / Scene copy onto [`LOG_LINES`].
+///
+/// *The Embassy Book*: `try_send` does not wait. When the ring is
+/// full, drop the oldest line and retry so a desk burst keeps the
+/// newest `target show` / `scene=` (never a PIN, never a MAC).
+fn enqueue_log(queued: QueuedLog) {
+    if LOG_LINES.try_send(queued).is_err() {
+        let _ = LOG_LINES.try_receive();
+        if LOG_LINES.try_send(queued).is_err() {
+            return;
+        }
     }
+    LOG_READY.signal(());
 }
 
 /// BLE task waits here for a queued `LogLine`.

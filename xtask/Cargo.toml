@@ -20,7 +20,7 @@ rmcp = { version = "3.2.0", default-features = false, features = [
 ] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std"] }
 env_logger = "0.11.8"
-embassy-debug = { path = "../crates/embassy-debug" }
+embassy-debug = { path = "../crates/embassy-debug", features = ["pair", "wifi"] }
 remote-debug-host = { path = "../host/remote-debug-host" }
 remote-debug-wire = { path = "../crates/remote-debug-wire" }
 panel-view = { path = "../crates/panel-view" }

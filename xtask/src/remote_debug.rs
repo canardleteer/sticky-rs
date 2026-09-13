@@ -1,8 +1,10 @@
 //! `cargo xtask remote-debug` — CLI and MCP clients of the ConnectRPC owner.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Mutex;
+use std::thread;
+use std::time::{Duration, Instant};
 
 use clap::{Args, Parser, Subcommand};
 use remote_debug_host::DEFAULT_ADV_NAME;
@@ -21,7 +23,9 @@ name `sticky-rs`. BlueZ Connect, not Pair(). A ConnectRPC owner holds \
 0..N GATT sessions (assembler, last nonce, remember-me) keyed by \
 advertise name, never a MAC. `connect` starts a detached owner if needed \
 and returns `pairing`; poll `status` until `connected` or `pair failed`. \
-Later leaves are RPC. `serve` is an optional foreground log. \
+CLI `connect --wait` polls in this process (MCP connect stays pairing). \
+Later leaves are RPC. `logs` drains the Target / Scene ring. \
+`serve` is an optional foreground log. \
 `disconnect` drops one session; `Shutdown` (empty map / sit over, or \
 serve Ctrl-C) ends the owner. Default `connect` scrapes a new UART \
 `pair pin=` when a Sticky CH343 is present (UART lock only for that \
@@ -89,6 +93,7 @@ pub enum RemoteDebugCommand {
     #[command(long_about = "\
 Start the ConnectRPC owner if needed and begin BlueZ Connect (not Pair()). \
 Returns pairing immediately. Poll status until connected or pair failed. \
+CLI --wait polls here (~60 s). MCP connect has no --wait. \
 UART auto-PIN unless --pin. Stay on splash. No --remember unless asked. \
 Never a MAC. After a fresh flash, retry on le-connection-abort-by-local \
 or CDC busy.")]
@@ -103,9 +108,10 @@ unless asked.")]
     InjectTouch(InjectTouchArgs),
     /// Short-press ok / page-up / page-down
     #[command(long_about = "\
-Synthetic product-key edge. --key ok / page-up / page-down. --down true \
-is a short press. Wait ~2–3 s for compose before the next inject or \
-get-snapshot. Seven page-downs from splash reach scene=targets.")]
+Synthetic product-key edge. --key ok / page-up / page-down. Default is \
+a short press. --release sends the up edge. Wait ~2–3 s for compose \
+before the next inject or get-snapshot. Seven page-downs from splash \
+reach scene=targets.")]
     InjectButton(InjectButtonArgs),
     /// Arm LAST DRAW; write page-space PNG plus scene / expect
     #[command(long_about = "\
@@ -123,6 +129,13 @@ then retry. Ack when done.")]
     SnapshotClear(BrokerTarget),
     /// `pairing` / `connected` / `disconnected` / `pair failed`
     Status(BrokerTarget),
+    /// Drain Target / Scene LogLine copies (never a PIN or MAC)
+    #[command(long_about = "\
+Drain GATT LogLine copies (Target / Scene only; never a PIN or MAC). \
+Oldest first. --limit caps the print (default 16). last_log is the \
+newest line. scene / hold / expect on the line is the last snapshot \
+cache, stale after inject.")]
+    Logs(LogsArgs),
     /// Advertise names the owner currently tracks
     ListTargets(ListTargetsArgs),
     /// Software-reset the embedded MCU (not this host)
@@ -165,6 +178,9 @@ pub struct ConnectArgs {
     /// Keep the BlueZ bond; write this unit into gitignored allowlist.
     #[arg(long)]
     pub remember: bool,
+    /// Poll status until connected or pair failed (CLI only; ~60 s).
+    #[arg(long)]
+    pub wait: bool,
     /// Runtime dir for the owner endpoint (tests).
     #[arg(long, hide = true)]
     pub socket_dir: Option<PathBuf>,
@@ -202,9 +218,23 @@ pub struct InjectButtonArgs {
     /// `ok`, `page-up`, or `page-down`.
     #[arg(long)]
     pub key: String,
-    /// Press (`true`) or release.
-    #[arg(long, default_value_t = true)]
-    pub down: bool,
+    /// Send the up edge instead of a short press.
+    #[arg(long)]
+    pub release: bool,
+    /// Advertise name (default `sticky-rs`).
+    #[arg(long, default_value = DEFAULT_ADV_NAME)]
+    pub name: String,
+    /// Runtime dir for the owner endpoint (tests).
+    #[arg(long, hide = true)]
+    pub socket_dir: Option<PathBuf>,
+}
+
+/// `logs` flags.
+#[derive(Debug, Clone, Args)]
+pub struct LogsArgs {
+    /// Max lines (default 16, the host ring depth).
+    #[arg(long)]
+    pub limit: Option<u32>,
     /// Advertise name (default `sticky-rs`).
     #[arg(long, default_value = DEFAULT_ADV_NAME)]
     pub name: String,
@@ -323,11 +353,34 @@ pub fn exec() -> ExitCode {
             command: Some(command),
             ..
         } => {
+            let wait_connect = match &command {
+                RemoteDebugCommand::Connect(args) if args.wait => {
+                    Some((args.name.clone(), args.socket_dir.clone()))
+                }
+                _ => None,
+            };
             let state = Mutex::new(RemoteDebugState::new());
             match run(command, &state) {
                 Ok(out) => {
-                    println!("{}", message_of(&out));
-                    ExitCode::SUCCESS
+                    if let Some((name, socket_dir)) = wait_connect {
+                        match wait_until_connected(&name, socket_dir.as_deref()) {
+                            Ok(line) => {
+                                println!("{line}");
+                                if line.starts_with("pair failed") {
+                                    ExitCode::FAILURE
+                                } else {
+                                    ExitCode::SUCCESS
+                                }
+                            }
+                            Err(error) => {
+                                eprintln!("{error}");
+                                ExitCode::FAILURE
+                            }
+                        }
+                    } else {
+                        println!("{}", message_of(&out));
+                        ExitCode::SUCCESS
+                    }
                 }
                 Err(error) => {
                     eprintln!("{error}");
@@ -362,7 +415,16 @@ pub fn run(cmd: RemoteDebugCommand, state: &Mutex<RemoteDebugState>) -> Result<V
     match cmd {
         RemoteDebugCommand::Serve(_) => unreachable!("serve is not RPC"),
         RemoteDebugCommand::Connect(args) => value(client.connect(args.into())),
-        RemoteDebugCommand::Status(target) => value(client.status(target.into())),
+        RemoteDebugCommand::Status(target) => {
+            let mut resp = client.status(target.into()).map_err(map_broker)?;
+            resp.message = decorate_status(&resp);
+            json_value(resp)
+        }
+        RemoteDebugCommand::Logs(args) => {
+            let mut resp = client.get_logs(args.into()).map_err(map_broker)?;
+            resp.message = decorate_logs(&resp);
+            json_value(resp)
+        }
         RemoteDebugCommand::ListTargets(_) => {
             value(client.list_targets(control::ListTargetsRequest::default()))
         }
@@ -400,6 +462,7 @@ fn socket_dir_of(cmd: &RemoteDebugCommand) -> Option<PathBuf> {
         RemoteDebugCommand::SnapshotAck(args) => args.socket_dir.clone(),
         RemoteDebugCommand::SnapshotClear(target) => target.socket_dir.clone(),
         RemoteDebugCommand::Status(target) => target.socket_dir.clone(),
+        RemoteDebugCommand::Logs(args) => args.socket_dir.clone(),
         RemoteDebugCommand::ListTargets(args) => args.socket_dir.clone(),
         RemoteDebugCommand::Reboot(args) => args.socket_dir.clone(),
         RemoteDebugCommand::Disconnect(target) => target.socket_dir.clone(),
@@ -431,6 +494,16 @@ impl From<BrokerTarget> for control::SnapshotClearRequest {
     fn from(target: BrokerTarget) -> Self {
         Self {
             target: target.name,
+            ..Self::default()
+        }
+    }
+}
+
+impl From<LogsArgs> for control::GetLogsRequest {
+    fn from(args: LogsArgs) -> Self {
+        Self {
+            target: args.name,
+            limit: args.limit,
             ..Self::default()
         }
     }
@@ -516,7 +589,7 @@ fn inject_button_request(args: InjectButtonArgs) -> Result<control::InjectButton
         target: args.name,
         inject: shared::InjectButton {
             key: key.into(),
-            down: args.down,
+            down: !args.release,
             ..shared::InjectButton::default()
         }
         .into(),
@@ -593,7 +666,8 @@ fn decorate_snapshot(
     last_log: Option<&str>,
 ) -> String {
     if let Some(scene) = snap.scene {
-        message.push_str(&format!(" scene={scene}"));
+        message.push(' ');
+        message.push_str(&format_scene(scene));
     }
     if let Some(hold) = snap.hold {
         message.push_str(&format!(" hold={hold}"));
@@ -609,6 +683,101 @@ fn decorate_snapshot(
         message.push_str(log);
     }
     message
+}
+
+fn format_scene(persist: u32) -> String {
+    match u8::try_from(persist)
+        .ok()
+        .and_then(embassy_debug::Scene::from_persist_byte)
+        .map(embassy_debug::Scene::as_str)
+    {
+        Some(name) => format!("scene={persist}({name})"),
+        None => format!("scene={persist}"),
+    }
+}
+
+fn append_view(
+    message: &mut String,
+    scene: Option<u32>,
+    hold: Option<u32>,
+    step: Option<u32>,
+    expect_x: Option<u32>,
+    expect_y: Option<u32>,
+) {
+    if let Some(scene) = scene {
+        message.push(' ');
+        message.push_str(&format_scene(scene));
+    }
+    if let Some(hold) = hold {
+        message.push_str(&format!(" hold={hold}"));
+    }
+    if let Some(step) = step {
+        message.push_str(&format!(" step={step}"));
+    }
+    if let (Some(x), Some(y)) = (expect_x, expect_y) {
+        message.push_str(&format!(" expect={x},{y}"));
+    }
+}
+
+fn decorate_status(resp: &control::StatusResponse) -> String {
+    let mut message = resp.message.clone();
+    append_view(
+        &mut message,
+        resp.last_scene,
+        resp.last_hold,
+        resp.last_target_step,
+        resp.last_expect_x,
+        resp.last_expect_y,
+    );
+    if let Some(log) = resp.last_log.as_deref() {
+        message.push_str(" last_log=");
+        message.push_str(log);
+    }
+    message
+}
+
+fn decorate_logs(resp: &control::GetLogsResponse) -> String {
+    let mut message = resp.message.clone();
+    append_view(
+        &mut message,
+        resp.last_scene,
+        resp.last_hold,
+        resp.last_target_step,
+        resp.last_expect_x,
+        resp.last_expect_y,
+    );
+    if let Some(log) = resp.last_log.as_deref() {
+        message.push_str(" last_log=");
+        message.push_str(log);
+    }
+    for line in &resp.lines {
+        message.push('\n');
+        message.push_str(&format!("t={} {}", line.t_ms, line.text));
+    }
+    message
+}
+
+fn wait_until_connected(name: &str, socket_dir: Option<&Path>) -> Result<String, String> {
+    let default_dir = broker_runtime_dir();
+    let dir = socket_dir.unwrap_or(&default_dir);
+    let client = ControlClient::open(dir).map_err(map_broker)?;
+    let deadline = Instant::now() + Duration::from_secs(60);
+    loop {
+        let status = client
+            .status(control::StatusRequest {
+                target: name.to_string(),
+                ..control::StatusRequest::default()
+            })
+            .map_err(map_broker)?;
+        let line = decorate_status(&status);
+        if status.connected || status.message.starts_with("pair failed") {
+            return Ok(line);
+        }
+        if Instant::now() >= deadline {
+            return Err(format!("connect --wait timed out ({line})"));
+        }
+        thread::sleep(Duration::from_millis(250));
+    }
 }
 
 fn value<T: serde::Serialize>(
@@ -702,6 +871,7 @@ mod tests {
             port: Some("/dev/ttyUSB0".into()),
             name: "sticky-rs".into(),
             remember: true,
+            wait: false,
             socket_dir: None,
         });
         assert_eq!(req.target, "sticky-rs");
@@ -793,5 +963,95 @@ mod tests {
         assert!(snap.get("bw").is_none(), "{snap}");
         assert!(snap.get("red").is_none(), "{snap}");
         assert_eq!(snap.get("scene").and_then(Value::as_u64), Some(7));
+    }
+
+    #[test]
+    fn inject_button_release_parses_and_down_is_gone() {
+        let cli = RemoteDebugAttach::try_parse_from([
+            "xtask",
+            "remote-debug",
+            "inject-button",
+            "--key",
+            "page-down",
+        ])
+        .expect("parse");
+        match cli.command {
+            RemoteDebugGate::RemoteDebug { command, .. } => match command {
+                Some(RemoteDebugCommand::InjectButton(args)) => {
+                    assert!(!args.release);
+                    let req = inject_button_request(args).expect("map");
+                    assert!(req.inject.down);
+                }
+                other => panic!("{other:?}"),
+            },
+        }
+        let released = RemoteDebugAttach::try_parse_from([
+            "xtask",
+            "remote-debug",
+            "inject-button",
+            "--key",
+            "ok",
+            "--release",
+        ])
+        .expect("parse");
+        match released.command {
+            RemoteDebugGate::RemoteDebug { command, .. } => match command {
+                Some(RemoteDebugCommand::InjectButton(args)) => {
+                    assert!(args.release);
+                    let req = inject_button_request(args).expect("map");
+                    assert!(!req.inject.down);
+                }
+                other => panic!("{other:?}"),
+            },
+        }
+        assert!(RemoteDebugAttach::try_parse_from([
+            "xtask",
+            "remote-debug",
+            "inject-button",
+            "--key",
+            "ok",
+            "--down",
+            "true",
+        ])
+        .is_err());
+    }
+
+    #[test]
+    fn connect_wait_parses_and_is_not_on_the_wire() {
+        let cli = RemoteDebugAttach::try_parse_from(["xtask", "remote-debug", "connect", "--wait"])
+            .expect("parse");
+        match cli.command {
+            RemoteDebugGate::RemoteDebug { command, .. } => match command {
+                Some(RemoteDebugCommand::Connect(args)) => {
+                    assert!(args.wait);
+                    let req = control::ConnectRequest::from(args);
+                    assert!(!req.remember);
+                }
+                other => panic!("{other:?}"),
+            },
+        }
+    }
+
+    #[test]
+    fn format_scene_uses_persist_byte_and_uart_token() {
+        assert_eq!(format_scene(0), "scene=0(splash)");
+        assert_eq!(format_scene(1), "scene=1(shapes)");
+        assert_eq!(format_scene(7), "scene=7(targets)");
+        assert_eq!(format_scene(99), "scene=99");
+    }
+
+    #[test]
+    fn decorate_snapshot_names_targets() {
+        let snap = shared::Snapshot {
+            scene: Some(7),
+            hold: Some(0),
+            target_step: Some(0),
+            target_expect_x: Some(240),
+            target_expect_y: Some(400),
+            ..shared::Snapshot::default()
+        };
+        let line = decorate_snapshot("ok".into(), &snap, None);
+        assert!(line.contains("scene=7(targets)"), "{line}");
+        assert!(line.contains("expect=240,400"), "{line}");
     }
 }

@@ -7,11 +7,12 @@ use connectrpc::client::{ClientConfig, HttpClient};
 
 use crate::connect_svc::RemoteDebugControlServiceClient;
 use crate::control::{
-    ConnectRequest, ConnectResponse, DisconnectRequest, DisconnectResponse, GetSnapshotRequest,
-    GetSnapshotResponse, InjectButtonRequest, InjectButtonResponse, InjectTouchRequest,
-    InjectTouchResponse, ListTargetsRequest, ListTargetsResponse, RebootRequest, RebootResponse,
-    ShutdownRequest, ShutdownResponse, SnapshotAckRequest, SnapshotAckResponse,
-    SnapshotClearRequest, SnapshotClearResponse, StatusRequest, StatusResponse,
+    ConnectRequest, ConnectResponse, DisconnectRequest, DisconnectResponse, GetLogsRequest,
+    GetLogsResponse, GetSnapshotRequest, GetSnapshotResponse, InjectButtonRequest,
+    InjectButtonResponse, InjectTouchRequest, InjectTouchResponse, ListTargetsRequest,
+    ListTargetsResponse, RebootRequest, RebootResponse, ShutdownRequest, ShutdownResponse,
+    SnapshotAckRequest, SnapshotAckResponse, SnapshotClearRequest, SnapshotClearResponse,
+    StatusRequest, StatusResponse,
 };
 use crate::{endpoint_path, Error, NO_BROKER};
 
@@ -66,6 +67,15 @@ impl ControlClient {
     /// Transport or RPC failure.
     pub fn status(&self, request: StatusRequest) -> Result<StatusResponse, Error> {
         Ok(block_on(self.inner.status(request))?.into_owned())
+    }
+
+    /// Drain the Target / Scene `LogLine` ring (never a MAC).
+    ///
+    /// # Errors
+    ///
+    /// Transport or RPC failure.
+    pub fn get_logs(&self, request: GetLogsRequest) -> Result<GetLogsResponse, Error> {
+        Ok(block_on(self.inner.get_logs(request))?.into_owned())
     }
 
     /// Advertise names the owner currently tracks (never a MAC).

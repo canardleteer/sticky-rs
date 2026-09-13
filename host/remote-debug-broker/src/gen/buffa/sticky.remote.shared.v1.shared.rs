@@ -334,7 +334,8 @@ pub enum FrameKind {
     FRAME_KIND_UNSPECIFIED = 0i32,
     /// Black/white only. `red` must be empty.
     FRAME_KIND_MONO = 1i32,
-    /// Four-gray dual plane. `red` holds the second packed plane.
+    /// Four-gray dual plane. `red` is the second packed SSD1677
+    /// plane (controller name; this panel has no red pigment).
     FRAME_KIND_GRAY4 = 2i32,
 }
 impl FrameKind {
@@ -1572,7 +1573,7 @@ pub struct Snapshot {
         skip_serializing_if = "::core::option::Option::is_none"
     )]
     pub hold: ::core::option::Option<u32>,
-    /// Black/white packed plane.
+    /// First packed 1-bit plane (SSD1677 BW RAM).
     ///
     /// Field 6: `bw`
     #[serde(
@@ -1581,7 +1582,9 @@ pub struct Snapshot {
         skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_bytes"
     )]
     pub bw: ::buffa::alloc::vec::Vec<u8>,
-    /// Red/gray packed plane when kind is gray4. Empty on mono.
+    /// Second packed 1-bit plane when kind is gray4 (SSD1677
+    /// "red" RAM). Empty on mono. Not a red pigment on this
+    /// panel; host PNG may paint those bits reddish to show them.
     ///
     /// Field 7: `red`
     #[serde(

@@ -38,7 +38,8 @@ Off Linux, implement [`Transport`] (`write_frame`, `read_chunk`,
 | `Session::snapshot_clear` | Abort with no nonce |
 | `Session::reboot` | Reset the embedded MCU, not this host |
 | `Session::disconnect` | Drop GATT; leftover LTK is stale |
-| `Session::drain_logs` | Consume `LogLine` fragments |
+| `Session::drain_logs` | Consume `LogLine` fragments into a 16-line ring |
+| `Session::recent_logs` / `last_log` | Oldest-first ring; newest line |
 
 Host TX notify must stay FIFO (`VecDeque`). A 96 KiB plane is many
 ATT chunks; a LIFO queue fails `frame: Version`.

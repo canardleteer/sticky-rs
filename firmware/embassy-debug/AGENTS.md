@@ -283,14 +283,18 @@ separate live ask. stdio MCP how-to:
    (`--page`) via the gray4 hit-test inverse, not UART `p0=` /
    raw GT911. `--phase` `down` / `move` / `up` (unset = tap)
    so slides can span both insets. Product keys are `ok` /
-   `page-up` / `page-down` (`down` true = short press). Wait
-   for compose before the next inject or snapshot.
+   `page-up` / `page-down` (short press; CLI `--release` is
+   the up edge). Wait for compose before the next inject or
+   snapshot.
 5. `get-snapshot` freezes LAST DRAW plus `scene` /
    `target_step` / expect page (`snap-<hex>.bw` / `.red` /
    page-space `.png`). Tap `--page` at that expect (PNG
-   origin matches the page). `status` `last_log` is the latest Target / Scene
-   UART line (never a PIN); `target loop` is overwritten by
-   the following `target show id=0`. `snapshot-ack` or
+   origin matches the page). CLI prints `scene=7(targets)`.
+   `status` repeats last-known scene / hold / expect from the
+   last snapshot (stale after inject). `logs` drains the
+   Target / Scene ring. `status` `last_log` is the newest
+   Target / Scene UART line (never a PIN); `target loop` is
+   overwritten by the following `target show id=0`. `snapshot-ack` or
    `snapshot-clear` releases the slot. A failed get can leave
    the slot armed (`SnapshotBusy` until clear). Planes land
    under gitignored `developer-data/remote-debug/snapshots/`

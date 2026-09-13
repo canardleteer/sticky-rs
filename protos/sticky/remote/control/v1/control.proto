@@ -28,6 +28,8 @@ service RemoteDebugControlService {
   rpc Connect(ConnectRequest) returns (ConnectResponse);
   // Session meter for one advertise name.
   rpc Status(StatusRequest) returns (StatusResponse);
+  // Drain queued Target / Scene LogLine copies (never a PIN or MAC).
+  rpc GetLogs(GetLogsRequest) returns (GetLogsResponse);
   // Every target the owner currently tracks.
   rpc ListTargets(ListTargetsRequest) returns (ListTargetsResponse);
   // Synthetic tap or slide on a connected target.
@@ -93,6 +95,50 @@ message StatusResponse {
   optional uint64 nonce = 4;
   // Last Target / Scene LogLine (never a MAC).
   optional string last_log = 5;
+  // Last GetSnapshot scene persist byte. Stale after inject until the next pull.
+  optional uint32 last_scene = 6;
+  // Last GetSnapshot hold token. Stale after inject until the next pull.
+  optional uint32 last_hold = 7;
+  // Last GetSnapshot targets step. Stale after inject until the next pull.
+  optional uint32 last_target_step = 8;
+  // Last GetSnapshot expect page X. Stale after inject until the next pull.
+  optional uint32 last_expect_x = 9;
+  // Last GetSnapshot expect page Y. Stale after inject until the next pull.
+  optional uint32 last_expect_y = 10;
+}
+
+// Arguments for GetLogs. `limit` caps how many ring entries to return.
+message GetLogsRequest {
+  // BLE advertise name. Never a MAC.
+  string target = 1;
+  // Max lines (default 16, the host ring depth). Optional.
+  optional uint32 limit = 2;
+}
+
+// Oldest-first Target / Scene lines still in the host ring.
+message GetLogsResponse {
+  // Human line (no MAC). Usually `logs n=…`.
+  string message = 1;
+  // Session meter.
+  SessionPhase phase = 2;
+  // Whether the owner holds GATT.
+  bool connected = 3;
+  // Last snapshot nonce, if any.
+  optional uint64 nonce = 4;
+  // Newest Target / Scene LogLine (never a MAC).
+  optional string last_log = 5;
+  // Ring contents, oldest first. Never a PIN or MAC.
+  repeated sticky.remote.shared.v1.LogLine lines = 6;
+  // Last GetSnapshot scene persist byte. Stale after inject until the next pull.
+  optional uint32 last_scene = 7;
+  // Last GetSnapshot hold token. Stale after inject until the next pull.
+  optional uint32 last_hold = 8;
+  // Last GetSnapshot targets step. Stale after inject until the next pull.
+  optional uint32 last_target_step = 9;
+  // Last GetSnapshot expect page X. Stale after inject until the next pull.
+  optional uint32 last_expect_x = 10;
+  // Last GetSnapshot expect page Y. Stale after inject until the next pull.
+  optional uint32 last_expect_y = 11;
 }
 
 // Arguments for ListTargets. Empty; the owner lists every slot.

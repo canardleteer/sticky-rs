@@ -30,7 +30,8 @@ URI to `$dir/remote-debug.connect`.
 | RPC | Role |
 | --- | --- |
 | `Connect` | Start pair on a worker; returns `pairing` |
-| `Status` | `pairing` / `connected` / `disconnected` |
+| `Status` | `pairing` / `connected` / `disconnected`; last snapshot scene / hold / expect cache |
+| `GetLogs` | Drain the Target / Scene `LogLine` ring (oldest first) |
 | `ListTargets` | Advertise names the owner currently tracks |
 | `InjectTouch` | Framebuffer or page tap / slide |
 | `InjectButton` | `ok` / `page-up` / `page-down` |

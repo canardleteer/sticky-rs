@@ -44,7 +44,7 @@ the filename; no serial).
 Stay on splash for pair (Ferris never shows the PIN). Do not ask
 the operator to pair from a phone. Tools are `connect`, `status`,
 `list-targets`, `inject-touch`, `inject-button`, `get-snapshot`,
-`snapshot-ack`, `snapshot-clear`, `reboot`, `disconnect` (not
+`snapshot-ack`, `snapshot-clear`, `reboot`, `disconnect`, `logs` (not
 `remote-debug_*`). Do not run `monitor` during auto-PIN. No
 `--remember` unless the human asked. New MCP tools need a new
 agent. A host notify / owner change is enough with
@@ -53,10 +53,13 @@ detached owner is on-disk `target/debug/xtask`).
 
 1. Stay on splash. `status` — `no broker` until `connect`.
 2. `connect` → `pairing`. Poll `status` until `connected`
-   (or `pair failed`). After a fresh flash, retry `connect` if
-   the first sit is `le-connection-abort-by-local` or CDC busy.
-3. `inject-button` `page-down` / `page-up` (`down` true = short
-   press) or `inject-touch`. `--page` is page pixels for the
+   (or `pair failed`). CLI `connect --wait` polls in that
+   process; MCP `connect` has no `--wait`. After a fresh flash,
+   retry `connect` if the first sit is
+   `le-connection-abort-by-local` or CDC busy.
+3. `inject-button` `page-down` / `page-up` (short press; CLI
+   `--release` for the up edge; MCP `down` is a JSON bool)
+   or `inject-touch`. `--page` is page pixels for the
    last compose hold (hit-test inverse, not raw
    `page_to_framebuffer`). `--phase` `down` / `move` / `up`
    (unset = tap). Wait ~2–3 s for compose. Do not tap START
@@ -67,8 +70,11 @@ detached owner is on-disk `target/debug/xtask`).
    `developer-data/remote-debug/snapshots/`). Sibling `.bw` /
    `.red` are packed SSD1677 planes (`.red` is the second
    gray4 plane, not pigment) and are omitted from JSON.
-   CLI prints `png=` on the same line. `status` `last_log`
-   is the last Target / Scene UART copy. A leftover arm is
+   CLI prints `png=` on the same line (`scene=7(targets)`).
+   `status` repeats last-known `scene` / `hold` / expect from
+   the last snapshot (stale after inject). `logs` drains the
+   Target / Scene ring (oldest first). `status` `last_log`
+   is the newest Target / Scene UART copy. A leftover arm is
    `SnapshotBusy`; `snapshot-clear` then retry. Ack when
    done. Read `sticky-rs://remote-debug/pickup`.
 5. Targets walk (no `monitor`): seven Page Downs to
@@ -78,9 +84,9 @@ detached owner is on-disk `target/debug/xtask`).
    (`TARGET_SLIDE_END_INSET` 80), `move` at mid and the
    other inset (`page_len − 80`), then `up`. Painted `r=`
    is the mark, not the span. After id 6 the snapshot
-   `target_step` is 0. `last_log` is one line: `target loop`
-   is emitted, then `target show id=0` overwrites it on the
-   same refresh.
+   `target_step` is 0. `last_log` is the newest line: `target
+   loop` is emitted, then `target show id=0` overwrites it on
+   the same refresh. `logs` still has both lines in the ring.
 6. `list-targets` shows advertise names the owner holds.
    `disconnect` when the sit is over (empty map also shuts
    the owner down).
@@ -96,11 +102,12 @@ the CLI:
 
 | Tool | Role |
 | --- | --- |
-| `connect` | Starts a detached owner if needed; returns `pairing`. BlueZ **Connect** (not `Pair()`). UART auto-PIN unless `pin`. `--name` is advertise `target` |
-| `status` | `pairing` / `connected` / `disconnected` / `pair failed` |
+| `connect` | Starts a detached owner if needed; returns `pairing`. BlueZ **Connect** (not `Pair()`). UART auto-PIN unless `pin`. `--name` is advertise `target`. CLI `--wait` polls; MCP has no `--wait` |
+| `status` | `pairing` / `connected` / `disconnected` / `pair failed`. Last snapshot `scene` / `hold` / expect is a host cache (stale after inject) |
+| `logs` | Drain the Target / Scene ring (oldest first). Optional `limit` (default 16). Never a PIN or MAC |
 | `list-targets` | Advertise names the owner currently tracks (never a MAC) |
 | `inject-touch` | Framebuffer tap, or `--page` page pixels; `--phase` for slides. Not UART `p0=` |
-| `inject-button` | `ok` / `page-up` / `page-down` short-press (`down` true). Wait for compose |
+| `inject-button` | `ok` / `page-up` / `page-down` short-press. CLI `--release` is the up edge; MCP `down` is a JSON bool. Wait for compose |
 | `get-snapshot` | Arm LAST DRAW. JSON `png` is the page image to open. `.bw` / `.red` are SSD1677 planes (`.red` = gray4 plane 1, not pigment) and are omitted from JSON. scene / hold / expect |
 | `snapshot-ack` | Release the armed nonce |
 | `snapshot-clear` | Operator abort (no nonce); use after a failed get |
@@ -131,8 +138,10 @@ Same live-ask rules as the root
    ask the operator to pair from a phone. `scene=pair` is
    optional.
 2. `connect` without `--remember` unless the human asked. Do not
-   run `monitor` in parallel. Expect `pairing`.
-3. Poll `status` until `connected` (or `pair failed`).
+   run `monitor` in parallel. Expect `pairing`. CLI may use
+   `--wait`; MCP still polls `status`.
+3. Poll `status` until `connected` (or `pair failed`). Optional
+   `logs` for the Target / Scene ring.
 4. `inject-touch` / `inject-button` on known ink. `--page` and
    `--phase` for the targets walk. Wait ~2–3 s for compose.
 5. `get-snapshot`, then ack; a second get while armed is
@@ -150,6 +159,16 @@ edges under [Difficult / crude](#difficult--crude).
 
 ## Discoveries
 
+- Desk leaves sit (2026-09-12): after `flash-app` of `--features
+  remote-debug` (new log ring), CLI `connect --wait` printed
+  `connected` on the first sit (no `--remember`). Snapshot
+  Ferris `scene=0(splash) hold=0`; `status` repeated that
+  cache. Default `inject-button` `page-down` (no `--release`)
+  then snapshot `scene=1(shapes)`. Two more shorts reached
+  `scene=3(tones)`. `logs n=3` oldest-first
+  (`shapes` / `legend` / `tones`); `last_log` was the newest
+  tones line. `list-targets` `sticky-rs`. `disconnect`
+  emptied the map (`no broker`).
 - Targets walk sit (2026-09-12): reconnect from shapes after the
   earlier `disconnect` (no walk back to Ferris, no `--remember`).
   `connect` → `pairing` → `connected`. Splash was already behind

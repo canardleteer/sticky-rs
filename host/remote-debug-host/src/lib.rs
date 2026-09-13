@@ -18,7 +18,9 @@ mod linux;
 pub use error::Error;
 pub use fake::{reassemble_pieces, shatter, FakeTransport};
 pub use passkey::{ChannelPasskey, FixedPasskey, PasskeySource};
-pub use session::{rx_uuid, service_uuid, tx_uuid, Session, SnapshotPlanes, DEFAULT_ADV_NAME};
+pub use session::{
+    rx_uuid, service_uuid, tx_uuid, LogEntry, Session, SnapshotPlanes, DEFAULT_ADV_NAME, LOG_RING,
+};
 pub use transport::Transport;
 
 #[cfg(target_os = "linux")]

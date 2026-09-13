@@ -22,7 +22,7 @@ use serde_json::Value;
 
 use crate::remote_debug::{
     run, BrokerTarget, ConnectArgs, GetSnapshotArgs, InjectButtonArgs, InjectTouchArgs,
-    ListTargetsArgs, RebootArgs, RemoteDebugCommand, RemoteDebugState, SnapshotAckArgs,
+    ListTargetsArgs, LogsArgs, RebootArgs, RemoteDebugCommand, RemoteDebugState, SnapshotAckArgs,
 };
 
 /// Initialize / discover instructions for a desk sit.
@@ -30,7 +30,7 @@ pub const INSTRUCTIONS: &str = "\
 You are a client of the sticky-rs remote-debug owner (encrypted GATT after \
 DisplayOnly pair). This process does not own GATT. Tools are clap leaves: \
 connect, status, list-targets, inject-touch, inject-button, get-snapshot, \
-snapshot-ack, snapshot-clear, reboot, disconnect. Not remote-debug_*.
+snapshot-ack, snapshot-clear, reboot, disconnect, logs. Not remote-debug_*.
 
 Stay on splash for pair (Ferris never shows the PIN). Do not ask the operator \
 to pair from a phone. Do not run monitor during auto-PIN. No --remember unless \
@@ -70,8 +70,9 @@ No monitor during auto-PIN. No --remember unless asked. Never a MAC.
    .red are SSD1677 planes (.red = gray4 plane 1, not pigment);
    JSON omits those bytes. Ack when done. SnapshotBusy →
    snapshot-clear, then retry.
-5. Targets: seven page-downs to scene=7. Tap --page at expect. Slides use
-   --phase. After id 6, target_step=0. last_log may be target show id=0.
+5. Targets: seven page-downs to scene=7(targets). Tap --page at expect.
+   Slides use --phase. After id 6, target_step=0. last_log may be
+   target show id=0. logs shows the Target / Scene ring (oldest first).
 6. list-targets shows advertise names the owner holds. disconnect when
    the sit is over (empty map also shuts the owner down).
 ";
@@ -82,10 +83,11 @@ const TOOLS: &str = "\
 | Tool | How to use it |
 | --- | --- |
 | connect | Starts the owner if needed. Returns pairing. BlueZ Connect, not Pair(). UART auto-PIN unless pin. `--name` is advertise `target`. |
-| status | pairing / connected / disconnected / pair failed. last_log is Target / Scene only. |
+| status | pairing / connected / disconnected / pair failed. last_log is Target / Scene only. last_scene / hold / expect is the last snapshot cache (stale after inject). |
+| logs | Drain the Target / Scene ring (oldest first, never a PIN or MAC). Optional limit (default 16). |
 | list-targets | Advertise names the owner currently tracks (never a MAC). |
 | inject-touch | Default x/y are framebuffer. page=true treats x/y as page pixels. phase down/move/up; unset is a tap. Not UART p0=. |
-| inject-button | key ok / page-up / page-down. down true is a short press. Wait for compose. |
+| inject-button | key ok / page-up / page-down. down true is a short press (JSON bool). CLI uses --release for the up edge. Wait for compose. |
 | get-snapshot | Arms LAST DRAW. JSON png is the page-space image to open. Sibling .bw / .red are SSD1677 planes (.red = gray4 plane 1, not pigment) and are omitted from JSON. scene / hold / step / expect on the line. |
 | snapshot-ack | Release the armed nonce. |
 | snapshot-clear | Abort with no nonce. Use after a failed get. |
@@ -239,6 +241,13 @@ struct NonceParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+struct LogsParams {
+    limit: Option<u32>,
+    #[serde(default = "default_name")]
+    name: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 struct RebootParams {
     #[serde(default)]
     no_reconnect: bool,
@@ -286,6 +295,7 @@ impl RemoteDebugMcp {
             port: params.port,
             name: params.name,
             remember: params.remember,
+            wait: false,
             socket_dir: None,
         }))
     }
@@ -342,7 +352,7 @@ impl RemoteDebugMcp {
     ) -> Result<Json<RemoteDebugToolOutput>, McpError> {
         self.dispatch(RemoteDebugCommand::InjectButton(InjectButtonArgs {
             key: params.key,
-            down: params.down,
+            release: !params.down,
             name: params.name,
             socket_dir: None,
         }))
@@ -422,6 +432,22 @@ impl RemoteDebugMcp {
         Parameters(params): Parameters<NameParams>,
     ) -> Result<Json<RemoteDebugToolOutput>, McpError> {
         self.dispatch(RemoteDebugCommand::Disconnect(broker_target(params.name)))
+    }
+
+    #[tool(
+        name = "logs",
+        description = "Drain Target / Scene LogLine copies (oldest first). Never a PIN or MAC. Optional limit (default 16).",
+        annotations(read_only_hint = true)
+    )]
+    fn logs(
+        &self,
+        Parameters(params): Parameters<LogsParams>,
+    ) -> Result<Json<RemoteDebugToolOutput>, McpError> {
+        self.dispatch(RemoteDebugCommand::Logs(LogsArgs {
+            limit: params.limit,
+            name: params.name,
+            socket_dir: None,
+        }))
     }
 }
 
@@ -607,6 +633,7 @@ mod tests {
         "snapshot-clear",
         "reboot",
         "disconnect",
+        "logs",
     ];
 
     #[test]

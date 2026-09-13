@@ -1,5 +1,6 @@
 //! Framed Envelope session on top of a [`crate::Transport`].
 
+use std::collections::VecDeque;
 use std::time::Duration;
 
 use panel_view::{FrameKind, TouchSample};
@@ -15,6 +16,22 @@ use remote_debug_wire::{
 };
 
 use crate::{Error, Transport};
+
+/// How many Target / Scene `LogLine` copies the host keeps.
+///
+/// Firmware notifies each line; this ring drops the oldest so a
+/// targets walk can still show `target loop` after `target show id=0`
+/// overwrote `last_log`. Never a MAC.
+pub const LOG_RING: usize = 16;
+
+/// One GATT `LogLine` kept in [`LOG_RING`] (never a MAC).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LogEntry {
+    /// Device milliseconds since boot when the line was formatted.
+    pub t_ms: u32,
+    /// UART text. Never a MAC.
+    pub text: String,
+}
 
 /// In-tree Sticky advertise name ([`remote_debug_wire::StickyLayout`]).
 ///
@@ -73,7 +90,7 @@ pub struct Session<T: Transport> {
     transport: T,
     assembler: FrameAssembler,
     last_nonce: Option<u64>,
-    last_log: Option<String>,
+    logs: VecDeque<LogEntry>,
     keep_bond: bool,
 }
 
@@ -85,7 +102,7 @@ impl<T: Transport> Session<T> {
             transport,
             assembler: FrameAssembler::host_rx(),
             last_nonce: None,
-            last_log: None,
+            logs: VecDeque::new(),
             keep_bond,
         }
     }
@@ -102,10 +119,15 @@ impl<T: Transport> Session<T> {
         self.last_nonce
     }
 
-    /// Last Target / Scene `LogLine` text (never a MAC).
+    /// Newest Target / Scene `LogLine` text (never a MAC).
     #[must_use]
     pub fn last_log(&self) -> Option<&str> {
-        self.last_log.as_deref()
+        self.logs.back().map(|entry| entry.text.as_str())
+    }
+
+    /// Oldest-first ring of Target / Scene lines (never a MAC).
+    pub fn recent_logs(&self) -> impl Iterator<Item = &LogEntry> {
+        self.logs.iter()
     }
 
     /// Synthetic framebuffer tap.
@@ -153,7 +175,7 @@ impl<T: Transport> Session<T> {
             if let Ok(Some(frame)) = self.assembler.push(&chunk) {
                 if let Ok(env) = decode_envelope(&frame) {
                     if let Some(Body::LogLine(line)) = env.body {
-                        self.last_log = Some(line.text);
+                        self.push_log(line.t_ms, line.text);
                     }
                 }
             }
@@ -247,6 +269,13 @@ impl<T: Transport> Session<T> {
         Ok(())
     }
 
+    fn push_log(&mut self, t_ms: u32, text: String) {
+        if self.logs.len() == LOG_RING {
+            self.logs.pop_front();
+        }
+        self.logs.push_back(LogEntry { t_ms, text });
+    }
+
     /// Drop the link. Unknown units lose the BlueZ bond when `keep_bond` is false.
     ///
     /// # Errors
@@ -288,7 +317,7 @@ impl<T: Transport> Session<T> {
                         return Err(Error::SnapshotBusy { armed: busy.nonce });
                     }
                     Some(Body::LogLine(line)) => {
-                        self.last_log = Some(line.text);
+                        self.push_log(line.t_ms, line.text);
                     }
                     _ => {}
                 },
@@ -299,7 +328,7 @@ impl<T: Transport> Session<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::Session;
+    use super::{Session, LOG_RING};
     use crate::FakeTransport;
 
     #[test]
@@ -308,5 +337,29 @@ mod tests {
         session.reboot().expect("reboot");
         assert_eq!(session.transport.disconnects, 1);
         assert_eq!(session.transport.last_keep_bond, Some(false));
+    }
+
+    #[test]
+    fn log_ring_keeps_newest_and_drops_oldest() {
+        let mut session = Session::new(FakeTransport::tiny(), false);
+        for i in 0..(LOG_RING + 2) {
+            session.push_log(i as u32, format!("line-{i}"));
+        }
+        assert_eq!(session.last_log(), Some("line-17"));
+        let texts: Vec<_> = session.recent_logs().map(|e| e.text.as_str()).collect();
+        assert_eq!(texts.len(), LOG_RING);
+        assert_eq!(texts[0], "line-2");
+        assert_eq!(texts[LOG_RING - 1], "line-17");
+    }
+
+    #[test]
+    fn drain_logs_reads_enqueued_notify() {
+        let mut transport = FakeTransport::tiny();
+        transport.enqueue_log(42, "target show id=0");
+        let mut session = Session::new(transport, false);
+        session.drain_logs();
+        assert_eq!(session.last_log(), Some("target show id=0"));
+        let entry = session.recent_logs().next().expect("one line");
+        assert_eq!(entry.t_ms, 42);
     }
 }

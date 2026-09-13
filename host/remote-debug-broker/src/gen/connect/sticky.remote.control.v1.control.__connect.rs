@@ -16,6 +16,16 @@ pub type OwnedStatusRequestView = ::buffa::view::OwnedView<
 pub type OwnedStatusResponseView = ::buffa::view::OwnedView<
     crate::proto::sticky::remote::control::v1::__buffa::view::StatusResponseView<'static>,
 >;
+///Shorthand for `OwnedView<GetLogsRequestView<'static>>`.
+pub type OwnedGetLogsRequestView = ::buffa::view::OwnedView<
+    crate::proto::sticky::remote::control::v1::__buffa::view::GetLogsRequestView<'static>,
+>;
+///Shorthand for `OwnedView<GetLogsResponseView<'static>>`.
+pub type OwnedGetLogsResponseView = ::buffa::view::OwnedView<
+    crate::proto::sticky::remote::control::v1::__buffa::view::GetLogsResponseView<
+        'static,
+    >,
+>;
 ///Shorthand for `OwnedView<ListTargetsRequestView<'static>>`.
 pub type OwnedListTargetsRequestView = ::buffa::view::OwnedView<
     crate::proto::sticky::remote::control::v1::__buffa::view::ListTargetsRequestView<
@@ -168,6 +178,42 @@ for crate::proto::sticky::remote::control::v1::__buffa::view::StatusResponseView
 impl ::connectrpc::Encodable<crate::proto::sticky::remote::control::v1::StatusResponse>
 for ::buffa::view::OwnedView<
     crate::proto::sticky::remote::control::v1::__buffa::view::StatusResponseView<'static>,
+> {
+    fn encode(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::buffa::bytes::Bytes, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body(self.reborrow(), codec)
+    }
+    /// An `OwnedView` still holds the buffer it was decoded from, so
+    /// its large fields can be handed to the response body by
+    /// reference count instead of copied. The bare view impl above
+    /// cannot do this: it has borrows but no buffer to name.
+    fn encode_segments(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::connectrpc::EncodedBody, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body_segments(
+            self.reborrow(),
+            self.bytes(),
+            codec,
+        )
+    }
+}
+impl ::connectrpc::Encodable<crate::proto::sticky::remote::control::v1::GetLogsResponse>
+for crate::proto::sticky::remote::control::v1::__buffa::view::GetLogsResponseView<'_> {
+    fn encode(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::buffa::bytes::Bytes, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body(self, codec)
+    }
+}
+impl ::connectrpc::Encodable<crate::proto::sticky::remote::control::v1::GetLogsResponse>
+for ::buffa::view::OwnedView<
+    crate::proto::sticky::remote::control::v1::__buffa::view::GetLogsResponseView<
+        'static,
+    >,
 > {
     fn encode(
         &self,
@@ -568,6 +614,12 @@ pub const REMOTE_DEBUG_CONTROL_SERVICE_STATUS_SPEC: ::connectrpc::Spec = ::conne
         ::connectrpc::StreamType::Unary,
     )
     .with_idempotency_level(::connectrpc::IdempotencyLevel::Unknown);
+/// Static [`Spec`](::connectrpc::Spec) for the `GetLogs` RPC, as seen by the server; the generated client passes it with [`origin`](::connectrpc::Spec::origin) `Client` (compare across sides with [`Spec::same_method`](::connectrpc::Spec::same_method)).
+pub const REMOTE_DEBUG_CONTROL_SERVICE_GET_LOGS_SPEC: ::connectrpc::Spec = ::connectrpc::Spec::server(
+        "/sticky.remote.control.v1.RemoteDebugControlService/GetLogs",
+        ::connectrpc::StreamType::Unary,
+    )
+    .with_idempotency_level(::connectrpc::IdempotencyLevel::Unknown);
 /// Static [`Spec`](::connectrpc::Spec) for the `ListTargets` RPC, as seen by the server; the generated client passes it with [`origin`](::connectrpc::Spec::origin) `Client` (compare across sides with [`Spec::same_method`](::connectrpc::Spec::same_method)).
 pub const REMOTE_DEBUG_CONTROL_SERVICE_LIST_TARGETS_SPEC: ::connectrpc::Spec = ::connectrpc::Spec::server(
         "/sticky.remote.control.v1.RemoteDebugControlService/ListTargets",
@@ -717,6 +769,29 @@ pub trait RemoteDebugControlService: Send + Sync + 'static {
         Output = ::connectrpc::ServiceResult<
             impl ::connectrpc::Encodable<
                 crate::proto::sticky::remote::control::v1::StatusResponse,
+            > + Send + use<'a, Self>,
+        >,
+    > + Send;
+    /// Drain queued Target / Scene LogLine copies (never a PIN or MAC).
+    ///
+    /// `'a` lets the response body borrow from `&self` (e.g. server-resident state).
+    ///
+    /// `request` is borrowed from the request body and is valid for the
+    /// duration of the call; message fields are read directly on it
+    /// (zero-copy). The response cannot borrow from `request` — use
+    /// `.to_owned_message()` (or copy the specific fields) for anything
+    /// returned, stored, or moved into `tokio::spawn`.
+    fn get_logs<'a>(
+        &'a self,
+        ctx: ::connectrpc::RequestContext,
+        request: ::connectrpc::ServiceRequest<
+            '_,
+            crate::proto::sticky::remote::control::v1::GetLogsRequest,
+        >,
+    ) -> impl ::std::future::Future<
+        Output = ::connectrpc::ServiceResult<
+            impl ::connectrpc::Encodable<
+                crate::proto::sticky::remote::control::v1::GetLogsResponse,
             > + Send + use<'a, Self>,
         >,
     > + Send;
@@ -1017,6 +1092,35 @@ impl<S: RemoteDebugControlService> RemoteDebugControlServiceExt for S {
                 },
             )
             .with_spec(REMOTE_DEBUG_CONTROL_SERVICE_STATUS_SPEC)
+            .route_view(
+                REMOTE_DEBUG_CONTROL_SERVICE_SERVICE_NAME,
+                "GetLogs",
+                {
+                    let svc = ::std::sync::Arc::clone(&self);
+                    ::connectrpc::view_handler_fn(move |
+                        ctx,
+                        req: ::buffa::view::OwnedView<
+                            crate::proto::sticky::remote::control::v1::__buffa::view::GetLogsRequestView<
+                                'static,
+                            >,
+                        >,
+                        format|
+                    {
+                        let svc = ::std::sync::Arc::clone(&svc);
+                        async move {
+                            let sreq = ::connectrpc::ServiceRequest::<
+                                crate::proto::sticky::remote::control::v1::GetLogsRequest,
+                            >::from_parts(req.reborrow(), req.bytes());
+                            svc.get_logs(ctx, sreq)
+                                .await?
+                                .encode::<
+                                    crate::proto::sticky::remote::control::v1::GetLogsResponse,
+                                >(format)
+                        }
+                    })
+                },
+            )
+            .with_spec(REMOTE_DEBUG_CONTROL_SERVICE_GET_LOGS_SPEC)
             .route_view(
                 REMOTE_DEBUG_CONTROL_SERVICE_SERVICE_NAME,
                 "ListTargets",
@@ -1348,6 +1452,12 @@ for RemoteDebugControlServiceServer<T> {
                         .with_spec(REMOTE_DEBUG_CONTROL_SERVICE_STATUS_SPEC),
                 )
             }
+            "GetLogs" => {
+                Some(
+                    ::connectrpc::dispatcher::codegen::MethodDescriptor::unary(false)
+                        .with_spec(REMOTE_DEBUG_CONTROL_SERVICE_GET_LOGS_SPEC),
+                )
+            }
             "ListTargets" => {
                 Some(
                     ::connectrpc::dispatcher::codegen::MethodDescriptor::unary(false)
@@ -1459,6 +1569,28 @@ for RemoteDebugControlServiceServer<T> {
                         .await?
                         .encode::<
                             crate::proto::sticky::remote::control::v1::StatusResponse,
+                        >(format)
+                })
+            }
+            "GetLogs" => {
+                let svc = ::std::sync::Arc::clone(&self.inner);
+                Box::pin(async move {
+                    let body = ::connectrpc::dispatcher::codegen::request_proto_bytes::<
+                        crate::proto::sticky::remote::control::v1::GetLogsRequest,
+                    >(request.encoded()?, format)?;
+                    let req: crate::proto::sticky::remote::control::v1::__buffa::view::GetLogsRequestView<
+                        '_,
+                    > = ::connectrpc::dispatcher::codegen::decode_borrowed_request_view(
+                        &body,
+                        ctx.decode_options(),
+                    )?;
+                    let req = ::connectrpc::ServiceRequest::<
+                        crate::proto::sticky::remote::control::v1::GetLogsRequest,
+                    >::from_parts(&req, &body);
+                    svc.get_logs(ctx, req)
+                        .await?
+                        .encode::<
+                            crate::proto::sticky::remote::control::v1::GetLogsResponse,
                         >(format)
                 })
             }
@@ -1869,6 +2001,48 @@ where
                 &self.transport,
                 &self.config,
                 REMOTE_DEBUG_CONTROL_SERVICE_STATUS_SPEC
+                    .with_origin(::connectrpc::SpecOrigin::Client),
+                request,
+                options,
+            )
+            .await
+    }
+    /// Call the GetLogs RPC. Sends a request to /sticky.remote.control.v1.RemoteDebugControlService/GetLogs.
+    pub async fn get_logs(
+        &self,
+        request: crate::proto::sticky::remote::control::v1::GetLogsRequest,
+    ) -> Result<
+        ::connectrpc::client::UnaryResponse<
+            ::buffa::view::OwnedView<
+                crate::proto::sticky::remote::control::v1::__buffa::view::GetLogsResponseView<
+                    'static,
+                >,
+            >,
+        >,
+        ::connectrpc::ConnectError,
+    > {
+        self.get_logs_with_options(request, ::connectrpc::client::CallOptions::default())
+            .await
+    }
+    /// Call the GetLogs RPC with explicit per-call options. Options override [`ClientConfig`](::connectrpc::client::ClientConfig) defaults.
+    pub async fn get_logs_with_options(
+        &self,
+        request: crate::proto::sticky::remote::control::v1::GetLogsRequest,
+        options: ::connectrpc::client::CallOptions,
+    ) -> Result<
+        ::connectrpc::client::UnaryResponse<
+            ::buffa::view::OwnedView<
+                crate::proto::sticky::remote::control::v1::__buffa::view::GetLogsResponseView<
+                    'static,
+                >,
+            >,
+        >,
+        ::connectrpc::ConnectError,
+    > {
+        ::connectrpc::client::call_unary(
+                &self.transport,
+                &self.config,
+                REMOTE_DEBUG_CONTROL_SERVICE_GET_LOGS_SPEC
                     .with_origin(::connectrpc::SpecOrigin::Client),
                 request,
                 options,

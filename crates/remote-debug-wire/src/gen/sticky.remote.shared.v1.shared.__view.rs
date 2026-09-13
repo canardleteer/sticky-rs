@@ -863,11 +863,13 @@ pub struct SnapshotView<'a> {
     ///
     /// Field 5: `hold`
     pub hold: ::core::option::Option<u32>,
-    /// Black/white packed plane.
+    /// First packed 1-bit plane (SSD1677 BW RAM).
     ///
     /// Field 6: `bw`
     pub bw: &'a [u8],
-    /// Red/gray packed plane when kind is gray4. Empty on mono.
+    /// Second packed 1-bit plane when kind is gray4 (SSD1677
+    /// "red" RAM). Empty on mono. Not a red pigment on this
+    /// panel; host PNG may paint those bits reddish to show them.
     ///
     /// Field 7: `red`
     pub red: &'a [u8],
@@ -1275,14 +1277,16 @@ impl SnapshotOwnedView {
     pub fn hold(&self) -> ::core::option::Option<u32> {
         self.0.reborrow().hold
     }
-    /// Black/white packed plane.
+    /// First packed 1-bit plane (SSD1677 BW RAM).
     ///
     /// Field 6: `bw`
     #[must_use]
     pub fn bw(&self) -> &'_ [u8] {
         self.0.reborrow().bw
     }
-    /// Red/gray packed plane when kind is gray4. Empty on mono.
+    /// Second packed 1-bit plane when kind is gray4 (SSD1677
+    /// "red" RAM). Empty on mono. Not a red pigment on this
+    /// panel; host PNG may paint those bits reddish to show them.
     ///
     /// Field 7: `red`
     #[must_use]

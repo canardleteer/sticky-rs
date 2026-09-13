@@ -4,8 +4,8 @@ use std::collections::VecDeque;
 
 use remote_debug_wire::v1::envelope::Body;
 use remote_debug_wire::{
-    decode_envelope, encode_snapshot_busy, encode_snapshot_envelope, FrameAssembler, GetOutcome,
-    SnapshotSlot,
+    decode_envelope, encode_log_line, encode_snapshot_busy, encode_snapshot_envelope,
+    FrameAssembler, GetOutcome, SnapshotSlot,
 };
 
 use crate::{Error, Transport};
@@ -38,6 +38,11 @@ impl FakeTransport {
             disconnects: 0,
             last_keep_bond: None,
         }
+    }
+
+    /// Queue a Target / Scene `LogLine` notify (never a MAC).
+    pub fn enqueue_log(&mut self, t_ms: u32, text: &str) {
+        self.inbound.push_back(encode_log_line(t_ms, text));
     }
 }
 

@@ -37,7 +37,7 @@ use connectrpc::{
     ServiceResult,
 };
 use panel_view::{FrameKind, TouchSample, TouchSource};
-use remote_debug_host::{Session, Transport, DEFAULT_ADV_NAME};
+use remote_debug_host::{Session, Transport, DEFAULT_ADV_NAME, LOG_RING};
 use remote_debug_wire::v1::{ProductKey, TouchPhase};
 
 pub use client::ControlClient;
@@ -274,9 +274,32 @@ fn write_pid(path: &Path) -> Result<(), Error> {
 struct Slot<T: Transport> {
     session: Option<Session<T>>,
     last_nonce: Option<u64>,
+    last_view: LastView,
     pairing: bool,
     pair_gen: u64,
     last_error: Option<String>,
+}
+
+/// Last GetSnapshot metadata (no planes). Stale after inject until the next pull.
+#[derive(Clone, Copy, Default)]
+struct LastView {
+    scene: Option<u32>,
+    hold: Option<u32>,
+    target_step: Option<u32>,
+    expect_x: Option<u32>,
+    expect_y: Option<u32>,
+}
+
+impl LastView {
+    fn from_snap(snap: &remote_debug_host::SnapshotPlanes) -> Self {
+        Self {
+            scene: snap.scene,
+            hold: snap.hold,
+            target_step: snap.target_step,
+            expect_x: snap.target_expect_x,
+            expect_y: snap.target_expect_y,
+        }
+    }
 }
 
 impl<T: Transport> Default for Slot<T> {
@@ -284,6 +307,7 @@ impl<T: Transport> Default for Slot<T> {
         Self {
             session: None,
             last_nonce: None,
+            last_view: LastView::default(),
             pairing: false,
             pair_gen: 0,
             last_error: None,
@@ -441,6 +465,28 @@ fn last_log<T: Transport>(slot: &mut Slot<T>) -> Option<String> {
         session.drain_logs();
         session.last_log().map(str::to_string)
     })
+}
+
+fn status_response<T: Transport>(
+    slot: &mut Slot<T>,
+    message: String,
+    phase: control::SessionPhase,
+    connected: bool,
+) -> control::StatusResponse {
+    let view = slot.last_view;
+    control::StatusResponse {
+        message,
+        phase: phase.into(),
+        connected,
+        nonce: slot.last_nonce,
+        last_log: last_log(slot),
+        last_scene: view.scene,
+        last_hold: view.hold,
+        last_target_step: view.target_step,
+        last_expect_x: view.expect_x,
+        last_expect_y: view.expect_y,
+        ..control::StatusResponse::default()
+    }
 }
 
 fn session_mut<T: Transport>(slot: &mut Slot<T>) -> Result<&mut Session<T>, ConnectError> {
@@ -664,13 +710,47 @@ where
                 });
             };
             let (message, phase, connected) = status_fields(slot);
-            Response::ok(control::StatusResponse {
-                message,
-                phase: phase.into(),
-                connected,
+            Response::ok(status_response(slot, message, phase, connected))
+        })
+    }
+
+    async fn get_logs(
+        &self,
+        _ctx: RequestContext,
+        request: ServiceRequest<'_, control::GetLogsRequest>,
+    ) -> ServiceResult<control::GetLogsResponse> {
+        off_runtime(|| {
+            let req = request.to_owned_message();
+            let target = target_name(&req.target);
+            let mut inner = lock_inner(&self.0)?;
+            let slot = slot_or_err(&mut inner, &target)?;
+            let session = session_mut(slot)?;
+            session.drain_logs();
+            let limit = req.limit.unwrap_or(LOG_RING as u32).min(LOG_RING as u32) as usize;
+            let entries: Vec<_> = session.recent_logs().cloned().collect();
+            let start = entries.len().saturating_sub(limit);
+            let collected: Vec<shared::LogLine> = entries[start..]
+                .iter()
+                .map(|entry| shared::LogLine {
+                    t_ms: entry.t_ms,
+                    text: entry.text.clone(),
+                    ..shared::LogLine::default()
+                })
+                .collect();
+            let view = slot.last_view;
+            Response::ok(control::GetLogsResponse {
+                message: format!("logs n={}", collected.len()),
+                phase: control::SessionPhase::SESSION_PHASE_CONNECTED.into(),
+                connected: true,
                 nonce: slot.last_nonce,
                 last_log: last_log(slot),
-                ..control::StatusResponse::default()
+                lines: collected,
+                last_scene: view.scene,
+                last_hold: view.hold,
+                last_target_step: view.target_step,
+                last_expect_x: view.expect_x,
+                last_expect_y: view.expect_y,
+                ..control::GetLogsResponse::default()
             })
         })
     }
@@ -790,6 +870,7 @@ where
             match session_mut(slot)?.get_snapshot(nonce) {
                 Ok(snap) => {
                     slot.last_nonce = Some(snap.nonce);
+                    slot.last_view = LastView::from_snap(&snap);
                     let wire = snapshot_proto(snap);
                     let last_log = last_log(slot);
                     if self.0.log {
@@ -898,6 +979,7 @@ where
             })?;
             session.reboot().map_err(rpc_err)?;
             slot.last_nonce = None;
+            slot.last_view = LastView::default();
             if req.no_reconnect {
                 invalidate_pair(slot);
                 return Response::ok(control::RebootResponse {
@@ -1091,6 +1173,21 @@ mod tests {
             .unwrap();
         assert!(first.snapshot.is_set());
         assert_eq!(first.nonce, Some(7));
+        let after = client
+            .status(control::StatusRequest {
+                target: "sticky-rs".into(),
+                ..control::StatusRequest::default()
+            })
+            .unwrap();
+        assert_eq!(after.last_hold, Some(2));
+        let logs = client
+            .get_logs(control::GetLogsRequest {
+                target: "sticky-rs".into(),
+                ..control::GetLogsRequest::default()
+            })
+            .unwrap();
+        assert_eq!(logs.message, "logs n=0");
+        assert_eq!(logs.last_hold, Some(2));
 
         let busy = client
             .get_snapshot(control::GetSnapshotRequest {

@@ -830,6 +830,56 @@ pub struct StatusResponse {
         skip_serializing_if = "::core::option::Option::is_none"
     )]
     pub last_log: ::core::option::Option<::buffa::alloc::string::String>,
+    /// Last GetSnapshot scene persist byte. Stale after inject until the next pull.
+    ///
+    /// Field 6: `last_scene`
+    #[serde(
+        rename = "lastScene",
+        alias = "last_scene",
+        with = "::buffa::json_helpers::opt_uint32",
+        skip_serializing_if = "::core::option::Option::is_none"
+    )]
+    pub last_scene: ::core::option::Option<u32>,
+    /// Last GetSnapshot hold token. Stale after inject until the next pull.
+    ///
+    /// Field 7: `last_hold`
+    #[serde(
+        rename = "lastHold",
+        alias = "last_hold",
+        with = "::buffa::json_helpers::opt_uint32",
+        skip_serializing_if = "::core::option::Option::is_none"
+    )]
+    pub last_hold: ::core::option::Option<u32>,
+    /// Last GetSnapshot targets step. Stale after inject until the next pull.
+    ///
+    /// Field 8: `last_target_step`
+    #[serde(
+        rename = "lastTargetStep",
+        alias = "last_target_step",
+        with = "::buffa::json_helpers::opt_uint32",
+        skip_serializing_if = "::core::option::Option::is_none"
+    )]
+    pub last_target_step: ::core::option::Option<u32>,
+    /// Last GetSnapshot expect page X. Stale after inject until the next pull.
+    ///
+    /// Field 9: `last_expect_x`
+    #[serde(
+        rename = "lastExpectX",
+        alias = "last_expect_x",
+        with = "::buffa::json_helpers::opt_uint32",
+        skip_serializing_if = "::core::option::Option::is_none"
+    )]
+    pub last_expect_x: ::core::option::Option<u32>,
+    /// Last GetSnapshot expect page Y. Stale after inject until the next pull.
+    ///
+    /// Field 10: `last_expect_y`
+    #[serde(
+        rename = "lastExpectY",
+        alias = "last_expect_y",
+        with = "::buffa::json_helpers::opt_uint32",
+        skip_serializing_if = "::core::option::Option::is_none"
+    )]
+    pub last_expect_y: ::core::option::Option<u32>,
     #[serde(skip)]
     #[doc(hidden)]
     pub __buffa_unknown_fields: ::buffa::UnknownFields,
@@ -842,6 +892,11 @@ impl ::core::fmt::Debug for StatusResponse {
             .field("connected", &self.connected)
             .field("nonce", &self.nonce)
             .field("last_log", &self.last_log)
+            .field("last_scene", &self.last_scene)
+            .field("last_hold", &self.last_hold)
+            .field("last_target_step", &self.last_target_step)
+            .field("last_expect_x", &self.last_expect_x)
+            .field("last_expect_y", &self.last_expect_y)
             .finish()
     }
 }
@@ -868,6 +923,41 @@ impl StatusResponse {
         value: impl Into<::buffa::alloc::string::String>,
     ) -> Self {
         self.last_log = Some(value.into());
+        self
+    }
+    #[must_use = "with_* setters return `self` by value; assign or chain the result"]
+    #[inline]
+    ///Sets [`Self::last_scene`] to `Some(value)`, consuming and returning `self`.
+    pub fn with_last_scene(mut self, value: u32) -> Self {
+        self.last_scene = Some(value);
+        self
+    }
+    #[must_use = "with_* setters return `self` by value; assign or chain the result"]
+    #[inline]
+    ///Sets [`Self::last_hold`] to `Some(value)`, consuming and returning `self`.
+    pub fn with_last_hold(mut self, value: u32) -> Self {
+        self.last_hold = Some(value);
+        self
+    }
+    #[must_use = "with_* setters return `self` by value; assign or chain the result"]
+    #[inline]
+    ///Sets [`Self::last_target_step`] to `Some(value)`, consuming and returning `self`.
+    pub fn with_last_target_step(mut self, value: u32) -> Self {
+        self.last_target_step = Some(value);
+        self
+    }
+    #[must_use = "with_* setters return `self` by value; assign or chain the result"]
+    #[inline]
+    ///Sets [`Self::last_expect_x`] to `Some(value)`, consuming and returning `self`.
+    pub fn with_last_expect_x(mut self, value: u32) -> Self {
+        self.last_expect_x = Some(value);
+        self
+    }
+    #[must_use = "with_* setters return `self` by value; assign or chain the result"]
+    #[inline]
+    ///Sets [`Self::last_expect_y`] to `Some(value)`, consuming and returning `self`.
+    pub fn with_last_expect_y(mut self, value: u32) -> Self {
+        self.last_expect_y = Some(value);
         self
     }
 }
@@ -909,6 +999,21 @@ impl ::buffa::Message for StatusResponse {
         if let Some(ref v) = self.last_log {
             size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
         }
+        if let Some(v) = self.last_scene {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(v) as u64;
+        }
+        if let Some(v) = self.last_hold {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(v) as u64;
+        }
+        if let Some(v) = self.last_target_step {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(v) as u64;
+        }
+        if let Some(v) = self.last_expect_x {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(v) as u64;
+        }
+        if let Some(v) = self.last_expect_y {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(v) as u64;
+        }
         size += self.__buffa_unknown_fields.encoded_len() as u64;
         ::buffa::saturate_size(size)
     }
@@ -936,6 +1041,21 @@ impl ::buffa::Message for StatusResponse {
         }
         if let Some(ref v) = self.last_log {
             ::buffa::types::put_string_field(5u32, v, buf);
+        }
+        if let Some(v) = self.last_scene {
+            ::buffa::types::put_uint32_field(6u32, v, buf);
+        }
+        if let Some(v) = self.last_hold {
+            ::buffa::types::put_uint32_field(7u32, v, buf);
+        }
+        if let Some(v) = self.last_target_step {
+            ::buffa::types::put_uint32_field(8u32, v, buf);
+        }
+        if let Some(v) = self.last_expect_x {
+            ::buffa::types::put_uint32_field(9u32, v, buf);
+        }
+        if let Some(v) = self.last_expect_y {
+            ::buffa::types::put_uint32_field(10u32, v, buf);
         }
         self.__buffa_unknown_fields.write_to(buf);
     }
@@ -994,6 +1114,51 @@ impl ::buffa::Message for StatusResponse {
                     buf,
                 )?;
             }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.last_scene = ::core::option::Option::Some(
+                    ::buffa::types::decode_uint32(buf)?,
+                );
+            }
+            7u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.last_hold = ::core::option::Option::Some(
+                    ::buffa::types::decode_uint32(buf)?,
+                );
+            }
+            8u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.last_target_step = ::core::option::Option::Some(
+                    ::buffa::types::decode_uint32(buf)?,
+                );
+            }
+            9u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.last_expect_x = ::core::option::Option::Some(
+                    ::buffa::types::decode_uint32(buf)?,
+                );
+            }
+            10u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.last_expect_y = ::core::option::Option::Some(
+                    ::buffa::types::decode_uint32(buf)?,
+                );
+            }
             _ => {
                 self.__buffa_unknown_fields
                     .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
@@ -1007,6 +1172,11 @@ impl ::buffa::Message for StatusResponse {
         self.connected = false;
         self.nonce = ::core::option::Option::None;
         self.last_log = ::core::option::Option::None;
+        self.last_scene = ::core::option::Option::None;
+        self.last_hold = ::core::option::Option::None;
+        self.last_target_step = ::core::option::Option::None;
+        self.last_expect_x = ::core::option::Option::None;
+        self.last_expect_y = ::core::option::Option::None;
         self.__buffa_unknown_fields.clear();
     }
 }
@@ -1037,6 +1207,638 @@ pub const __STATUS_RESPONSE_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::b
     type_url: "type.googleapis.com/sticky.remote.control.v1.StatusResponse",
     to_json: ::buffa::type_registry::any_to_json::<StatusResponse>,
     from_json: ::buffa::type_registry::any_from_json::<StatusResponse>,
+    is_wkt: false,
+};
+/// Arguments for GetLogs. `limit` caps how many ring entries to return.
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct GetLogsRequest {
+    /// BLE advertise name. Never a MAC.
+    ///
+    /// Field 1: `target`
+    #[serde(
+        rename = "target",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub target: ::buffa::alloc::string::String,
+    /// Max lines (default 16, the host ring depth). Optional.
+    ///
+    /// Field 2: `limit`
+    #[serde(
+        rename = "limit",
+        with = "::buffa::json_helpers::opt_uint32",
+        skip_serializing_if = "::core::option::Option::is_none"
+    )]
+    pub limit: ::core::option::Option<u32>,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for GetLogsRequest {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("GetLogsRequest")
+            .field("target", &self.target)
+            .field("limit", &self.limit)
+            .finish()
+    }
+}
+impl GetLogsRequest {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/sticky.remote.control.v1.GetLogsRequest";
+}
+impl GetLogsRequest {
+    #[must_use = "with_* setters return `self` by value; assign or chain the result"]
+    #[inline]
+    ///Sets [`Self::limit`] to `Some(value)`, consuming and returning `self`.
+    pub fn with_limit(mut self, value: u32) -> Self {
+        self.limit = Some(value);
+        self
+    }
+}
+::buffa::impl_default_instance!(GetLogsRequest);
+impl ::buffa::MessageName for GetLogsRequest {
+    const PACKAGE: &'static str = "sticky.remote.control.v1";
+    const NAME: &'static str = "GetLogsRequest";
+    const FULL_NAME: &'static str = "sticky.remote.control.v1.GetLogsRequest";
+    const TYPE_URL: &'static str = "type.googleapis.com/sticky.remote.control.v1.GetLogsRequest";
+}
+impl ::buffa::Message for GetLogsRequest {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.target.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.target) as u64;
+        }
+        if let Some(v) = self.limit {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(v) as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        _cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.target.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.target, buf);
+        }
+        if let Some(v) = self.limit {
+            ::buffa::types::put_uint32_field(2u32, v, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.target, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.limit = ::core::option::Option::Some(
+                    ::buffa::types::decode_uint32(buf)?,
+                );
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.target.clear();
+        self.limit = ::core::option::Option::None;
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for GetLogsRequest {
+    const PROTO_FQN: &'static str = "sticky.remote.control.v1.GetLogsRequest";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for GetLogsRequest {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __GET_LOGS_REQUEST_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/sticky.remote.control.v1.GetLogsRequest",
+    to_json: ::buffa::type_registry::any_to_json::<GetLogsRequest>,
+    from_json: ::buffa::type_registry::any_from_json::<GetLogsRequest>,
+    is_wkt: false,
+};
+/// Oldest-first Target / Scene lines still in the host ring.
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct GetLogsResponse {
+    /// Human line (no MAC). Usually `logs n=…`.
+    ///
+    /// Field 1: `message`
+    #[serde(
+        rename = "message",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub message: ::buffa::alloc::string::String,
+    /// Session meter.
+    ///
+    /// Field 2: `phase`
+    #[serde(
+        rename = "phase",
+        with = "::buffa::json_helpers::proto_enum",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_default_enum_value"
+    )]
+    pub phase: ::buffa::EnumValue<SessionPhase>,
+    /// Whether the owner holds GATT.
+    ///
+    /// Field 3: `connected`
+    #[serde(
+        rename = "connected",
+        with = "::buffa::json_helpers::proto_bool",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_false"
+    )]
+    pub connected: bool,
+    /// Last snapshot nonce, if any.
+    ///
+    /// Field 4: `nonce`
+    #[serde(
+        rename = "nonce",
+        with = "::buffa::json_helpers::opt_uint64",
+        skip_serializing_if = "::core::option::Option::is_none"
+    )]
+    pub nonce: ::core::option::Option<u64>,
+    /// Newest Target / Scene LogLine (never a MAC).
+    ///
+    /// Field 5: `last_log`
+    #[serde(
+        rename = "lastLog",
+        alias = "last_log",
+        skip_serializing_if = "::core::option::Option::is_none"
+    )]
+    pub last_log: ::core::option::Option<::buffa::alloc::string::String>,
+    /// Ring contents, oldest first. Never a PIN or MAC.
+    ///
+    /// Field 6: `lines`
+    #[serde(
+        rename = "lines",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub lines: ::buffa::alloc::vec::Vec<super::super::shared::v1::LogLine>,
+    /// Last GetSnapshot scene persist byte. Stale after inject until the next pull.
+    ///
+    /// Field 7: `last_scene`
+    #[serde(
+        rename = "lastScene",
+        alias = "last_scene",
+        with = "::buffa::json_helpers::opt_uint32",
+        skip_serializing_if = "::core::option::Option::is_none"
+    )]
+    pub last_scene: ::core::option::Option<u32>,
+    /// Last GetSnapshot hold token. Stale after inject until the next pull.
+    ///
+    /// Field 8: `last_hold`
+    #[serde(
+        rename = "lastHold",
+        alias = "last_hold",
+        with = "::buffa::json_helpers::opt_uint32",
+        skip_serializing_if = "::core::option::Option::is_none"
+    )]
+    pub last_hold: ::core::option::Option<u32>,
+    /// Last GetSnapshot targets step. Stale after inject until the next pull.
+    ///
+    /// Field 9: `last_target_step`
+    #[serde(
+        rename = "lastTargetStep",
+        alias = "last_target_step",
+        with = "::buffa::json_helpers::opt_uint32",
+        skip_serializing_if = "::core::option::Option::is_none"
+    )]
+    pub last_target_step: ::core::option::Option<u32>,
+    /// Last GetSnapshot expect page X. Stale after inject until the next pull.
+    ///
+    /// Field 10: `last_expect_x`
+    #[serde(
+        rename = "lastExpectX",
+        alias = "last_expect_x",
+        with = "::buffa::json_helpers::opt_uint32",
+        skip_serializing_if = "::core::option::Option::is_none"
+    )]
+    pub last_expect_x: ::core::option::Option<u32>,
+    /// Last GetSnapshot expect page Y. Stale after inject until the next pull.
+    ///
+    /// Field 11: `last_expect_y`
+    #[serde(
+        rename = "lastExpectY",
+        alias = "last_expect_y",
+        with = "::buffa::json_helpers::opt_uint32",
+        skip_serializing_if = "::core::option::Option::is_none"
+    )]
+    pub last_expect_y: ::core::option::Option<u32>,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for GetLogsResponse {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("GetLogsResponse")
+            .field("message", &self.message)
+            .field("phase", &self.phase)
+            .field("connected", &self.connected)
+            .field("nonce", &self.nonce)
+            .field("last_log", &self.last_log)
+            .field("lines", &self.lines)
+            .field("last_scene", &self.last_scene)
+            .field("last_hold", &self.last_hold)
+            .field("last_target_step", &self.last_target_step)
+            .field("last_expect_x", &self.last_expect_x)
+            .field("last_expect_y", &self.last_expect_y)
+            .finish()
+    }
+}
+impl GetLogsResponse {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/sticky.remote.control.v1.GetLogsResponse";
+}
+impl GetLogsResponse {
+    #[must_use = "with_* setters return `self` by value; assign or chain the result"]
+    #[inline]
+    ///Sets [`Self::nonce`] to `Some(value)`, consuming and returning `self`.
+    pub fn with_nonce(mut self, value: u64) -> Self {
+        self.nonce = Some(value);
+        self
+    }
+    #[must_use = "with_* setters return `self` by value; assign or chain the result"]
+    #[inline]
+    ///Sets [`Self::last_log`] to `Some(value)`, consuming and returning `self`.
+    pub fn with_last_log(
+        mut self,
+        value: impl Into<::buffa::alloc::string::String>,
+    ) -> Self {
+        self.last_log = Some(value.into());
+        self
+    }
+    #[must_use = "with_* setters return `self` by value; assign or chain the result"]
+    #[inline]
+    ///Sets [`Self::last_scene`] to `Some(value)`, consuming and returning `self`.
+    pub fn with_last_scene(mut self, value: u32) -> Self {
+        self.last_scene = Some(value);
+        self
+    }
+    #[must_use = "with_* setters return `self` by value; assign or chain the result"]
+    #[inline]
+    ///Sets [`Self::last_hold`] to `Some(value)`, consuming and returning `self`.
+    pub fn with_last_hold(mut self, value: u32) -> Self {
+        self.last_hold = Some(value);
+        self
+    }
+    #[must_use = "with_* setters return `self` by value; assign or chain the result"]
+    #[inline]
+    ///Sets [`Self::last_target_step`] to `Some(value)`, consuming and returning `self`.
+    pub fn with_last_target_step(mut self, value: u32) -> Self {
+        self.last_target_step = Some(value);
+        self
+    }
+    #[must_use = "with_* setters return `self` by value; assign or chain the result"]
+    #[inline]
+    ///Sets [`Self::last_expect_x`] to `Some(value)`, consuming and returning `self`.
+    pub fn with_last_expect_x(mut self, value: u32) -> Self {
+        self.last_expect_x = Some(value);
+        self
+    }
+    #[must_use = "with_* setters return `self` by value; assign or chain the result"]
+    #[inline]
+    ///Sets [`Self::last_expect_y`] to `Some(value)`, consuming and returning `self`.
+    pub fn with_last_expect_y(mut self, value: u32) -> Self {
+        self.last_expect_y = Some(value);
+        self
+    }
+}
+::buffa::impl_default_instance!(GetLogsResponse);
+impl ::buffa::MessageName for GetLogsResponse {
+    const PACKAGE: &'static str = "sticky.remote.control.v1";
+    const NAME: &'static str = "GetLogsResponse";
+    const FULL_NAME: &'static str = "sticky.remote.control.v1.GetLogsResponse";
+    const TYPE_URL: &'static str = "type.googleapis.com/sticky.remote.control.v1.GetLogsResponse";
+}
+impl ::buffa::Message for GetLogsResponse {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.message.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.message) as u64;
+        }
+        {
+            let val = self.phase.to_i32();
+            if val != 0 {
+                size += 1u64 + ::buffa::types::int32_encoded_len(val) as u64;
+            }
+        }
+        if self.connected {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        if let Some(v) = self.nonce {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(v) as u64;
+        }
+        if let Some(ref v) = self.last_log {
+            size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+        }
+        for v in &self.lines {
+            let __slot = __cache.reserve();
+            let inner_size = v.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if let Some(v) = self.last_scene {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(v) as u64;
+        }
+        if let Some(v) = self.last_hold {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(v) as u64;
+        }
+        if let Some(v) = self.last_target_step {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(v) as u64;
+        }
+        if let Some(v) = self.last_expect_x {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(v) as u64;
+        }
+        if let Some(v) = self.last_expect_y {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(v) as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.message.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.message, buf);
+        }
+        {
+            let val = self.phase.to_i32();
+            if val != 0 {
+                ::buffa::types::put_int32_field(2u32, val, buf);
+            }
+        }
+        if self.connected {
+            ::buffa::types::put_bool_field(3u32, self.connected, buf);
+        }
+        if let Some(v) = self.nonce {
+            ::buffa::types::put_uint64_field(4u32, v, buf);
+        }
+        if let Some(ref v) = self.last_log {
+            ::buffa::types::put_string_field(5u32, v, buf);
+        }
+        for v in &self.lines {
+            ::buffa::types::put_len_delimited_header(
+                6u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            v.write_to(__cache, buf);
+        }
+        if let Some(v) = self.last_scene {
+            ::buffa::types::put_uint32_field(7u32, v, buf);
+        }
+        if let Some(v) = self.last_hold {
+            ::buffa::types::put_uint32_field(8u32, v, buf);
+        }
+        if let Some(v) = self.last_target_step {
+            ::buffa::types::put_uint32_field(9u32, v, buf);
+        }
+        if let Some(v) = self.last_expect_x {
+            ::buffa::types::put_uint32_field(10u32, v, buf);
+        }
+        if let Some(v) = self.last_expect_y {
+            ::buffa::types::put_uint32_field(11u32, v, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.message, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.phase = ::buffa::EnumValue::from(
+                    ::buffa::types::decode_int32(buf)?,
+                );
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.connected = ::buffa::types::decode_bool(buf)?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.nonce = ::core::option::Option::Some(
+                    ::buffa::types::decode_uint64(buf)?,
+                );
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(
+                    self
+                        .last_log
+                        .get_or_insert_with(::buffa::alloc::string::String::new),
+                    buf,
+                )?;
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let mut elem = ::core::default::Default::default();
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&elem),
+                )?;
+                ::buffa::Message::merge_length_delimited(&mut elem, buf, ctx)?;
+                self.lines.push(elem);
+            }
+            7u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.last_scene = ::core::option::Option::Some(
+                    ::buffa::types::decode_uint32(buf)?,
+                );
+            }
+            8u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.last_hold = ::core::option::Option::Some(
+                    ::buffa::types::decode_uint32(buf)?,
+                );
+            }
+            9u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.last_target_step = ::core::option::Option::Some(
+                    ::buffa::types::decode_uint32(buf)?,
+                );
+            }
+            10u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.last_expect_x = ::core::option::Option::Some(
+                    ::buffa::types::decode_uint32(buf)?,
+                );
+            }
+            11u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.last_expect_y = ::core::option::Option::Some(
+                    ::buffa::types::decode_uint32(buf)?,
+                );
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.message.clear();
+        self.phase = ::buffa::EnumValue::from(0);
+        self.connected = false;
+        self.nonce = ::core::option::Option::None;
+        self.last_log = ::core::option::Option::None;
+        self.lines.clear();
+        self.last_scene = ::core::option::Option::None;
+        self.last_hold = ::core::option::Option::None;
+        self.last_target_step = ::core::option::Option::None;
+        self.last_expect_x = ::core::option::Option::None;
+        self.last_expect_y = ::core::option::Option::None;
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for GetLogsResponse {
+    const PROTO_FQN: &'static str = "sticky.remote.control.v1.GetLogsResponse";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for GetLogsResponse {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __GET_LOGS_RESPONSE_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/sticky.remote.control.v1.GetLogsResponse",
+    to_json: ::buffa::type_registry::any_to_json::<GetLogsResponse>,
+    from_json: ::buffa::type_registry::any_from_json::<GetLogsResponse>,
     is_wkt: false,
 };
 /// Arguments for ListTargets. Empty; the owner lists every slot.

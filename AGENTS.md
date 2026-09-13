@@ -207,7 +207,7 @@ conflicts in the hardware skill instead of flattening them.
 | Agent rules that belong to one directory | that directory’s `AGENTS.md` (nearest file wins on conflict) |
 | How-to voice | this file (working-rules how-to bullet) |
 | Firmware examples as tutorial code | [firmware/AGENTS.md](firmware/AGENTS.md#firmware-examples-as-tutorial-code) (and each package `AGENTS.md`) **and** this file if it restates the bar |
-| stdio MCP (`cargo xtask remote-debug --mcp`), clap-mcp wiring, or `--features remote-debug` firmware that those tools talk to | [mcp-interactions.md](.agents/skills/sticky-rs/references/mcp-interactions.md) (how-to, discoveries, difficult / crude). Keep [xtask.md](.agents/skills/sticky-rs/references/xtask.md) as the CLI catalog |
+| stdio MCP (`cargo xtask remote-debug --mcp`), rmcp wiring, or `--features remote-debug` firmware that those tools talk to | [mcp-interactions.md](.agents/skills/sticky-rs/references/mcp-interactions.md) (how-to, discoveries, difficult / crude). Keep [xtask.md](.agents/skills/sticky-rs/references/xtask.md) as the CLI catalog |
 
 Do not treat `cargo xtask --help` as a substitute for the sticky-rs catalog
 and the README list.

@@ -97,11 +97,14 @@ in flight. [`bluer`](https://crates.io/crates/bluer) 0.17.4
 (`bluetoothd`) wraps that on Linux in `remote-debug-host` (in the
 lockfile). Do not wrap `bluetoothctl`.
 `cargo xtask remote-debug --mcp` uses
-[`clap-mcp`](https://crates.io/crates/clap-mcp) 0.1.0
-(`output-schema`) on that subtree only — never the full xtask CLI
-(flash-app / restore stay out of MCP). Always-on in xtask
-(`publish = false`). That is infrastructure, not a chip-driver
-verdict.
+[`rmcp`](https://crates.io/crates/rmcp) 3.2
+(`server`, `macros`, `schemars`, `transport-io`) on that subtree
+only — never the full xtask CLI (flash-app / restore stay out of
+MCP). clap still parses argv (`--mcp` is a clap flag). This is an
+intentional override of the rust-cli skill’s clap-mcp default:
+MCP is a subset surface, not the whole CLI tree. Always-on in
+xtask (`publish = false`). That is infrastructure, not a
+chip-driver verdict.
 `sticky-host` serializes learn-uart YAML with
 [`noyalib`](https://crates.io/crates/noyalib) 0.0.30 (serde, no `unsafe` in
 sticky-host). Operator prompts use [`anstyle`](https://crates.io/crates/anstyle)

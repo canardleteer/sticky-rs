@@ -1,11 +1,29 @@
-//! Server instructions, prompts, and resources for `remote-debug --mcp`.
+//! stdio MCP for `remote-debug --mcp` (rmcp, not clap-mcp).
 //!
-//! clap-mcp 0.1.0 advertises these on initialize / `prompts/list` /
-//! `resources/list`. Tool argv still comes from clap leaves. Never a MAC.
+//! Tool names are the clap leaves. This process is a ConnectRPC client;
+//! GATT lives in the owner. Never a MAC.
 
-use clap_mcp::content::{CustomPrompt, CustomResource, PromptContent, ResourceContent};
-use clap_mcp::{ClapMcpServeOptions, Implementation};
-use rmcp::model::{PromptMessage, Role};
+use std::process::ExitCode;
+use std::sync::{Arc, Mutex};
+
+use remote_debug_host::DEFAULT_ADV_NAME;
+use rmcp::handler::server::wrapper::{Json, Parameters};
+use rmcp::model::{
+    GetPromptRequestParams, GetPromptResponse, GetPromptResult, Implementation, ListPromptsResult,
+    ListResourcesResult, PaginatedRequestParams, Prompt, PromptMessage, ReadResourceRequestParams,
+    ReadResourceResponse, ReadResourceResult, Resource, ResourceContents, Role, ServerCapabilities,
+    ServerInfo,
+};
+use rmcp::service::{RequestContext, RoleServer};
+use rmcp::{tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler, ServiceExt};
+use schemars::JsonSchema;
+use serde::Deserialize;
+use serde_json::Value;
+
+use crate::remote_debug::{
+    run, BrokerTarget, ConnectArgs, GetSnapshotArgs, InjectButtonArgs, InjectTouchArgs,
+    ListTargetsArgs, RebootArgs, RemoteDebugCommand, RemoteDebugState, SnapshotAckArgs,
+};
 
 /// Initialize / discover instructions for a desk sit.
 pub const INSTRUCTIONS: &str = "\
@@ -99,87 +117,6 @@ raw 800×480 `.bw` dump.
 After get-snapshot, ack. A second get while armed is SnapshotBusy.
 ";
 
-/// Serve options: instructions, prompts, resources, identity.
-#[must_use]
-pub fn serve_options() -> ClapMcpServeOptions {
-    let mut opts = ClapMcpServeOptions {
-        instructions: Some(INSTRUCTIONS.into()),
-        server_info: Some(
-            Implementation::new("sticky-rs-remote-debug", env!("CARGO_PKG_VERSION"))
-                .with_title("sticky-rs remote-debug")
-                .with_website_url("https://github.com/canardleteer/sticky-rs"),
-        ),
-        ..ClapMcpServeOptions::default()
-    };
-    opts.custom_resources.extend(resources());
-    opts.custom_prompts.extend(prompts());
-    opts
-}
-
-fn resources() -> Vec<CustomResource> {
-    vec![
-        text_resource(
-            "sticky-rs://remote-debug/pickup",
-            "pickup",
-            "Pickup for the next remote-debug sit",
-            PICKUP,
-        ),
-        text_resource(
-            "sticky-rs://remote-debug/tools",
-            "tools",
-            "Leaf tools and structured fields",
-            TOOLS,
-        ),
-        text_resource(
-            "sticky-rs://remote-debug/snapshot",
-            "snapshot",
-            "Page-space PNG and expect coordinates",
-            SNAPSHOT,
-        ),
-    ]
-}
-
-fn text_resource(uri: &str, name: &str, title: &str, body: &str) -> CustomResource {
-    CustomResource {
-        uri: uri.into(),
-        name: name.into(),
-        title: Some(title.into()),
-        description: Some(title.into()),
-        mime_type: Some("text/markdown".into()),
-        content: ResourceContent::Static(body.into()),
-    }
-}
-
-fn prompts() -> Vec<CustomPrompt> {
-    vec![
-        user_prompt(
-            "desk-sit",
-            "Pair on splash, snapshot, ack, disconnect",
-            DESK_SIT,
-        ),
-        user_prompt(
-            "targets-walk",
-            "Score all seven targets from snapshot expect",
-            TARGETS_WALK,
-        ),
-        user_prompt(
-            "after-failed-snapshot",
-            "Clear a leftover arm and retry get-snapshot",
-            AFTER_FAILED,
-        ),
-    ]
-}
-
-fn user_prompt(name: &str, title: &str, text: &str) -> CustomPrompt {
-    CustomPrompt {
-        name: name.into(),
-        title: Some(title.into()),
-        description: Some(title.into()),
-        arguments: Vec::new(),
-        content: PromptContent::Static(vec![PromptMessage::new_text(Role::User, text)]),
-    }
-}
-
 const DESK_SIT: &str = "\
 Run a sticky-rs remote-debug desk sit.
 
@@ -226,32 +163,512 @@ Host notify must be FIFO.
 Do not stack another get while armed.
 ";
 
+/// ConnectRPC `*Response` JSON object for MCP `outputSchema`.
+///
+/// `serde_json::Value` is schemars `AnyValue` (boolean `true`). Some MCP
+/// clients drop `tools/list` unless `outputSchema.type` is the literal
+/// `"object"`. `additionalProperties` stays true so real response fields
+/// (`message`, `targets`, `snapshot`, `png`) are not rejected.
+#[derive(serde::Serialize)]
+#[serde(transparent)]
+struct RemoteDebugToolOutput(Value);
+
+impl JsonSchema for RemoteDebugToolOutput {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "RemoteDebugResponse".into()
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "type": "object",
+            "additionalProperties": true
+        })
+    }
+}
+
+fn default_name() -> String {
+    DEFAULT_ADV_NAME.to_string()
+}
+
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct ConnectParams {
+    pin: Option<u32>,
+    port: Option<String>,
+    #[serde(default = "default_name")]
+    name: String,
+    #[serde(default)]
+    remember: bool,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct NameParams {
+    #[serde(default = "default_name")]
+    name: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct InjectTouchParams {
+    x: u16,
+    y: u16,
+    slot: Option<u8>,
+    phase: Option<String>,
+    #[serde(default)]
+    page: bool,
+    #[serde(default = "default_name")]
+    name: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct InjectButtonParams {
+    key: String,
+    #[serde(default = "default_true")]
+    down: bool,
+    #[serde(default = "default_name")]
+    name: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct NonceParams {
+    nonce: Option<u64>,
+    #[serde(default = "default_name")]
+    name: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct RebootParams {
+    #[serde(default)]
+    no_reconnect: bool,
+    pin: Option<u32>,
+    port: Option<String>,
+    #[serde(default = "default_name")]
+    name: String,
+    #[serde(default)]
+    remember: bool,
+}
+
+/// stdio MCP handler. Clone so rmcp can share the session.
+#[derive(Clone)]
+pub struct RemoteDebugMcp {
+    state: Arc<Mutex<RemoteDebugState>>,
+}
+
+impl RemoteDebugMcp {
+    fn new() -> Self {
+        Self {
+            state: Arc::new(Mutex::new(RemoteDebugState::new())),
+        }
+    }
+
+    fn dispatch(&self, cmd: RemoteDebugCommand) -> Result<Json<RemoteDebugToolOutput>, McpError> {
+        run(cmd, self.state.as_ref())
+            .map(|value| Json(RemoteDebugToolOutput(value)))
+            .map_err(|message| McpError::invalid_params(message, None))
+    }
+}
+
+#[tool_router]
+impl RemoteDebugMcp {
+    #[tool(
+        name = "connect",
+        description = "Start pair (returns pairing; poll status until connected). BlueZ Connect, not Pair(). UART auto-PIN unless pin. Stay on splash. Never a MAC.",
+        annotations(open_world_hint = true)
+    )]
+    fn connect(
+        &self,
+        Parameters(params): Parameters<ConnectParams>,
+    ) -> Result<Json<RemoteDebugToolOutput>, McpError> {
+        self.dispatch(RemoteDebugCommand::Connect(ConnectArgs {
+            pin: params.pin,
+            port: params.port,
+            name: params.name,
+            remember: params.remember,
+            socket_dir: None,
+        }))
+    }
+
+    #[tool(
+        name = "status",
+        description = "pairing / connected / disconnected / pair failed",
+        annotations(read_only_hint = true, idempotent_hint = true)
+    )]
+    fn status(
+        &self,
+        Parameters(params): Parameters<NameParams>,
+    ) -> Result<Json<RemoteDebugToolOutput>, McpError> {
+        self.dispatch(RemoteDebugCommand::Status(broker_target(params.name)))
+    }
+
+    #[tool(
+        name = "list-targets",
+        description = "Advertise names the owner currently tracks (never a MAC)",
+        annotations(read_only_hint = true, idempotent_hint = true)
+    )]
+    fn list_targets(&self) -> Result<Json<RemoteDebugToolOutput>, McpError> {
+        self.dispatch(RemoteDebugCommand::ListTargets(ListTargetsArgs {
+            socket_dir: None,
+        }))
+    }
+
+    #[tool(
+        name = "inject-touch",
+        description = "Synthetic tap. Default x/y are framebuffer. page=true treats them as page pixels. phase down/move/up; unset is a tap. Not UART p0=."
+    )]
+    fn inject_touch(
+        &self,
+        Parameters(params): Parameters<InjectTouchParams>,
+    ) -> Result<Json<RemoteDebugToolOutput>, McpError> {
+        self.dispatch(RemoteDebugCommand::InjectTouch(InjectTouchArgs {
+            x: params.x,
+            y: params.y,
+            slot: params.slot,
+            phase: params.phase,
+            page: params.page,
+            name: params.name,
+            socket_dir: None,
+        }))
+    }
+
+    #[tool(
+        name = "inject-button",
+        description = "Short-press ok / page-up / page-down. down true is a short press. Wait for compose."
+    )]
+    fn inject_button(
+        &self,
+        Parameters(params): Parameters<InjectButtonParams>,
+    ) -> Result<Json<RemoteDebugToolOutput>, McpError> {
+        self.dispatch(RemoteDebugCommand::InjectButton(InjectButtonArgs {
+            key: params.key,
+            down: params.down,
+            name: params.name,
+            socket_dir: None,
+        }))
+    }
+
+    #[tool(
+        name = "get-snapshot",
+        description = "Arm LAST DRAW. JSON png is the page-space image to open. Sibling .bw / .red are SSD1677 planes (.red = gray4 plane 1, not pigment)."
+    )]
+    fn get_snapshot(
+        &self,
+        Parameters(params): Parameters<NonceParams>,
+    ) -> Result<Json<RemoteDebugToolOutput>, McpError> {
+        self.dispatch(RemoteDebugCommand::GetSnapshot(GetSnapshotArgs {
+            nonce: params.nonce,
+            name: params.name,
+            socket_dir: None,
+        }))
+    }
+
+    #[tool(
+        name = "snapshot-ack",
+        description = "Release the armed nonce",
+        annotations(idempotent_hint = true)
+    )]
+    fn snapshot_ack(
+        &self,
+        Parameters(params): Parameters<NonceParams>,
+    ) -> Result<Json<RemoteDebugToolOutput>, McpError> {
+        self.dispatch(RemoteDebugCommand::SnapshotAck(SnapshotAckArgs {
+            nonce: params.nonce,
+            name: params.name,
+            socket_dir: None,
+        }))
+    }
+
+    #[tool(
+        name = "snapshot-clear",
+        description = "Operator abort (no nonce); use after a failed get",
+        annotations(idempotent_hint = true)
+    )]
+    fn snapshot_clear(
+        &self,
+        Parameters(params): Parameters<NameParams>,
+    ) -> Result<Json<RemoteDebugToolOutput>, McpError> {
+        self.dispatch(RemoteDebugCommand::SnapshotClear(broker_target(
+            params.name,
+        )))
+    }
+
+    #[tool(
+        name = "reboot",
+        description = "Software-reset the embedded MCU (not this host). Re-pairs unless no_reconnect.",
+        annotations(destructive_hint = true, open_world_hint = true)
+    )]
+    fn reboot(
+        &self,
+        Parameters(params): Parameters<RebootParams>,
+    ) -> Result<Json<RemoteDebugToolOutput>, McpError> {
+        self.dispatch(RemoteDebugCommand::Reboot(RebootArgs {
+            no_reconnect: params.no_reconnect,
+            pin: params.pin,
+            port: params.port,
+            name: params.name,
+            remember: params.remember,
+            socket_dir: None,
+        }))
+    }
+
+    #[tool(
+        name = "disconnect",
+        description = "Drop one GATT session. Empty map also shuts the owner down. Unknown units lose the BlueZ bond.",
+        annotations(destructive_hint = true)
+    )]
+    fn disconnect(
+        &self,
+        Parameters(params): Parameters<NameParams>,
+    ) -> Result<Json<RemoteDebugToolOutput>, McpError> {
+        self.dispatch(RemoteDebugCommand::Disconnect(broker_target(params.name)))
+    }
+}
+
+fn broker_target(name: String) -> BrokerTarget {
+    BrokerTarget {
+        name,
+        socket_dir: None,
+    }
+}
+
+#[tool_handler]
+impl ServerHandler for RemoteDebugMcp {
+    fn get_info(&self) -> ServerInfo {
+        ServerInfo::new(
+            ServerCapabilities::builder()
+                .enable_tools()
+                .enable_prompts()
+                .enable_resources()
+                .build(),
+        )
+        .with_instructions(INSTRUCTIONS)
+        .with_server_info(
+            Implementation::new("sticky-rs-remote-debug", env!("CARGO_PKG_VERSION"))
+                .with_title("sticky-rs remote-debug")
+                .with_website_url("https://github.com/canardleteer/sticky-rs"),
+        )
+    }
+
+    async fn list_prompts(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListPromptsResult, McpError> {
+        Ok(ListPromptsResult {
+            prompts: prompts(),
+            ..Default::default()
+        })
+    }
+
+    async fn get_prompt(
+        &self,
+        request: GetPromptRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<GetPromptResponse, McpError> {
+        let (description, text) = match request.name.as_str() {
+            "desk-sit" => ("Pair on splash, snapshot, ack, disconnect", DESK_SIT),
+            "targets-walk" => ("Score all seven targets from snapshot expect", TARGETS_WALK),
+            "after-failed-snapshot" => {
+                ("Clear a leftover arm and retry get-snapshot", AFTER_FAILED)
+            }
+            _ => {
+                return Err(McpError::invalid_params(
+                    format!("unknown prompt {}", request.name),
+                    None,
+                ));
+            }
+        };
+        Ok(
+            GetPromptResult::new(vec![PromptMessage::new_text(Role::User, text)])
+                .with_description(description)
+                .into(),
+        )
+    }
+
+    async fn list_resources(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListResourcesResult, McpError> {
+        Ok(ListResourcesResult {
+            resources: resources(),
+            ..Default::default()
+        })
+    }
+
+    async fn read_resource(
+        &self,
+        request: ReadResourceRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ReadResourceResponse, McpError> {
+        let body = match request.uri.as_str() {
+            "sticky-rs://remote-debug/pickup" => PICKUP,
+            "sticky-rs://remote-debug/tools" => TOOLS,
+            "sticky-rs://remote-debug/snapshot" => SNAPSHOT,
+            _ => {
+                return Err(McpError::resource_not_found(
+                    format!("unknown resource {}", request.uri),
+                    None,
+                ));
+            }
+        };
+        Ok(ReadResourceResult::new(vec![
+            ResourceContents::text(body, request.uri).with_mime_type("text/markdown")
+        ])
+        .into())
+    }
+}
+
+fn prompts() -> Vec<Prompt> {
+    vec![
+        Prompt::new(
+            "desk-sit",
+            Some("Pair on splash, snapshot, ack, disconnect"),
+            None,
+        )
+        .with_title("Pair on splash, snapshot, ack, disconnect"),
+        Prompt::new(
+            "targets-walk",
+            Some("Score all seven targets from snapshot expect"),
+            None,
+        )
+        .with_title("Score all seven targets from snapshot expect"),
+        Prompt::new(
+            "after-failed-snapshot",
+            Some("Clear a leftover arm and retry get-snapshot"),
+            None,
+        )
+        .with_title("Clear a leftover arm and retry get-snapshot"),
+    ]
+}
+
+fn resources() -> Vec<Resource> {
+    vec![
+        Resource::new("sticky-rs://remote-debug/pickup", "pickup")
+            .with_title("Pickup for the next remote-debug sit")
+            .with_description("Pickup for the next remote-debug sit")
+            .with_mime_type("text/markdown"),
+        Resource::new("sticky-rs://remote-debug/tools", "tools")
+            .with_title("Leaf tools and structured fields")
+            .with_description("Leaf tools and structured fields")
+            .with_mime_type("text/markdown"),
+        Resource::new("sticky-rs://remote-debug/snapshot", "snapshot")
+            .with_title("Page-space PNG and expect coordinates")
+            .with_description("Page-space PNG and expect coordinates")
+            .with_mime_type("text/markdown"),
+    ]
+}
+
+/// Serve stdio MCP until the client disconnects.
+#[must_use]
+pub fn serve() -> ExitCode {
+    match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime.block_on(serve_async()),
+        Err(error) => {
+            eprintln!("{error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+async fn serve_async() -> ExitCode {
+    let server = RemoteDebugMcp::new();
+    match server.serve(rmcp::transport::stdio()).await {
+        Ok(running) => match running.waiting().await {
+            Ok(_) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("{error}");
+                ExitCode::FAILURE
+            }
+        },
+        Err(error) => {
+            eprintln!("{error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    const LEAVES: &[&str] = &[
+        "connect",
+        "status",
+        "list-targets",
+        "inject-touch",
+        "inject-button",
+        "get-snapshot",
+        "snapshot-ack",
+        "snapshot-clear",
+        "reboot",
+        "disconnect",
+    ];
+
     #[test]
-    fn serve_options_advertise_prompts_and_resources() {
-        let opts = serve_options();
-        assert!(opts
+    fn tools_are_leaves_not_flash_or_serve() {
+        let names: Vec<_> = RemoteDebugMcp::tool_router()
+            .list_all()
+            .into_iter()
+            .map(|tool| tool.name.to_string())
+            .collect();
+        for leaf in LEAVES {
+            assert!(names.iter().any(|n| n == leaf), "missing {leaf}: {names:?}");
+        }
+        assert_eq!(names.len(), LEAVES.len(), "names={names:?}");
+        for forbidden in ["serve", "xtask", "remote-debug", "flash", "restore"] {
+            assert!(
+                !names.iter().any(|n| n.contains(forbidden)),
+                "{forbidden} must not be an MCP tool: {names:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn output_schema_is_object_not_any_value() {
+        let tools = RemoteDebugMcp::tool_router().list_all();
+        let mut saw_leaf_schema = false;
+        for tool in &tools {
+            let Some(output) = tool.output_schema.as_ref() else {
+                continue;
+            };
+            if LEAVES.iter().any(|leaf| tool.name.as_ref() == *leaf) {
+                saw_leaf_schema = true;
+            }
+            assert_eq!(
+                output.get("type").and_then(Value::as_str),
+                Some("object"),
+                "tool {} outputSchema={output:?}",
+                tool.name
+            );
+            assert_ne!(
+                output.get("title").and_then(Value::as_str),
+                Some("AnyValue"),
+                "tool {} still AnyValue: {output:?}",
+                tool.name
+            );
+        }
+        assert!(saw_leaf_schema, "leaf tools must advertise outputSchema");
+    }
+
+    #[test]
+    fn initialize_advertises_prompts_and_resources() {
+        let info = RemoteDebugMcp::new().get_info();
+        assert!(info
             .instructions
             .as_deref()
-            .is_some_and(|s| { s.contains("inject-touch --page") && s.contains("Never a MAC") }));
-        let uris: Vec<_> = opts
-            .custom_resources
-            .iter()
-            .map(|r| r.uri.as_str())
-            .collect();
-        assert!(uris.contains(&"sticky-rs://remote-debug/pickup"));
-        assert!(uris.contains(&"sticky-rs://remote-debug/tools"));
-        assert!(uris.contains(&"sticky-rs://remote-debug/snapshot"));
-        let names: Vec<_> = opts
-            .custom_prompts
-            .iter()
-            .map(|p| p.name.as_str())
-            .collect();
-        assert!(names.contains(&"desk-sit"));
-        assert!(names.contains(&"targets-walk"));
-        assert!(names.contains(&"after-failed-snapshot"));
+            .is_some_and(|s| s.contains("inject-touch --page") && s.contains("Never a MAC")));
+        let uris: Vec<_> = resources().into_iter().map(|r| r.uri).collect();
+        assert!(uris.contains(&"sticky-rs://remote-debug/pickup".into()));
+        assert!(uris.contains(&"sticky-rs://remote-debug/tools".into()));
+        assert!(uris.contains(&"sticky-rs://remote-debug/snapshot".into()));
+        let names: Vec<_> = prompts().into_iter().map(|p| p.name).collect();
+        assert!(names.contains(&"desk-sit".into()));
+        assert!(names.contains(&"targets-walk".into()));
+        assert!(names.contains(&"after-failed-snapshot".into()));
     }
 }

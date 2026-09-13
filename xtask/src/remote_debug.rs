@@ -2,12 +2,9 @@
 
 use std::path::PathBuf;
 use std::process::ExitCode;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 use clap::{Args, Parser, Subcommand};
-use clap_mcp::{
-    parse_or_serve_mcp_with_state, AsStructured, ClapMcp, ClapMcpConfigProvider, ClapMcpRunOptions,
-};
 use remote_debug_host::DEFAULT_ADV_NAME;
 use serde_json::Value;
 use sticky_host::{
@@ -40,30 +37,24 @@ unless `--no-reconnect`. After reset, UART may reprint `pair pin=` every \
 Do not also run `monitor` during auto-PIN. `inject-touch --page` is page \
 pixels. Snapshot PNG is page space. Read `sticky-rs://remote-debug/pickup`.";
 
-/// Root used so `cargo xtask remote-debug --mcp` is valid argv.
-#[derive(Debug, Parser, ClapMcp)]
-#[clap_mcp(
-    reinvocation_safe,
-    stateful,
-    parallel_safe = false,
-    skip_root_when_subcommands
-)]
+/// Full-argv parser for `cargo xtask remote-debug` (including `--mcp`).
+#[derive(Debug, Parser)]
 #[command(name = "xtask", about = "Live BLE remote-debug", long_about = ABOUT)]
-pub struct RemoteDebugMcpRoot {
+pub struct RemoteDebugAttach {
     /// `remote-debug` only (never flash-app / restore).
     #[command(subcommand)]
     pub command: RemoteDebugGate,
 }
 
-/// Gate so tools live under `remote-debug_*` and the root xtask is not MCP.
-#[derive(Debug, Subcommand, ClapMcp)]
-#[clap_mcp(reinvocation_safe, skip_root_when_subcommands)]
-#[clap_mcp_output_from_with_state = "run_gate"]
-#[clap_mcp_state_type = "Mutex<RemoteDebugState>"]
+/// Gate so `--mcp` and leaves stay under `remote-debug`, not the full CLI.
+#[derive(Debug, Subcommand)]
 pub enum RemoteDebugGate {
     /// Live BLE remote-debug session
-    #[command(long_about = ABOUT)]
+    #[command(name = "remote-debug", long_about = ABOUT)]
     RemoteDebug {
+        /// Serve stdio MCP (this subtree only; never flash-app / restore).
+        #[arg(long)]
+        mcp: bool,
         /// Session command. Optional so `remote-debug --mcp` can attach.
         #[command(subcommand)]
         command: Option<RemoteDebugCommand>,
@@ -89,33 +80,8 @@ pub struct BrokerTarget {
     pub socket_dir: Option<PathBuf>,
 }
 
-/// ConnectRPC `*Response` JSON object for clap-mcp `outputSchema`.
-///
-/// `serde_json::Value` is schemars `AnyValue` (boolean `true`). Some MCP
-/// clients drop `tools/list` unless `outputSchema.type` is the literal
-/// `"object"`. `additionalProperties` stays true so real response fields
-/// (`message`, `targets`, `snapshot`, `png`) are not rejected.
-struct RemoteDebugToolOutput;
-
-impl schemars::JsonSchema for RemoteDebugToolOutput {
-    fn schema_name() -> std::borrow::Cow<'static, str> {
-        "RemoteDebugResponse".into()
-    }
-
-    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        schemars::json_schema!({
-            "type": "object",
-            "additionalProperties": true
-        })
-    }
-}
-
-/// Leaf tools. Broker owns GATT (`reinvocation_safe`); one serialized link.
-#[derive(Debug, Clone, Subcommand, ClapMcp)]
-#[clap_mcp(reinvocation_safe, parallel_safe = false)]
-#[clap_mcp_output_from_with_state = "run"]
-#[clap_mcp_state_type = "Mutex<RemoteDebugState>"]
-#[clap_mcp_output_type = "RemoteDebugToolOutput"]
+/// Leaf tools. Broker owns GATT; one serialized link.
+#[derive(Debug, Clone, Subcommand)]
 pub enum RemoteDebugCommand {
     /// Foreground broker (desk log). Ctrl-C disconnects
     Serve(ServeArgs),
@@ -126,7 +92,6 @@ Returns pairing immediately. Poll status until connected or pair failed. \
 UART auto-PIN unless --pin. Stay on splash. No --remember unless asked. \
 Never a MAC. After a fresh flash, retry on le-connection-abort-by-local \
 or CDC busy.")]
-    #[clap_mcp(open_world)]
     Connect(ConnectArgs),
     /// Synthetic tap. --page is page pixels; --phase for slides
     #[command(long_about = "\
@@ -153,25 +118,19 @@ Tap --page at expect. A leftover arm is SnapshotBusy; snapshot-clear \
 then retry. Ack when done.")]
     GetSnapshot(GetSnapshotArgs),
     /// Release the snapshot slot
-    #[clap_mcp(idempotent)]
     SnapshotAck(SnapshotAckArgs),
     /// Operator abort (no nonce); use after a failed get
-    #[clap_mcp(idempotent)]
     SnapshotClear(BrokerTarget),
     /// `pairing` / `connected` / `disconnected` / `pair failed`
-    #[clap_mcp(read_only, idempotent)]
     Status(BrokerTarget),
     /// Advertise names the owner currently tracks
-    #[clap_mcp(read_only, idempotent)]
     ListTargets(ListTargetsArgs),
     /// Software-reset the embedded MCU (not this host)
     #[command(long_about = "\
 Software-reset the embedded MCU, not this host. GATT dies. Leftover BlueZ \
 LTK must not be reused. Re-pairs unless --no-reconnect. Stay on splash.")]
-    #[clap_mcp(destructive, open_world)]
     Reboot(RebootArgs),
     /// Drop GATT and stop the broker; unknown units lose the BlueZ bond
-    #[clap_mcp(destructive)]
     Disconnect(BrokerTarget),
 }
 
@@ -311,7 +270,7 @@ pub struct RemoteDebugState {
 }
 
 impl RemoteDebugState {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             layout: Layout::from_repo_root(repo_root()),
         }
@@ -328,7 +287,7 @@ pub fn run_cli(cli: RemoteDebugCli) -> Result<(), Error> {
         command => {
             let state = Mutex::new(RemoteDebugState::new());
             let out = run(command, &state).map_err(Error::RemoteDebug)?;
-            println!("{}", message_of(&out.0));
+            println!("{}", message_of(&out));
             Ok(())
         }
     }
@@ -341,17 +300,12 @@ pub fn exec() -> ExitCode {
         eprintln!("{error}");
         return ExitCode::FAILURE;
     }
-    let state = Arc::new(Mutex::new(RemoteDebugState::new()));
-    let parsed = parse_or_serve_mcp_with_state::<RemoteDebugMcpRoot>(
-        ClapMcpRunOptions {
-            config: RemoteDebugMcpRoot::clap_mcp_config(),
-            serve: crate::remote_debug_mcp::serve_options(),
-        },
-        state.clone(),
-    );
+    let parsed = RemoteDebugAttach::parse();
     match parsed.command {
+        RemoteDebugGate::RemoteDebug { mcp: true, .. } => crate::remote_debug_mcp::serve(),
         RemoteDebugGate::RemoteDebug {
             command: Some(RemoteDebugCommand::Serve(args)),
+            ..
         } => {
             let layout = Layout::from_repo_root(repo);
             match serve_live(&layout, args.socket_dir.as_deref()) {
@@ -367,49 +321,29 @@ pub fn exec() -> ExitCode {
         }
         RemoteDebugGate::RemoteDebug {
             command: Some(command),
-        } => match run(command, state.as_ref()) {
-            Ok(out) => {
-                println!("{}", message_of(&out.0));
-                ExitCode::SUCCESS
+            ..
+        } => {
+            let state = Mutex::new(RemoteDebugState::new());
+            match run(command, &state) {
+                Ok(out) => {
+                    println!("{}", message_of(&out));
+                    ExitCode::SUCCESS
+                }
+                Err(error) => {
+                    eprintln!("{error}");
+                    ExitCode::FAILURE
+                }
             }
-            Err(error) => {
-                eprintln!("{error}");
-                ExitCode::FAILURE
-            }
-        },
-        RemoteDebugGate::RemoteDebug { command: None } => {
+        }
+        RemoteDebugGate::RemoteDebug { command: None, .. } => {
             eprintln!("remote-debug needs a leaf (or --mcp)");
             ExitCode::FAILURE
         }
     }
 }
 
-/// MCP gate `run` (unwraps to the leaf).
-fn run_gate(
-    cmd: RemoteDebugGate,
-    state: &Mutex<RemoteDebugState>,
-) -> Result<AsStructured<Value>, String> {
-    run(cmd.into_leaf()?, state)
-}
-
-impl RemoteDebugGate {
-    fn into_leaf(self) -> Result<RemoteDebugCommand, String> {
-        match self {
-            Self::RemoteDebug {
-                command: Some(command),
-            } => Ok(command),
-            Self::RemoteDebug { command: None } => {
-                Err("remote-debug needs a leaf (or --mcp)".into())
-            }
-        }
-    }
-}
-
 /// Shared CLI + MCP dispatch (RPC). `serve` as an MCP tool is refused.
-pub fn run(
-    cmd: RemoteDebugCommand,
-    state: &Mutex<RemoteDebugState>,
-) -> Result<AsStructured<Value>, String> {
+pub fn run(cmd: RemoteDebugCommand, state: &Mutex<RemoteDebugState>) -> Result<Value, String> {
     if matches!(cmd, RemoteDebugCommand::Serve(_)) {
         return Err("use a terminal; connect auto-starts the owner".into());
     }
@@ -639,7 +573,7 @@ fn strip_snapshot_planes(resp: &mut control::GetSnapshotResponse) {
 fn json_value_with_png(
     resp: control::GetSnapshotResponse,
     png: Option<PathBuf>,
-) -> Result<AsStructured<Value>, String> {
+) -> Result<Value, String> {
     let mut value = serde_json::to_value(resp).map_err(|error| error.to_string())?;
     if let Some(png) = png {
         let object = value
@@ -650,7 +584,7 @@ fn json_value_with_png(
             Value::String(png.to_string_lossy().into_owned()),
         );
     }
-    Ok(AsStructured(value))
+    Ok(value)
 }
 
 fn decorate_snapshot(
@@ -679,14 +613,12 @@ fn decorate_snapshot(
 
 fn value<T: serde::Serialize>(
     result: Result<T, remote_debug_broker::Error>,
-) -> Result<AsStructured<Value>, String> {
+) -> Result<Value, String> {
     json_value(result.map_err(map_broker)?)
 }
 
-fn json_value<T: serde::Serialize>(body: T) -> Result<AsStructured<Value>, String> {
-    serde_json::to_value(body)
-        .map(AsStructured)
-        .map_err(|error| error.to_string())
+fn json_value<T: serde::Serialize>(body: T) -> Result<Value, String> {
+    serde_json::to_value(body).map_err(|error| error.to_string())
 }
 
 fn message_of(value: &Value) -> String {
@@ -723,81 +655,38 @@ fn map_host(error: Error) -> String {
 mod tests {
     use super::*;
     use clap::CommandFactory;
-    use clap_mcp::{
-        schema_from_command_with_metadata, tools_from_schema_with_metadata, ClapMcpConfigProvider,
-        ClapMcpSchemaMetadataProvider,
-    };
     use sticky_host::NO_BROKER;
 
     #[test]
-    fn mcp_schema_exposes_leaf_tools_and_not_flash_app() {
-        let schema = schema_from_command_with_metadata(
-            &RemoteDebugMcpRoot::command(),
-            &RemoteDebugMcpRoot::clap_mcp_schema_metadata(),
-        );
-        let leaves: Vec<_> = schema
-            .root
-            .all_commands()
-            .into_iter()
-            .filter(|c| c.subcommands.is_empty())
-            .map(|c| c.name.clone())
-            .collect();
-        assert!(
-            leaves.iter().any(|n| n.contains("connect")),
-            "leaves={leaves:?}"
-        );
-        assert!(
-            leaves.iter().any(|n| n.contains("serve")),
-            "leaves={leaves:?}"
-        );
-        assert!(
-            leaves
-                .iter()
-                .any(|n| n.contains("get-snapshot") || n.contains("get_snapshot")),
-            "leaves={leaves:?}"
-        );
-        assert!(
-            !leaves.iter().any(|n| n.contains("flash")),
-            "flash-app must not be an MCP tool: {leaves:?}"
-        );
-        assert!(
-            !leaves.iter().any(|n| n.contains("restore")),
-            "restore must not be an MCP tool: {leaves:?}"
-        );
-        assert!(
-            leaves.iter().any(|n| n.contains("reboot")),
-            "leaves={leaves:?}"
-        );
-        assert!(
-            leaves
-                .iter()
-                .any(|n| n.contains("list-targets") || n.contains("list_targets")),
-            "leaves={leaves:?}"
-        );
+    fn attach_parser_builds() {
+        RemoteDebugAttach::command().debug_assert();
     }
 
     #[test]
     fn remote_debug_connect_parses_remember() {
         let cli =
-            RemoteDebugMcpRoot::try_parse_from(["xtask", "remote-debug", "connect", "--remember"])
+            RemoteDebugAttach::try_parse_from(["xtask", "remote-debug", "connect", "--remember"])
                 .expect("parse");
         match cli.command {
-            RemoteDebugGate::RemoteDebug { command } => match command {
-                Some(RemoteDebugCommand::Connect(args)) => {
-                    assert!(args.remember);
-                    assert!(args.pin.is_none());
+            RemoteDebugGate::RemoteDebug { mcp, command } => {
+                assert!(!mcp);
+                match command {
+                    Some(RemoteDebugCommand::Connect(args)) => {
+                        assert!(args.remember);
+                        assert!(args.pin.is_none());
+                    }
+                    other => panic!("{other:?}"),
                 }
-                other => panic!("{other:?}"),
-            },
+            }
         }
     }
 
     #[test]
     fn remote_debug_serve_parses_without_name() {
         let cli =
-            RemoteDebugMcpRoot::try_parse_from(["xtask", "remote-debug", "serve"]).expect("parse");
+            RemoteDebugAttach::try_parse_from(["xtask", "remote-debug", "serve"]).expect("parse");
         match cli.command {
-            RemoteDebugGate::RemoteDebug { command } => match command {
+            RemoteDebugGate::RemoteDebug { command, .. } => match command {
                 Some(RemoteDebugCommand::Serve(args)) => {
                     assert!(args.socket_dir.is_none());
                 }
@@ -822,9 +711,25 @@ mod tests {
 
     #[test]
     fn remote_debug_without_leaf_parses_for_mcp_attach() {
-        let cli = RemoteDebugMcpRoot::try_parse_from(["xtask", "remote-debug"]).expect("parse");
+        let cli =
+            RemoteDebugAttach::try_parse_from(["xtask", "remote-debug", "--mcp"]).expect("parse");
         match cli.command {
-            RemoteDebugGate::RemoteDebug { command: None } => {}
+            RemoteDebugGate::RemoteDebug {
+                mcp: true,
+                command: None,
+            } => {}
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn remote_debug_without_leaf_or_mcp_parses() {
+        let cli = RemoteDebugAttach::try_parse_from(["xtask", "remote-debug"]).expect("parse");
+        match cli.command {
+            RemoteDebugGate::RemoteDebug {
+                mcp: false,
+                command: None,
+            } => {}
             other => panic!("{other:?}"),
         }
     }
@@ -842,64 +747,6 @@ mod tests {
             ]
         });
         assert_eq!(message_of(&value), "targets=sticky-rs");
-    }
-
-    #[test]
-    fn mcp_output_schema_is_object_not_any_value() {
-        let schema = schema_from_command_with_metadata(
-            &RemoteDebugMcpRoot::command(),
-            &RemoteDebugMcpRoot::clap_mcp_schema_metadata(),
-        );
-        let tools = tools_from_schema_with_metadata(
-            &schema,
-            &RemoteDebugMcpRoot::clap_mcp_config(),
-            &RemoteDebugMcpRoot::clap_mcp_schema_metadata(),
-        );
-        assert!(
-            tools.iter().any(|tool| tool.name.contains("connect")),
-            "names={:?}",
-            tools
-                .iter()
-                .map(|tool| tool.name.as_ref())
-                .collect::<Vec<_>>()
-        );
-        assert!(
-            tools.iter().any(
-                |tool| tool.name.contains("list-targets") || tool.name.contains("list_targets")
-            ),
-            "names={:?}",
-            tools
-                .iter()
-                .map(|tool| tool.name.as_ref())
-                .collect::<Vec<_>>()
-        );
-        let mut saw_leaf_schema = false;
-        for tool in &tools {
-            let Some(output) = tool.output_schema.as_ref() else {
-                continue;
-            };
-            if tool.name.contains("connect")
-                || tool.name.contains("status")
-                || tool.name.contains("list-targets")
-                || tool.name.contains("list_targets")
-                || tool.name.contains("get-snapshot")
-            {
-                saw_leaf_schema = true;
-            }
-            assert_eq!(
-                output.get("type").and_then(Value::as_str),
-                Some("object"),
-                "tool {} outputSchema={output:?}",
-                tool.name
-            );
-            assert_ne!(
-                output.get("title").and_then(Value::as_str),
-                Some("AnyValue"),
-                "tool {} still AnyValue: {output:?}",
-                tool.name
-            );
-        }
-        assert!(saw_leaf_schema, "leaf tools must advertise outputSchema");
     }
 
     #[test]
@@ -937,7 +784,7 @@ mod tests {
         };
         strip_snapshot_planes(&mut resp);
         let png = PathBuf::from("/tmp/snap-demo.png");
-        let value = json_value_with_png(resp, Some(png)).expect("json").0;
+        let value = json_value_with_png(resp, Some(png)).expect("json");
         assert_eq!(
             value.get("png").and_then(Value::as_str),
             Some("/tmp/snap-demo.png")

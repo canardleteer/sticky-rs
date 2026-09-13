@@ -12,20 +12,20 @@ path in this file.
 
 ## Attach
 
-`--mcp` is clap-mcp 0.1.0 on this subtree (`xtask/src/remote_debug.rs`).
-It is **not** the full xtask CLI: `flash-app`, restore, and backup
-are never tools.
+`--mcp` is rmcp 3.2 on this subtree (`xtask/src/remote_debug_mcp.rs`).
+clap still parses argv (`--mcp` is a clap flag). It is **not** the
+full xtask CLI: `flash-app`, restore, backup, and `serve` are
+never tools. Parent names `xtask` / `remote-debug` are not tools.
 
-The server is **stateful** (`reinvocation_safe`,
-`parallel_safe = false`) as a **client** of the ConnectRPC
-owner. GATT, the notify assembler, and `last_nonce` live in
-that owner (`connect` auto-starts a detached `serve`), not
-in the stdio process. A new stdio session with no owner
-reports `no broker; run connect or serve` plus the endpoint
-path (`$XDG_RUNTIME_DIR/sticky-rs/remote-debug.connect`).
+The server is a **client** of the ConnectRPC owner. GATT, the
+notify assembler, and `last_nonce` live in that owner
+(`connect` auto-starts a detached `serve`), not in the stdio
+process. A new stdio session with no owner reports
+`no broker; run connect or serve` plus the endpoint path
+(`$XDG_RUNTIME_DIR/sticky-rs/remote-debug.connect`).
 
 stdio attaches at **process launch**. After you change xtask,
-clap-mcp wiring, instructions / prompts / resources, or the
+rmcp wiring, instructions / prompts / resources, or the
 `--features remote-debug` image, start a **new** agent process
 before the next sit. An already-running session keeps the old
 binary and the old tool table.
@@ -46,7 +46,7 @@ the operator to pair from a phone. Tools are `connect`, `status`,
 `list-targets`, `inject-touch`, `inject-button`, `get-snapshot`,
 `snapshot-ack`, `snapshot-clear`, `reboot`, `disconnect` (not
 `remote-debug_*`). Do not run `monitor` during auto-PIN. No
-`--remember` unless the human asked. New clap tools need a new
+`--remember` unless the human asked. New MCP tools need a new
 agent. A host notify / owner change is enough with
 `cargo build -p xtask`, then `disconnect` / `connect` (the
 detached owner is on-disk `target/debug/xtask`).
@@ -90,9 +90,9 @@ Never a MAC.
 ## Tools
 
 Live `tools/list` names are the clap leaves (`connect`, `status`,
-`inject-touch`, …), plus parent `xtask` / `remote-debug` / `serve`.
-They are **not** `remote-debug_*` on this clap-mcp 0.1.0 attach.
-Leaves match the CLI:
+`inject-touch`, …). They are **not** `remote-debug_*`, and they
+are not parent `xtask` / `remote-debug` / `serve`. Leaves match
+the CLI:
 
 | Tool | Role |
 | --- | --- |
@@ -111,7 +111,7 @@ stdio also advertises initialize **instructions**, prompts
 `desk-sit` / `targets-walk` / `after-failed-snapshot`, and
 resources `sticky-rs://remote-debug/pickup` /
 `tools` / `snapshot`. A new agent process is required after
-those clap-mcp serve options change.
+those rmcp serve options change.
 
 Structured output is the generated ConnectRPC `*Response` JSON.
 `get-snapshot` also adds host-only `png` (absolute page-image
@@ -119,7 +119,7 @@ path) after the write. `message` must not include a MAC.
 
 ## Self-test
 
-After clap-mcp wiring or new tool names, self-test in a
+After rmcp wiring or new tool names, self-test in a
 **freshly launched subagent** (stdio attaches at process
 launch). After a host notify / broker change, rebuild
 `target/debug/xtask` and `disconnect` / `connect` so the
@@ -150,6 +150,27 @@ edges under [Difficult / crude](#difficult--crude).
 
 ## Discoveries
 
+- Targets walk sit (2026-09-12): reconnect from shapes after the
+  earlier `disconnect` (no walk back to Ferris, no `--remember`).
+  `connect` → `pairing` → `connected`. Splash was already behind
+  us: snapshot `scene=1 hold=0` (Koch). Six `page-down` shorts
+  reached `scene=7`. Portrait expect table: dots `240,400` /
+  `80,80` / `400,80` / `80,720` / `400,720`; `slide_x` insets
+  `80` / `400` at `y=400`; `slide_y` insets `80` / `720` at
+  `x=240`. After id 6, `target_step=0` and `last_log`
+  `target show id=0`. `list-targets` `sticky-rs`. `disconnect`
+  emptied the map (`no broker`). Glass left on the wrapped
+  centre disk.
+- rmcp attach sit (2026-09-12): CLI `connect` → `pairing` → `connected`
+  after a fresh `flash-app` of `--features remote-debug`. Splash
+  PNG was Ferris only (`scene=0 hold=0`, no PIN boxes). stdio
+  `initialize` advertised tools / prompts / resources;
+  `tools/list` was exactly the ten leaves (no `serve` /
+  `xtask` / `remote-debug`). MCP `status` / `list-targets`
+  saw the CLI-started owner (`targets=sticky-rs`).
+  `inject-button` `page-down` then `get-snapshot` was
+  shapes Koch (`scene=1`). `disconnect` emptied the map
+  (`no broker`).
 - `--features remote-debug` packs with default `pair` + `wifi`.
   Two extra `PLANE_BYTES` copies in `.bss` (96 KiB LAST) overflow
   ESP32-S3 `dram_seg`
@@ -273,13 +294,12 @@ edges under [Difficult / crude](#difficult--crude).
 
 ## Difficult / crude
 
-- clap-mcp exposes only the `remote-debug` gate. There is no
-  stdio path for `flash-app` or restore (on purpose).
+- rmcp exposes only the remote-debug leaves. There is no
+  stdio path for `flash-app`, restore, or `serve` (on purpose).
 - The CLI owner holds the session. stdio MCP is a client of
   the same ConnectRPC endpoint as `cargo xtask remote-debug
   status`. Do not treat an in-process mutex as the GATT owner.
-- Parallel tool calls still set `parallel_safe = false`; the
-  owner serializes GATT so two snapshot/inject RPCs cannot
+- The owner serializes GATT so two snapshot/inject RPCs cannot
   interleave ATT chunks.
 - Auto-PIN and `monitor` share the UART lock. A sit that needs
   both will fail; use `--pin` or stop listen first.

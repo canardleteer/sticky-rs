@@ -162,9 +162,9 @@ where
     T: Send,
     Error: From<E>,
 {
-    // clap-mcp `run` is on a Tokio worker. A nested
-    // `Builder::block_on` panics (`Cannot start a runtime from within a
-    // runtime`) and poisons the stdio mutex (`session lock`).
+    // rmcp tool handlers (and any other Tokio caller) already have a
+    // runtime. A nested `Builder::block_on` panics (`Cannot start a
+    // runtime from within a runtime`) and poisons the stdio mutex.
     match std::thread::scope(|scope| {
         scope
             .spawn(|| {

@@ -338,13 +338,14 @@ dependencies = [
 
 [[package]]
 name = "buf-tools"
-version = "1.72.0-hotfix.2"
+version = "1.73.0-rc.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d0aff13670ca31038bcdffdf18db2c102f34791c0203efda853dff8335d2c34"
+checksum = "df12f21e619fa6fe68db140bf88c9c47d2e85721195f2ddaa09b507c7d7cea74"
 dependencies = [
  "flate2",
  "hex",
  "minisign-verify",
+ "rustls",
  "semver",
  "sha2 0.11.0",
  "tar",
@@ -3492,9 +3493,9 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.23.44"
+version = "0.23.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6725596c3f2c3a0aef021139e145d4eafe314a6623e4680ca83852b2c67ab2ba"
+checksum = "0d41d731c7d2f962d1ccc364cec258de3c0e93b38c2fb3ba97ac74513048d634"
 dependencies = [
  "log",
  "once_cell",

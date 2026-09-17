@@ -57,7 +57,7 @@ in the lockfile).
 `remote-debug-wire` uses [`buffa`](https://crates.io/crates/buffa) 0.9.2
 (`default-features = false` → `no_std` + `alloc`) and locates official
 `buf` via [`buf-tools`](https://crates.io/crates/buf-tools)
-`1.72.0-hotfix.2` when `REGEN_PROTO=1`. That is infrastructure for the
+`>=1.73.0-rc.1` when `REGEN_PROTO=1`. That is infrastructure for the
 codec, not a chip-driver verdict. Do not add `buffa` to `panel-view`.
 
 `sticky-host` uses [`espflash`](https://crates.io/crates/espflash) 4.5 as a

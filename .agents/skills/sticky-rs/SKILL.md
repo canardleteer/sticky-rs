@@ -3,7 +3,8 @@ name: sticky-rs
 description: >-
   Use when working in the sticky-rs repository: cargo xtask, build-fw, ci,
   flash-app, learn-uart, learn-uart-only, monitor, remote-debug,
-  backup / confirm / restore, the UART session lock, crate layout,
+  backup / confirm / restore, the UART session lock, uhubctl USB power reseat,
+  crate layout,
   clap / espflash host CLI rules, or
   this repository's Rust path on the Seeed reTerminal Sticky. Board pins,
   rails, and datasheets live in the sibling seeed-sticky-hardware skill —
@@ -83,6 +84,20 @@ separate live ask; see
 A host SoftAP check (`nmcli` join `sticky-rs-AP` / `curl` on
 `192.168.4.1`) is a separate live ask; see
 [Wi-Fi SoftAP testing options](../../../AGENTS.md#wi-fi-softap-testing-options).
+
+If a missing or stuck CH343 blocks an explicit live ask, an already-configured
+host USB power reseat is recovery for that ask. An explicit request to reset
+or reseat the Sticky also permits it. The current documented path is Linux
+`uhubctl`; it is the narrow host-side exception to the `cargo xtask` device-I/O
+path, not a flash or UART alternative. Use only the exact, previously resolved
+hub location and port; never use the default/all ports or `-f`, and never
+cycle during a flash, backup, restore, or another write. Stop UART owners
+first. The hub must actually cut per-port VBUS, and Linux permissions must be
+configured. Validate a new setup with timestamped explicit off/observe/on
+steps because an agent may inspect the port only after an atomic cycle has
+already completed. Routine recovery, cross-platform extension guidance, and
+the prohibition on tracked host topology are in
+[USB power reseat](../../../AGENTS.md#usb-power-reseat).
 
 A device may be attached for unrelated reasons; ignore it.
 

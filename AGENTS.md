@@ -60,8 +60,14 @@ message (`detect-connected --probe`, live `backup-factory-firmware`,
 `diff-learn-uart`, `vet-idle-log`, `build-fw`, `ci`) does not open a
 UART. `remote-debug` is live BLE; default `connect` takes the UART lock
 only while scraping a new `pair pin=` when a Sticky CH343 is present.
+An explicit live ask also permits an already-configured host USB power
+reseat when a missing or stuck CH343 blocks that ask. An explicit request
+to reset or reseat the Sticky permits the same recovery. Do not power-cycle
+a merely attached device outside either case.
 
 When a live ask is present, the **only** in-repo device I/O is `cargo xtask`.
+Host USB port power control is recovery infrastructure, not another flash or
+UART path; follow [USB power reseat](#usb-power-reseat).
 `flash-app` does not compile; `cargo xtask build-fw` first. Flag catalog:
 [sticky-rs xtask.md](.agents/skills/sticky-rs/references/xtask.md).
 `cargo xtask --help` is the flag source of truth.
@@ -83,6 +89,45 @@ planes). Do not use a leftover repo-root `backups/`.
 Default `monitor` and remote-debug UART listen claim the CH343 over
 USB CDC. Do not open `/dev/ttyACM*` for app UART (`--acm-tty` pulses
 EN / `POWERON`).
+
+### USB power reseat
+
+A host-controlled USB power cycle electrically reseats the Sticky's USB-C /
+CH343 host connection by removing VBUS. It is not an MCU software reset, and
+the ESP32 may remain powered by the battery. Never do this during a flash,
+backup, restore, or other write. Stop `monitor`, remote-debug auto-PIN, and
+any other UART owner first.
+
+The documented setup is currently Linux
+[`uhubctl`](https://github.com/mvp/uhubctl). Other platforms may add an
+equivalent subsection after its port-power behavior and recovery procedure
+have been verified. Requirements are strict: the hub must implement real
+per-port power switching **and cut VBUS**, the exact Sticky port must not be
+ganged with another device, and the operator needs permission to control the
+hub (root or appropriate udev rules on Linux). Do not use the default hub or
+all ports, and do not force an unsupported hub with `-f`. Account for USB 3
+dual hubs; `uhubctl` handles their USB 2 / USB 3 pair unless `-e` disables it.
+
+Before relying on a new host/hub arrangement, correlate the Sticky CH343
+`1a86:55d3` with an exact `uhubctl` location and port. Validate it once with
+explicit `-a off` and `-a on`: record wall-clock timestamps before and after
+each command and observation, confirm that the selected port reports `off`
+and the CH343 leaves USB enumeration, then restore `on` immediately and
+confirm it reconnects. Do not investigate while power is still off. A fast
+atomic cycle can finish before an agent's next observation, so a post-cycle
+connected device alone does not prove that power was interrupted; timestamp
+the test and use the hub's port state rather than only a tty pathname.
+
+After that setup has been validated, routine recovery uses one atomic command
+with the previously resolved, explicit values:
+
+```shell
+uhubctl -l '<hub-location>' -p '<port>' -a cycle -d 2
+```
+
+Confirm that the CH343 re-enumerates before resuming `cargo xtask`. Never put
+the host-specific hub location, port, USB serial, or topology in tracked
+documentation.
 
 ## Bluetooth testing options
 

@@ -49,7 +49,8 @@ pub use monitor_impl::MonitorOptions;
 pub use original::{load_manifest, refuse_if_legacy_backups_at_repo_root, Layout};
 pub use remote_debug::{
     is_remembered, load_allowlist, parse_pair_ok_line, parse_pair_pin_line, remember_unit,
-    scan_pair_uart, usb_serial_from_port, wait_new_pair_pin, write_snapshot_planes, RememberedUnit,
+    scan_pair_uart, snapshot_page_size, usb_serial_from_port, wait_new_pair_pin,
+    write_snapshot_planes, RememberedUnit,
 };
 pub use remote_debug_broker::{
     broker_log_path, broker_runtime_dir, control, endpoint_path, ensure_broker, parse_product_key,

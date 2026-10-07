@@ -217,7 +217,7 @@ pub fn write_snapshot_planes(
     if let Some(red) = red {
         fs::write(stem.with_extension("red"), red)?;
     }
-    let png = match hold.and_then(hold_rotation) {
+    let png = match hold.and_then(PageRotation::from_hold_token) {
         Some(rotation) => page_png(bw, red, rotation),
         None => framebuffer_png(bw, red, u32::from(WIDTH), u32::from(HEIGHT)),
     };
@@ -227,15 +227,14 @@ pub fn write_snapshot_planes(
     Ok(stem)
 }
 
-/// Snapshot `hold` token from embassy-debug (`0..=3`).
-fn hold_rotation(hold: u32) -> Option<PageRotation> {
-    match hold {
-        0 => Some(PageRotation::Portrait0),
-        1 => Some(PageRotation::Portrait180),
-        2 => Some(PageRotation::Landscape0),
-        3 => Some(PageRotation::Landscape180),
-        _ => None,
-    }
+/// Page PNG size `(width, height)` for a snapshot `hold` token.
+///
+/// `0` / `1` are portrait 480×800; `2` / `3` are landscape 800×480.
+/// Unknown or missing hold is [`None`] (framebuffer fallback).
+#[must_use]
+pub fn snapshot_page_size(hold: Option<u32>) -> Option<(u16, u16)> {
+    hold.and_then(PageRotation::from_hold_token)
+        .map(PageRotation::page_size)
 }
 
 /// MSB-first 1-bit on an 800-wide plane.
@@ -448,6 +447,32 @@ mod tests {
         let bw = vec![0u8; need];
         let png = page_png(&bw, None, PageRotation::Landscape0).expect("png");
         assert_eq!(png_size(&png), (800, 480));
+    }
+
+    #[test]
+    fn page_png_is_portrait_for_hold_1() {
+        let need = (WIDTH as usize / 8) * HEIGHT as usize;
+        let bw = vec![0u8; need];
+        let png = page_png(&bw, None, PageRotation::Portrait180).expect("png");
+        assert_eq!(png_size(&png), (480, 800));
+    }
+
+    #[test]
+    fn page_png_is_landscape_for_hold_3() {
+        let need = (WIDTH as usize / 8) * HEIGHT as usize;
+        let bw = vec![0u8; need];
+        let png = page_png(&bw, None, PageRotation::Landscape180).expect("png");
+        assert_eq!(png_size(&png), (800, 480));
+    }
+
+    #[test]
+    fn snapshot_page_size_follows_hold_token() {
+        assert_eq!(snapshot_page_size(Some(0)), Some((480, 800)));
+        assert_eq!(snapshot_page_size(Some(1)), Some((480, 800)));
+        assert_eq!(snapshot_page_size(Some(2)), Some((800, 480)));
+        assert_eq!(snapshot_page_size(Some(3)), Some((800, 480)));
+        assert_eq!(snapshot_page_size(None), None);
+        assert_eq!(snapshot_page_size(Some(99)), None);
     }
 
     #[test]

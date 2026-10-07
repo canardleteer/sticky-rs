@@ -11,7 +11,8 @@ use remote_debug_host::DEFAULT_ADV_NAME;
 use serde_json::Value;
 use sticky_host::{
     broker_runtime_dir, control, ensure_broker, refuse_if_legacy_backups_at_repo_root,
-    resolve_broker_exe, serve_live, shared, write_snapshot_planes, ControlClient, Error, Layout,
+    resolve_broker_exe, serve_live, shared, snapshot_page_size, write_snapshot_planes,
+    ControlClient, Error, Layout,
 };
 
 use crate::cli::repo_root;
@@ -119,7 +120,8 @@ Arm the frozen LAST DRAW slot. Writes a page-space .png (open that; \
 portrait 480×800 or landscape 800×480 from hold). Sibling .bw and .red \
 are packed SSD1677 planes (48 KiB each); .red is the second gray4 plane, \
 not pigment. Structured JSON omits those bytes and adds png (absolute \
-path). Message includes png= / scene / hold / step / expect / last_log. \
+path) plus pageWidth / pageHeight from hold. Message includes png= / \
+scene / hold / page= / step / expect / last_log. \
 Tap --page at expect. A leftover arm is SnapshotBusy; snapshot-clear \
 then retry. Ack when done.")]
     GetSnapshot(GetSnapshotArgs),
@@ -642,20 +644,31 @@ fn strip_snapshot_planes(resp: &mut control::GetSnapshotResponse) {
     }
 }
 
-/// ConnectRPC JSON plus a host-only `png` path (not on the wire).
+/// ConnectRPC JSON plus a host-only `png` path and page dimensions.
+///
+/// `pageWidth` / `pageHeight` follow a recognized `hold` token. These
+/// additions are host output only, not fields on the device wire.
 fn json_value_with_png(
     resp: control::GetSnapshotResponse,
     png: Option<PathBuf>,
 ) -> Result<Value, String> {
+    let page = resp
+        .snapshot
+        .as_option()
+        .and_then(|snap| snapshot_page_size(snap.hold));
     let mut value = serde_json::to_value(resp).map_err(|error| error.to_string())?;
+    let object = value
+        .as_object_mut()
+        .ok_or_else(|| "get-snapshot json".to_string())?;
     if let Some(png) = png {
-        let object = value
-            .as_object_mut()
-            .ok_or_else(|| "get-snapshot json".to_string())?;
         object.insert(
             "png".into(),
             Value::String(png.to_string_lossy().into_owned()),
         );
+    }
+    if let Some((w, h)) = page {
+        object.insert("pageWidth".into(), Value::from(w));
+        object.insert("pageHeight".into(), Value::from(h));
     }
     Ok(value)
 }
@@ -671,6 +684,9 @@ fn decorate_snapshot(
     }
     if let Some(hold) = snap.hold {
         message.push_str(&format!(" hold={hold}"));
+        if let Some((w, h)) = snapshot_page_size(Some(hold)) {
+            message.push_str(&format!(" page={w}x{h}"));
+        }
     }
     if let Some(step) = snap.target_step {
         message.push_str(&format!(" step={step}"));
@@ -947,6 +963,7 @@ mod tests {
                 bw: vec![1, 2, 3],
                 red: vec![4],
                 scene: Some(7),
+                hold: Some(3),
                 ..shared::Snapshot::default()
             }
             .into(),
@@ -959,6 +976,8 @@ mod tests {
             value.get("png").and_then(Value::as_str),
             Some("/tmp/snap-demo.png")
         );
+        assert_eq!(value.get("pageWidth").and_then(Value::as_u64), Some(800));
+        assert_eq!(value.get("pageHeight").and_then(Value::as_u64), Some(480));
         let snap = value.get("snapshot").expect("snapshot");
         assert!(snap.get("bw").is_none(), "{snap}");
         assert!(snap.get("red").is_none(), "{snap}");

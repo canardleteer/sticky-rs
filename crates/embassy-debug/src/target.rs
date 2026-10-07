@@ -431,6 +431,20 @@ mod tests {
     }
 
     #[test]
+    fn landscape180_slide_insets_match_the_desk_sit() {
+        let (w, h) = PageRotation::Landscape180.page_size();
+        assert_eq!((w, h), (WIDTH, HEIGHT));
+        assert_eq!(PageRotation::Landscape180.hold_token(), 3);
+        assert!(slide_complete(80, 720, w));
+        assert!(slide_complete(80, 400, h));
+        let sy = target_mark(TARGET_SLIDE_Y_ID, w, h);
+        assert_eq!(sy.kind, TargetKind::SlideY);
+        assert_eq!((sy.x, sy.y), (400, 240));
+        assert_eq!(target_mark(0, w, h).x, 400);
+        assert_eq!(target_mark(0, w, h).y, 240);
+    }
+
+    #[test]
     fn walk_wraps_instead_of_leaving() {
         assert_eq!(next_target_id(0), 1);
         assert_eq!(next_target_id(TARGET_LAST_ID), 0);

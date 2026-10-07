@@ -65,8 +65,11 @@ detached owner is on-disk `target/debug/xtask`).
    (unset = tap). Wait ~2–3 s for compose. Do not tap START
    on the Wi-Fi cards unless asked.
 4. `get-snapshot` — LAST DRAW plus `scene` / `hold` /
-   `target_step` / expect page. Open the JSON `png` field
-   (page-space, portrait 480×800 or landscape 800×480 under
+   `pageWidth` / `pageHeight` / `target_step` / expect page.
+   hold `0`/`1` → 480×800; `2`/`3` → 800×480. Embassy-debug
+   identity: splash Ferris, shapes Koch, legend, tones four
+   bars, `last_log` `embassy-debug`. Open the JSON `png` field
+   (page-space under
    `developer-data/remote-debug/snapshots/`). Sibling `.bw` /
    `.red` are packed SSD1677 planes (`.red` is the second
    gray4 plane, not pigment) and are omitted from JSON.
@@ -108,7 +111,7 @@ the CLI:
 | `list-targets` | Advertise names the owner currently tracks (never a MAC) |
 | `inject-touch` | Framebuffer tap, or `--page` page pixels; `--phase` for slides. Not UART `p0=` |
 | `inject-button` | `ok` / `page-up` / `page-down` short-press. CLI `--release` is the up edge; MCP `down` is a JSON bool. Wait for compose |
-| `get-snapshot` | Arm LAST DRAW. JSON `png` is the page image to open. `.bw` / `.red` are SSD1677 planes (`.red` = gray4 plane 1, not pigment) and are omitted from JSON. scene / hold / expect |
+| `get-snapshot` | Arm LAST DRAW. JSON `png` is the page image to open. Host-only `pageWidth` / `pageHeight` follow `hold` (`0`/`1` 480×800, `2`/`3` 800×480). `.bw` / `.red` are SSD1677 planes (`.red` = gray4 plane 1, not pigment) and are omitted from JSON. scene / hold / expect |
 | `snapshot-ack` | Release the armed nonce |
 | `snapshot-clear` | Operator abort (no nonce); use after a failed get |
 | `reboot` | Software-reset the **embedded MCU**, then re-pair unless `no_reconnect` |
@@ -122,7 +125,8 @@ those rmcp serve options change.
 
 Structured output is the generated ConnectRPC `*Response` JSON.
 `get-snapshot` also adds host-only `png` (absolute page-image
-path) after the write. `message` must not include a MAC.
+path) and `pageWidth` / `pageHeight` after the write.
+`message` must not include a MAC.
 
 ## Self-test
 
@@ -159,6 +163,14 @@ edges under [Difficult / crude](#difficult--crude).
 
 ## Discoveries
 
+- Host-only MCP attach (2026-10-07): a rebuilt binary with an
+  isolated runtime directory verified initialize, discovery
+  of all eleven leaves with object output schemas, all three
+  prompts, and all three resources. Snapshot tool description,
+  initialize instructions, and pickup / tools cards advertise
+  `pageWidth` / `pageHeight` and portrait / landscape sizes.
+  `status` returned the expected `no broker`; the process
+  exited cleanly. No UART, BLE, or physical-unit test.
 - Desk leaves sit (2026-09-12): after `flash-app` of `--features
   remote-debug` (new log ring), CLI `connect --wait` printed
   `connected` on the first sit (no `--remember`). Snapshot

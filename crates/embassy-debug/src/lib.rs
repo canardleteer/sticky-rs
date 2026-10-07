@@ -2172,6 +2172,22 @@ mod tests {
         assert_eq!(Scene::Targets.persist_byte(), 7);
     }
 
+    /// MCP `scene=` is [`Scene::persist_byte`]. Cards an agent can name
+    /// from a page PNG without a UART listen.
+    #[test]
+    fn mcp_scene_tokens_match_persist_and_uart() {
+        assert_eq!(Scene::Splash.persist_byte(), 0);
+        assert_eq!(Scene::Splash.as_str(), "splash");
+        assert_eq!(Scene::Shapes.persist_byte(), 1);
+        assert_eq!(Scene::Shapes.as_str(), "shapes");
+        assert_eq!(Scene::Legend.persist_byte(), 2);
+        assert_eq!(Scene::Legend.as_str(), "legend");
+        assert_eq!(Scene::Tones.persist_byte(), 3);
+        assert_eq!(Scene::Tones.as_str(), "tones");
+        assert_eq!(Scene::Targets.persist_byte(), 7);
+        assert_eq!(Scene::Targets.as_str(), "targets");
+    }
+
     #[test]
     fn splash_reprints_pair_pin_and_shapes_do_not() {
         assert!(Scene::Splash.pair_pin_reprint());

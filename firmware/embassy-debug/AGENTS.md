@@ -284,12 +284,14 @@ separate live ask. stdio MCP how-to:
    raw GT911. `--phase` `down` / `move` / `up` (unset = tap)
    so slides can span both insets. Product keys are `ok` /
    `page-up` / `page-down` (short press; CLI `--release` is
-   the up edge). Wait for compose before the next inject or
-   snapshot.
-5. `get-snapshot` freezes LAST DRAW plus `scene` /
+   the up edge; MCP `down` true = short press). Wait for
+   compose before the next inject or snapshot.
+5. `get-snapshot` freezes LAST DRAW plus `scene` / `hold` /
    `target_step` / expect page (`snap-<hex>.bw` / `.red` /
-   page-space `.png`). Tap `--page` at that expect (PNG
-   origin matches the page). CLI prints `scene=7(targets)`.
+   page-space `.png`). Host JSON adds `pageWidth` / `pageHeight`
+   from `hold` (`0`/`1` 480×800, `2`/`3` 800×480). Tap `--page`
+   at that expect (PNG origin matches the page).
+   CLI prints `scene=7(targets)`.
    `status` repeats last-known scene / hold / expect from the
    last snapshot (stale after inject). `logs` drains the
    Target / Scene ring. `status` `last_log` is the newest

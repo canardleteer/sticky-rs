@@ -550,8 +550,9 @@ cargo xtask remote-debug status
 ```
 
 You should see `pairing` from `connect`, then `connected` from
-`status`. `--wait` stays in that process until one of those. `--pin 000042` skips UART if you
-already know the six digits. `--remember` keeps the BlueZ bond
+`status`. `--wait` stays in that process until one of those.
+`--pin 000042` skips UART if you already know the six digits.
+`--remember` keeps the BlueZ bond
 for this unit (factory / USB serial in gitignored
 `developer-data/remote-debug/`; never a MAC).
 

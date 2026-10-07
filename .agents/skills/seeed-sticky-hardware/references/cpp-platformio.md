@@ -205,8 +205,8 @@ factory-compatible OTA.
 `espidf`, monitor **115200**. Envs: `sticky-release` (default), `sticky-debug`,
 `sticky-power-test`.
 
-Board JSON: 32 MB flash, `BOARD_HAS_PSRAM`, **240 MHz**, flash **QIO**, upload
-460800. Product URL in that JSON (`p-6398`) disagrees with the README
+Board JSON: 32 MB flash, `BOARD_HAS_PSRAM`, **240 MHz**, flash **QIO**,
+upload 460800. Product URL in that JSON (`p-6398`) disagrees with the README
 (`p-6861`).
 
 `sdkconfig.defaults`: `CONFIG_ESPTOOLPY_FLASHSIZE_32MB`, QIO, octal PSRAM

@@ -173,7 +173,8 @@ Live-ask, never-erase, and flash I/O: root
   re-sleeps without painting. GPIO4 is still the stock/docs wake
   pin; this image uses GPIO5 because the gesture is Page Up.
 - Power off: hold Page Down 5 s. Ferris, panel `DeepSleepMode`,
-  cut `EPD_EN`, then `Latch::release`. That is a real power cut.
+  cut `EPD_EN`, then `Latch::release`. Confirm actual MCU supply removal
+  on the unit; the GPIO request alone cannot establish a power cut.
   Power-on is USB-C plug (firmware latches at boot) or the stock
   ~3 s AI Voice hold. Recessed Reset or a USB unplug/replug is a
   POWERON (splash) when a rail is already present.

@@ -2,9 +2,9 @@
 
 ## Power latch (product-critical)
 
-The board stays on only while both latch outputs are high:
+The firmware power contract drives both latch outputs high to retain power:
 
-| Signal | GPIO | Level to stay powered |
+| Signal | GPIO | Requested level |
 | --- | ---: | --- |
 | `PWR_HOLD` | 45 | 1 |
 | `PWR_LOCK` | 46 | 1 |
@@ -31,9 +31,10 @@ third-party write-ups pulse GPIO46 instead — do not switch recipes until
 maximum delay from reset to assertion:
 [nyc-latch-deadline](../resources/not-yet-confirmed.md#nyc-latch-deadline).
 
-Driving both pins low is software power-off. Unplugging USB without a latch
-also powers the unit off. When testing on battery, confirm the latch is high
-before display init.
+Driving both pins low requests software power-off. Physical storage trials on
+one unit left BLE and writes running after that request, even with GPIO9 low;
+MCU supply removal remains unconfirmed ([source conflict](sources.md#conflicts)).
+When testing on battery, retain the high latch outputs before display init.
 
 **Release is a policy decision, not a failure.** Stock firmware latches inside
 its HAL init — before buses, before the app — and then *releases* the latch
@@ -178,6 +179,9 @@ Explicit recovery deselects both SPI devices, parks MOSI and SCK low, disables
 GPIO10, holds SD CS low while unpowered, waits 100 ms, then identifies at no
 more than 400 kHz. Firmware applies the sequence; GPIO10 voltage decay and
 back-power through signal pins remain unmeasured.
+During a 30-minute 38-second physical SD/BLE/SoftAP/HTTP/display interval,
+explicit recovery remounted with the same digest-valid state record. This
+demonstrates functional recovery on that card, without measuring rail voltage.
 
 For battery power-loss trials, identify and remove USB VBUS from the exact
 Sticky leaf port while idle, confirm continued BLE operation on battery,

@@ -139,3 +139,6 @@ quiescence, explicit provisioning and validated staging; `storage-test` adds
 confirmed interruption/timed-sleep controls. Keep all physical trial logs
 private. `flash-app --force --yes` requires known-disabled security flags,
 a validated live table and a complete valid ESP32-S3 image; it writes app0 only.
+Recorded physical results include 50 reset/commanded-SD recoveries and over
+30 minutes of SD/BLE/SoftAP/HTTP/UART/display coexistence. True MCU power loss
+remains unconfirmed; keep that distinction when reporting acceptance.

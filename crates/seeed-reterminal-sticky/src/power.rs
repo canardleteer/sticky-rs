@@ -1,8 +1,8 @@
 //! The power latch, as a type you cannot skip.
 //!
-//! `PWR_HOLD` (GPIO45) then `PWR_LOCK` (GPIO46) must be high for the board to
-//! stay powered. If they are low when USB is unplugged, the board dies
-//! mid-operation.
+//! Drive `PWR_HOLD` (GPIO45) then `PWR_LOCK` (GPIO46) high before operation,
+//! according to the board contract. Keep these outputs high during operation;
+//! GPIO levels alone do not measure the MCU supply.
 //!
 //! # Why a witness type
 //!
@@ -12,9 +12,10 @@
 //!
 //! # Releasing is a decision
 //!
-//! [`Latch::release`] exists and is named for what it does: it powers the
-//! board down when running on battery. Stock firmware latches during init and
-//! then releases when the power button was not the boot cause — a deliberate
+//! [`Latch::release`] drives both control pins low to request board power-off.
+//! Actual MCU supply removal depends on the board circuit and external power;
+//! the GPIO writes alone cannot establish it. Stock firmware latches during
+//! init and then releases when the power button was not the boot cause — a deliberate
 //! policy, and one that looks exactly like a crash if you copy it by accident
 //! while running from USB.
 
@@ -35,10 +36,11 @@ const LATCH_SETTLE_MS: u32 = 10;
 /// uses 10 ms. Do not pulse GPIO46 while waiting.
 pub const LATCH_PERIPHERAL_SETTLE_MS: u32 = 100;
 
-/// Proof that the power latch is held.
+/// Witness that the latch's high output writes and settle completed.
 ///
 /// Obtained from [`Latch::acquire`] and required by every rail constructor.
-/// It has no public constructor: the only way to get one is to actually latch.
+/// It has no public constructor. It enforces software sequencing without
+/// measuring the latch circuit's electrical response.
 #[derive(Debug)]
 pub struct Latched {
     _private: (),
@@ -88,11 +90,12 @@ where
         &self.witness
     }
 
-    /// Drops both latch pins low: a software power-off on battery.
+    /// Drives both latch control pins low to request power-off on battery.
     ///
     /// Only the deliberate shutdown path should call this. Everything that can
     /// fail before shutdown should have failed already, because after this the
-    /// board may simply stop.
+    /// board may simply stop. This method reports GPIO write errors; verify MCU
+    /// supply removal independently on the actual board.
     pub fn release(mut self) -> Result<(HOLD, LOCK), HOLD::Error> {
         self.lock.set_low()?;
         self.hold.set_low()?;

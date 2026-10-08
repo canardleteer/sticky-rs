@@ -44,7 +44,7 @@ part is present or that the crate encoding is correct.
 
 | Feature | This crate | Rest of the stack | Physical unit |
 | --- | --- | --- | --- |
-| Stay-alive latch (`PWR_HOLD` GPIO45, `PWR_LOCK` GPIO46) | `Latch::acquire` / `Latch::release`; every rail constructor needs a `Latched` witness | Firmware supplies the two output pins. Releasing the latch is a software power-off on battery. | yes |
+| Stay-alive latch (`PWR_HOLD` GPIO45, `PWR_LOCK` GPIO46) | `Latch::acquire` / `Latch::release`; every rail constructor needs a `Latched` witness | Firmware supplies the two output pins. Release requests power-off; actual supply removal needs confirmation. | release cutoff unconfirmed |
 | USB / external present | `pins::EXTERNAL_POWER_SENSE` (GPIO9, high = VBUS) | Digital input. Schematic: 5.1 kΩ / 5.1 kΩ `PWR_IN_VOLT` from `VIN_5V` (~½ VBUS); USB-C is 5 V sink only (Rd on CC1/CC2). Firmware still treats GPIO9 as a GPIO high. | yes |
 | BQ25616 charger `/CE` (active low) and status | Pin numbers only: `pins::CHARGE_EN`, `pins::CHARGE_STATUS` | [`bq25616`](https://github.com/canardleteer/sticky-rs/tree/main/crates/bq25616) owns `/CE` typestate (`Drop` parks `Enabled`; VBUS interlock; `hold_disabled`). `CHARGE_STATUS` is STAT: low while `/CE` is enabled, high after park **and a settle**. embassy-debug `--features charge` is the attended pulse; default images stay parked. | STAT polarity yes; charge-to-done no |
 | Dual-color charge LED (next to USB-C) | **Not in this crate** | Driven by the charger, not an MCU GPIO. Green/yellow while STAT was low. Off / done color unconfirmed. | charging color only |
@@ -101,8 +101,9 @@ not wrap them:
 - **The latch comes first.** `Latch::acquire` drives `PWR_HOLD` then `PWR_LOCK`
   and hands back a `Latched` witness. Every rail constructor requires that
   witness, so "bring up a peripheral before latching power" does not compile.
-- **Releasing the latch is deliberate.** `Latch::release` is named for what it
-  does: on battery it powers the board off.
+- **Releasing the latch is deliberate.** `Latch::release` drives both control
+  pins low to request power-off. A successful GPIO write does not establish
+  measured MCU supply removal.
 - **The panel rail cannot be cut carelessly.** `EpdRail` has no `disable`; it
   has `disable_after_panel_sleep`, which needs a `PanelParked` token whose only
   constructor is `after_deep_sleep_command()`. Rails that are safe to cut

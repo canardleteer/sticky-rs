@@ -287,12 +287,17 @@ GPIO9 low and both latch outputs commanded low with pad holds. They provide
 no confirmed MCU power-loss evidence.
 
 After restoring the normal image, survey ran alongside SD stress. A subsequent
-30-minute 23-second interval completed 4,600 stress rounds with BLE controls,
-active SoftAP, UART monitoring, injected touch/key input, and sixteen display
-snapshot cycles. Every control command succeeded; final digest verification
-passed at sequence 6,020. The spare host STA remained disconnected because
-NetworkManager required local authentication, so HTTP traffic was not verified.
-Full HTTP coexistence and true MCU power-loss acceptance remain open.
+30-minute 38-second interval completed 3,800 stress rounds with BLE controls,
+active SoftAP, UART monitoring, injected touch/key input, 366 HTTP replies,
+and 35 completed display snapshot cycles. HTTP ran independently of display
+controls, with a maximum reply gap of 5.2 seconds. Every command in that
+interval succeeded. Explicit SD rail recovery midway through the run remounted
+with the same digest-valid state sequence. Final digest verification passed at
+sequence 12,920, including after a normal reboot. The temporary host Wi-Fi
+profile and BLE session were removed afterward; Ethernet default routes stayed
+unchanged and the normal reboot stopped SoftAP.
+
+True MCU power-loss acceptance remains open.
 These observations describe this unit and card; rail decay, back-powering,
 and the card controller's undocumented durability behavior remain unmeasured.
 

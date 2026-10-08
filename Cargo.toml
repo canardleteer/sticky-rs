@@ -14,7 +14,7 @@ default-members = ["crates/*", "host/*", "xtask"]
 
 [workspace.package]
 edition = "2021"
-rust-version = "1.85"
+rust-version = "1.88"
 license = "MIT"
 repository = "https://github.com/canardleteer/sticky-rs"
 authors = ["canardleteer"]

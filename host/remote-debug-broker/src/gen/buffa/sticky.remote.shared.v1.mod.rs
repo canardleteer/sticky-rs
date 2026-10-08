@@ -32,6 +32,8 @@ pub mod __buffa {
         reg.register_json_any(super::__LOG_LINE_JSON_ANY);
         reg.register_json_any(super::__REBOOT_JSON_ANY);
         reg.register_json_any(super::__REBOOT_ACK_JSON_ANY);
+        reg.register_json_any(super::__STORAGE_REQUEST_JSON_ANY);
+        reg.register_json_any(super::__STORAGE_REPLY_JSON_ANY);
     }
 }
 #[doc(inline)]
@@ -74,5 +76,13 @@ pub use self::__buffa::view::RebootOwnedView;
 pub use self::__buffa::view::RebootAckView;
 #[doc(inline)]
 pub use self::__buffa::view::RebootAckOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::StorageRequestView;
+#[doc(inline)]
+pub use self::__buffa::view::StorageRequestOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::StorageReplyView;
+#[doc(inline)]
+pub use self::__buffa::view::StorageReplyOwnedView;
 #[doc(inline)]
 pub use self::__buffa::register_types;

@@ -67,10 +67,10 @@ FreeInk for a **default debug image**:
 **low** at boot. That is vendor intent, not a reason to enable
 charge in an unattended debug image.
 
-Treat GPIO9 as a digital **edge source**, not a level you poll: stock firmware
-installs an any-edge GPIO interrupt on it and raises a power-state-changed
-event from the handler. FreeInk’s analog `PWR_IN_VOLT` name matches the
-divider. Firmware still uses the pin digitally.
+Stock firmware uses GPIO9 as a digital edge source: an any-edge interrupt
+raises a power-state-changed event. Storage status instead samples the digital
+input every 100 ms on Core 0 and publishes a read-only cache. FreeInk’s analog
+`PWR_IN_VOLT` name matches the divider; neither digital path measures voltage.
 
 USB-C feeds the charger (5 V sink; CC1/CC2 are 5.1 kΩ Rd). Red/green LED
 left of the port is charger-driven. While STAT was low the operator
@@ -151,3 +151,37 @@ after `woke` re-slept without panel init (sleep card stayed; no
 painting. Latch stayed high. The CH343 stayed enumerated; UART0
 went quiet until wake. Sit with `cargo xtask monitor` without
 `--acm-tty`. GPIO4 was not the wake pin on that image.
+
+## Storage barriers and recovery
+
+The persistent-storage image stops write admission and asks Core 1 to drain
+and park SD before normal reboot, deep sleep, or latch release. A failed or
+five-second timed-out barrier retains MCU power and the BLE recovery session.
+A canceled queued barrier must not cut the rail later. Synchronous card calls
+already running cannot be preempted by that timeout.
+Caller-controlled SD power loss must invalidate the cached media driver even
+when the cut happens between callbacks. A stale successful write must not let
+shutdown report success after that interruption; explicit recovery rebuilds
+the transport.
+
+The GPIO10 adapter holds its disabled level through deep sleep and releases
+the hold before enabling; quiescence also holds SD CS low. Finish panel
+shutdown before final SD parking because the devices share MOSI and SCK.
+Latch shutdown retains both low GPIO drivers and their pad holds while external
+power may still keep the MCU alive. Ordinary HAL GPIO output drop performs no
+pin reset; GPIO peripheral-output connection guards have different semantics.
+Cached read-only GPIO9 samples distinguish external-power presence from USB
+enumeration. A hub's reported off state and missing USB leaf do not establish
+that it has physically removed VBUS.
+
+Explicit recovery deselects both SPI devices, parks MOSI and SCK low, disables
+GPIO10, holds SD CS low while unpowered, waits 100 ms, then identifies at no
+more than 400 kHz. Firmware applies the sequence; GPIO10 voltage decay and
+back-power through signal pins remain unmeasured.
+
+For battery power-loss trials, identify and remove USB VBUS from the exact
+Sticky leaf port while idle, confirm continued BLE operation on battery,
+then schedule a test-only latch release during writes. Restore that leaf's
+VBUS to boot. USB disappearance alone cannot prove MCU power loss while the
+battery latch remains asserted. Keep reset, SD-rail, and latch-loss evidence
+separate from electrical measurements.

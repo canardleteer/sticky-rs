@@ -103,6 +103,14 @@ const SMP_START_GAP_MS: u64 = 40;
 /// can free. Not a sleep of the MCU.
 const AFTER_DROP_MS: u64 = 120;
 
+/// Discard an incomplete remote frame after five seconds without a fragment.
+///
+/// This bounds abandoned transfer state while keeping the encrypted connection
+/// available for a new request. The host sends each fragment before waiting for
+/// the operation result; filesystem completion may take longer than this limit.
+#[cfg(feature = "remote-debug")]
+const RX_FRAGMENT_TIMEOUT: Duration = Duration::from_secs(5);
+
 /// What the pair card should paint.
 ///
 /// Idle is a how-to, not a fake PIN. [`Self::Pin`] exists only after
@@ -491,6 +499,8 @@ async fn start_display_only<P: PacketPool>(conn: &Connection<'_, P>) -> Result<(
 /// reassembled and passed to [`crate::remote_debug::handle_envelope`].
 /// A `GetSnapshot` arm/retry streams LAST through TX notifies
 /// (*The Embassy Book*: do this on the BLE task, not the display task).
+/// Oversized ATT writes are rejected without copying a prefix; abandoned
+/// partial frames expire so a later request can recover on the same connection.
 async fn drive_connection<C, P>(
     stack: &Stack<'_, C, P>,
     gatt: &GattConnection<'_, '_, P>,
@@ -503,14 +513,31 @@ where
     #[cfg(feature = "remote-debug")]
     let mut rx_asm = remote_debug_wire::FrameAssembler::device_rx();
     #[cfg(feature = "remote-debug")]
+    let mut rx_last = embassy_time::Instant::now();
+    #[cfg(feature = "remote-debug")]
     let mut pending_pin: Option<u32> = None;
     let mut seen_pin = false;
     let mut paired = false;
     loop {
         #[cfg(feature = "remote-debug")]
+        if rx_asm.pending() != 0 && rx_last.elapsed() >= RX_FRAGMENT_TIMEOUT {
+            // Check at every loop entry as well as the timer wake: frequent
+            // logs or GATT events must not indefinitely retain a partial frame.
+            rx_asm.clear();
+        }
+        #[cfg(all(feature = "remote-debug", feature = "storage"))]
+        while let Ok(reply) = crate::storage::REPLIES.try_receive() {
+            let bytes = remote_debug_wire::encode_body(reply);
+            remote_debug_peripheral::notify_bytes(gatt, &server.remote.tx, &bytes).await;
+        }
+        #[cfg(feature = "remote-debug")]
         let event = match select3(
             gatt.next(),
-            Timer::after(Duration::from_secs(5)),
+            Timer::after(if paired {
+                Duration::from_millis(20)
+            } else {
+                Duration::from_secs(5)
+            }),
             crate::remote_debug::wait_log_ready(),
         )
         .await
@@ -574,21 +601,36 @@ where
                 #[cfg(feature = "remote-debug")]
                 let remote_write = match &event {
                     GattEvent::Write(write) if write.handle() == server.remote.rx.handle => {
-                        let mut chunk = [0u8; 244];
+                        let mut chunk = [0u8; remote_debug_wire::GATT_WRITE_MAX];
                         let n = write.with_data(|_, data| {
-                            let n = data.len().min(chunk.len());
-                            chunk[..n].copy_from_slice(&data[..n]);
-                            n
+                            if data.len() <= chunk.len() {
+                                chunk[..data.len()].copy_from_slice(data);
+                            }
+                            data.len()
                         });
                         Some((chunk, n))
                     }
                     _ => None,
                 };
+                #[cfg(feature = "remote-debug")]
+                if remote_write
+                    .as_ref()
+                    .is_some_and(|(_, n)| *n > remote_debug_wire::GATT_WRITE_MAX)
+                {
+                    rx_asm.clear();
+                    // Use Trouble's named ATT error. Reject before accept so
+                    // neither the attribute nor assembler stores a prefix.
+                    if let Ok(reply) = event.reject(AttErrorCode::INVALID_ATTRIBUTE_VALUE_LENGTH) {
+                        reply.send().await;
+                    }
+                    continue;
+                }
                 if let Ok(reply) = event.accept() {
                     reply.send().await;
                 }
                 #[cfg(feature = "remote-debug")]
                 if let Some((chunk, n)) = remote_write {
+                    rx_last = embassy_time::Instant::now();
                     on_remote_rx(gatt, server, &mut rx_asm, &chunk[..n]).await;
                 }
             }
@@ -620,6 +662,8 @@ async fn on_remote_rx<P: PacketPool>(
             return;
         }
     };
+    // Storage responses share this GATT owner with snapshot frames. Short jobs
+    // notify later through the FIFO; awaiting SPI here would stall recovery.
     match crate::remote_debug::handle_envelope(&frame) {
         Ok(crate::remote_debug::EnvelopeOutcome::Snapshot) => {
             remote_debug_peripheral::notify_armed_snapshot(
@@ -651,11 +695,49 @@ async fn on_remote_rx<P: PacketPool>(
             let bytes = remote_debug_wire::encode_snapshot_busy(armed);
             remote_debug_peripheral::notify_bytes(gatt, &server.remote.tx, &bytes).await;
         }
-        Ok(crate::remote_debug::EnvelopeOutcome::Reboot) => {
+        Ok(
+            outcome @ (crate::remote_debug::EnvelopeOutcome::Reboot
+            | crate::remote_debug::EnvelopeOutcome::ForceReboot),
+        ) => {
+            #[cfg(feature = "storage")]
+            if outcome == crate::remote_debug::EnvelopeOutcome::Reboot
+                && crate::storage::quiesce().await.is_err()
+            {
+                let bytes = remote_debug_wire::encode_body(remote_debug_wire::v1::RebootAck {
+                    storage_failed: true,
+                    ..Default::default()
+                });
+                remote_debug_peripheral::notify_bytes(gatt, &server.remote.tx, &bytes).await;
+                return;
+            }
+            #[cfg(not(feature = "storage"))]
+            let _ = outcome;
             let bytes = remote_debug_wire::encode_reboot_ack();
             remote_debug_peripheral::notify_bytes(gatt, &server.remote.tx, &bytes).await;
             Timer::after(Duration::from_millis(100)).await;
             esp_hal::system::software_reset();
+        }
+        Ok(crate::remote_debug::EnvelopeOutcome::Storage) => {
+            if let Ok(envelope) = remote_debug_wire::decode_envelope(&frame) {
+                if let Some(remote_debug_wire::v1::envelope::Body::StorageRequest(request)) =
+                    envelope.body
+                {
+                    #[cfg(feature = "storage")]
+                    let reply = crate::storage::submit(*request);
+                    #[cfg(not(feature = "storage"))]
+                    let reply = Some(remote_debug_wire::v1::StorageReply {
+                        id: request.id,
+                        ok: false,
+                        message: "storage-unavailable".into(),
+                        ..Default::default()
+                    });
+                    if let Some(reply) = reply {
+                        let bytes = remote_debug_wire::encode_body(reply);
+                        remote_debug_peripheral::notify_bytes(gatt, &server.remote.tx, &bytes)
+                            .await;
+                    }
+                }
+            }
         }
         Ok(crate::remote_debug::EnvelopeOutcome::None) | Err(_) => {}
     }

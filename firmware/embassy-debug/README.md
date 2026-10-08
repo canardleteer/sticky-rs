@@ -903,3 +903,13 @@ parked for the rest of the listen.
 Do not arm GPIO7 on this sit. Do not treat a STAT pass as a license
 to enable charging in default images. After the sit, flash default
 `embassy-debug` (no `charge`) so every boot does not pulse `/CE`.
+
+## Persistent SD storage
+
+The default image includes littlefs state/update volumes and FAT32 bulk data
+with BLE and Wi-Fi. Core 1 owns shared SPI and filesystems. Mount never
+formats. Normal reboot, sleep and power release wait for storage quiescence.
+With `remote-debug`, use the [storage operator guide](../../docs/storage.md)
+to provision the expendable card, verify persistence and stage an app package.
+`storage-test` adds confirmed reset, rail, latch and timed-sleep controls.
+Staging does not activate an update or change flash.

@@ -650,6 +650,42 @@ where
     T: Transport + Send + 'static,
     F: FnMut(&control::ConnectRequest) -> Result<Session<T>, Error> + Send + 'static,
 {
+    async fn storage(
+        &self,
+        _ctx: RequestContext,
+        request: ServiceRequest<'_, control::StorageRequest>,
+    ) -> ServiceResult<control::StorageResponse> {
+        off_runtime(|| {
+            let req = request.to_owned_message();
+            let mut inner = lock_inner(&self.0)?;
+            let slot = slot_or_err(&mut inner, &target_name(&req.target))?;
+            let session = slot.session.as_mut().ok_or_else(|| {
+                ConnectError::new(
+                    ErrorCode::FailedPrecondition,
+                    "not connected; run remote-debug connect first",
+                )
+            })?;
+            let request = Option::<shared::StorageRequest>::from(req.request).ok_or_else(|| {
+                ConnectError::new(ErrorCode::InvalidArgument, "missing storage request")
+            })?;
+            // The broker and firmware generate separate Rust types from the same
+            // schema. Re-encode rather than duplicating the field mapping here.
+            let request = <remote_debug_wire::shared::StorageRequest as buffa::Message>::decode(
+                &mut buffa::Message::encode_to_vec(&request).as_slice(),
+            )
+            .map_err(rpc_err)?;
+            let reply = session.storage(request).map_err(rpc_err)?;
+            let reply = <shared::StorageReply as buffa::Message>::decode(
+                &mut buffa::Message::encode_to_vec(&reply).as_slice(),
+            )
+            .map_err(rpc_err)?;
+            Response::ok(control::StorageResponse {
+                reply: reply.into(),
+                ..Default::default()
+            })
+        })
+    }
+
     async fn connect(
         &self,
         _ctx: RequestContext,
@@ -977,7 +1013,10 @@ where
                     "not connected; run remote-debug connect first",
                 )
             })?;
-            session.reboot().map_err(rpc_err)?;
+            if let Err(error) = session.reboot_with_force(req.force) {
+                slot.session = Some(session);
+                return Err(rpc_err(error));
+            }
             slot.last_nonce = None;
             slot.last_view = LastView::default();
             if req.no_reconnect {

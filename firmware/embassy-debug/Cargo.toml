@@ -14,6 +14,9 @@ license = "MIT"
 # Do not inherit [lints] workspace = true (missing_docs / unsafe_code).
 
 [dependencies]
+embedded-storage-volume = { path = "../../crates/embedded-storage-volume", optional = true, features = ["sd"] }
+littlefs2 = { version = "=0.8.1", default-features = false, features = ["c-stubs"], optional = true }
+littlefs2-sys = { version = "=0.4.0", features = ["tinyrlibc", "software-intrinsics"], optional = true }
 # crates.io `esp-rtos` 0.3.0 still pins `esp-hal` ~1.1. Take the HAL family
 # from the 1.2.0-rc.0 tag so Embassy and `esp-hal` are one graph.
 esp-hal = { git = "https://github.com/esp-rs/esp-hal", tag = "esp-hal-v1.2.0-rc.0", features = [
@@ -87,11 +90,15 @@ edge-nal-embassy = { version = "0.9.0", optional = true }
 embedded-io-async = { version = "0.7", optional = true }
 
 [features]
+# Persistent managed-media storage shares SPI2 with the display on Core 1.
+storage = ["dep:embedded-storage-volume", "dep:embedded-sdmmc", "dep:remote-debug-wire", "dep:littlefs2", "dep:littlefs2-sys"]
+# Explicit desk-only write interruption controls; omitted from normal images.
+storage-test = ["storage", "remote-debug"]
 # Pair + Wi-Fi survey / SoftAP cards. Advertise BLE only while the
 # pair card is showing. Survey and SoftAP stay idle until a tap.
 # Exclusive sits (`mic` / `radio` / `charge` / `sd`) must pass
 # `--no-default-features` (xtask `build-fw` / `ci` do).
-default = ["pair", "wifi"]
+default = ["pair", "wifi", "storage"]
 # Insecure desk debug: last DRAW snapshot + synthetic tap/key mux +
 # UART `src=phys` / `src=syn` / `snap` + encrypted GATT after pair.
 # Not default. Packs with `pair` + `wifi` (not an exclusive sit).

@@ -5,7 +5,7 @@ description = "Programmatic host API for Sticky UART detect, factory backup/conf
 readme = "README.md"
 publish = true
 edition.workspace = true
-# Matches cargo-espflash / espflash 4.5. Workspace crates stay 1.85.
+# Matches the workspace and espflash 4.5 MSRV.
 rust-version = "1.88"
 license.workspace = true
 repository.workspace = true
@@ -20,6 +20,7 @@ rustix = { version = "1.1.4", features = ["termios"] }
 # Library used by cargo-espflash. The cargo plugin itself has no lib target.
 # `cli` is intentionally off: no SemVer, and we must not pull ELF-flash helpers.
 espflash = { version = "4.5.0", default-features = false, features = ["serialport"] }
+esp-idf-part = "0.6.0"
 # Advisory flock for live UART commands (no unsafe in this crate).
 fs4 = "0.13.1"
 log = "0.4.27"
@@ -34,7 +35,6 @@ simple-debug = { path = "../../crates/simple-debug", version = "0.1.0" }
 remote-debug-broker = { path = "../remote-debug-broker", version = "0.1.0" }
 remote-debug-host = { path = "../remote-debug-host", version = "0.1.0" }
 remote-debug-wire = { path = "../../crates/remote-debug-wire", version = "0.1.0" }
-panel-view = { path = "../../crates/panel-view", version = "0.1.0" }
 seeed-reterminal-sticky = { path = "../../crates/seeed-reterminal-sticky", version = "0.1.0" }
 # Enumeration needs libudev; we only open ESPFLASH_PORT. Same as espflash.
 serialport = { version = "4.7.2", default-features = false }

@@ -60,10 +60,10 @@ exactly one QinHeng CH343 (`1a86:55d3`).
 | `learn-uart-only` | yes | Same session, only named groups |
 | `diff-learn-uart` | no | Host-only compare of two reports or factory serials |
 | `vet-idle-log` | no | Host-only. Check a `monitor` capture for unattended embassy-debug or simple-debug tokens |
-| `build-fw` | no | Host-only. `cargo +esp` + `save-image` for `simple-debug` or `embassy-debug`. Default embassy-debug includes `pair` + `wifi`. `--features operator` / `mic` / `radio` / `pair` / `wifi` / `spi20` / `sd` / `charge` / `remote-debug` |
+| `build-fw` | no | Host-only. `cargo +esp` + `save-image` for `simple-debug` or `embassy-debug`. Default embassy-debug includes `pair` + `wifi` + `storage`. `--features operator` / `mic` / `radio` / `pair` / `wifi` / `spi20` / `sd` / `charge` / `remote-debug` / `storage-test` |
 | `ci` | no | Host-only CI gate (fmt, host clippy/test, firmware clippy, rumdl, `buf lint`, machete, audit) |
 | `monitor` | yes | UART0 at 115200 |
-| `remote-debug` | live BLE; UART on auto-PIN | Encrypted GATT after DisplayOnly pair. `connect` starts a detached ConnectRPC owner and returns `pairing`; poll `status` until `connected` (CLI `--wait` polls). Inject / snapshot / `logs` / `list-targets` are RPC. `get-snapshot` JSON includes the page PNG path and `pageWidth` / `pageHeight` from `hold`. `disconnect` drops one GATT session (empty map also shuts the owner down). `serve` is an optional foreground log. `reboot` resets the embedded MCU. `--mcp` is the same client, this subtree only |
+| `remote-debug` | live BLE; UART on auto-PIN | Encrypted GATT after DisplayOnly pair. `connect` starts a detached ConnectRPC owner and returns `pairing`; poll `status` until `connected` (CLI `--wait` polls). Inject / snapshot / `logs` / `list-targets` are RPC. `get-snapshot` JSON includes the page PNG path and `pageWidth` / `pageHeight` from `hold`. `disconnect` drops one GATT session (empty map also shuts the owner down). `serve` is an optional foreground log. `storage` controls status, provisioning, verification, stress, rail recovery, quiescence and package staging; commands report their own completion. `reboot` drains storage before resetting the embedded MCU; `--force` bypasses that barrier. `--mcp` is the same client, this subtree only |
 
 ## License
 
@@ -74,3 +74,7 @@ Seeed, reTerminal, Sticky, Espressif, and other product or company names are
 trademarks of their respective owners. This project does not claim those
 marks or their copyrights, and is not affiliated with or endorsed by those
 owners.
+
+Persistent SD storage and recovery recipes: [storage guide](docs/storage.md).
+The default Embassy image uses littlefs state/update volumes and FAT32 bulk
+data on a shared Core 1 SPI owner. Formatting is explicit; mount never formats.

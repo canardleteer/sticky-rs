@@ -5,7 +5,7 @@ description = "ConnectRPC owner that holds 0..N remote-debug GATT Sessions"
 readme = "README.md"
 publish = false
 edition.workspace = true
-# Matches sticky-host / remote-debug-host. Workspace no_std crates stay 1.85.
+# Matches sticky-host, remote-debug-host, and the workspace MSRV.
 rust-version = "1.88"
 license.workspace = true
 repository.workspace = true
@@ -13,14 +13,12 @@ authors.workspace = true
 
 [dependencies]
 buffa = { version = "0.9.2", features = ["json"] }
-connectrpc = { version = "0.9.0", default-features = false, features = ["server", "client", "json"] }
+connectrpc = { version = "0.9.1", default-features = false, features = ["server", "client", "json"] }
 ctrlc = "3.4.7"
-http = "1"
 panel-view = { path = "../../crates/panel-view", version = "0.1.0" }
 remote-debug-host = { path = "../remote-debug-host", version = "0.1.0" }
 remote-debug-wire = { path = "../../crates/remote-debug-wire", version = "0.1.0" }
 serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.140"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync"] }
 
 [build-dependencies]

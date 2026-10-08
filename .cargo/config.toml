@@ -18,6 +18,10 @@ xtask = "run --package xtask --"
 rustflags = ["-C", "link-arg=-Tlinkall.x"]
 
 [env]
+# littlefs2 builds upstream C. Match the Rust ESP32-S3 ABI and permit calls
+# between flash-resident C and ROM/Rust routines outside call8's short range.
+CC_xtensa_esp32s3_none_elf = "xtensa-esp32s3-elf-gcc"
+CFLAGS_xtensa_esp32s3_none_elf = "-mlongcalls"
 ESP_LOG = "info"
 # esp-radio default is 2. A SoftAP connect+disconnect pair is lost when
 # the pub/sub queue fills during a gray4 paint (`Lost event`). Firmware

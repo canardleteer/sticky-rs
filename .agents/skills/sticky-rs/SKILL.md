@@ -2,7 +2,7 @@
 name: sticky-rs
 description: >-
   Use when working in the sticky-rs repository: cargo xtask, build-fw, ci,
-  flash-app, learn-uart, learn-uart-only, monitor, remote-debug,
+  flash-app, learn-uart, learn-uart-only, monitor, remote-debug storage,
   backup / confirm / restore, the UART session lock, uhubctl USB power reseat,
   crate layout,
   clap / espflash host CLI rules, or
@@ -129,3 +129,13 @@ latch, rails, and typed spaces
 Never `bq27xxx` (wrong gauge family). Never a generic SSD1677 four-gray LUT.
 Never commit a MAC, serial number, USB serial string, NVS blob, or flash
 image. Never add a Cargo `runner`.
+
+## Persistent storage
+
+Read [storage guide](../../../docs/storage.md) and the storage adoption rows
+in [CRATES.md](../../../docs/CRATES.md). Default Embassy enables `storage`
+with pair/Wi-Fi. `remote-debug storage` provides correlated completion,
+quiescence, explicit provisioning and validated staging; `storage-test` adds
+confirmed interruption/timed-sleep controls. Keep all physical trial logs
+private. `flash-app --force --yes` requires known-disabled security flags,
+a validated live table and a complete valid ESP32-S3 image; it writes app0 only.

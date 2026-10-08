@@ -365,6 +365,68 @@ impl<'a> ::buffa::MessageView<'a> for EnvelopeView<'a> {
                     );
                 }
             }
+            20u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let __sub_ctx = ctx.descend()?;
+                let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                if let Some(
+                    super::super::__buffa::view::oneof::envelope::Body::StorageRequest(
+                        ref mut existing,
+                    ),
+                ) = view.body
+                {
+                    ::buffa::MessageView::merge_into_view(
+                        &mut **existing,
+                        sub,
+                        __sub_ctx,
+                    )?;
+                } else {
+                    view.body = Some(
+                        super::super::__buffa::view::oneof::envelope::Body::StorageRequest(
+                            ::buffa::alloc::boxed::Box::new(
+                                <super::super::super::shared::v1::__buffa::view::StorageRequestView as ::buffa::MessageView>::decode_view_ctx(
+                                    sub,
+                                    __sub_ctx,
+                                )?,
+                            ),
+                        ),
+                    );
+                }
+            }
+            21u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let __sub_ctx = ctx.descend()?;
+                let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                if let Some(
+                    super::super::__buffa::view::oneof::envelope::Body::StorageReply(
+                        ref mut existing,
+                    ),
+                ) = view.body
+                {
+                    ::buffa::MessageView::merge_into_view(
+                        &mut **existing,
+                        sub,
+                        __sub_ctx,
+                    )?;
+                } else {
+                    view.body = Some(
+                        super::super::__buffa::view::oneof::envelope::Body::StorageReply(
+                            ::buffa::alloc::boxed::Box::new(
+                                <super::super::super::shared::v1::__buffa::view::StorageReplyView as ::buffa::MessageView>::decode_view_ctx(
+                                    sub,
+                                    __sub_ctx,
+                                )?,
+                            ),
+                        ),
+                    );
+                }
+            }
             _ => {
                 ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
                 let span_len = before_tag.len() - cur.len();
@@ -482,6 +544,24 @@ impl<'a> ::buffa::MessageView<'a> for EnvelopeView<'a> {
                                     ),
                                 )
                             }
+                            super::super::__buffa::view::oneof::envelope::Body::StorageRequest(
+                                v,
+                            ) => {
+                                super::super::__buffa::oneof::envelope::Body::StorageRequest(
+                                    ::buffa::alloc::boxed::Box::new(
+                                        v.to_owned_from_source(__buffa_src)?,
+                                    ),
+                                )
+                            }
+                            super::super::__buffa::view::oneof::envelope::Body::StorageReply(
+                                v,
+                            ) => {
+                                super::super::__buffa::oneof::envelope::Body::StorageReply(
+                                    ::buffa::alloc::boxed::Box::new(
+                                        v.to_owned_from_source(__buffa_src)?,
+                                    ),
+                                )
+                            }
                         },
                     )
                 }
@@ -576,6 +656,24 @@ impl<'a> ::buffa::ViewEncode<'a> for EnvelopeView<'a> {
                             + inner as u64;
                 }
                 super::super::__buffa::view::oneof::envelope::Body::RebootAck(x) => {
+                    let __slot = __cache.reserve();
+                    let inner = x.compute_size(__cache);
+                    __cache.set(__slot, inner);
+                    size
+                        += 2u64 + ::buffa::encoding::varint_len(inner as u64) as u64
+                            + inner as u64;
+                }
+                super::super::__buffa::view::oneof::envelope::Body::StorageRequest(
+                    x,
+                ) => {
+                    let __slot = __cache.reserve();
+                    let inner = x.compute_size(__cache);
+                    __cache.set(__slot, inner);
+                    size
+                        += 2u64 + ::buffa::encoding::varint_len(inner as u64) as u64
+                            + inner as u64;
+                }
+                super::super::__buffa::view::oneof::envelope::Body::StorageReply(x) => {
                     let __slot = __cache.reserve();
                     let inner = x.compute_size(__cache);
                     __cache.set(__slot, inner);
@@ -681,6 +779,24 @@ impl<'a> ::buffa::ViewEncode<'a> for EnvelopeView<'a> {
                     );
                     x.write_to(__cache, buf);
                 }
+                super::super::__buffa::view::oneof::envelope::Body::StorageRequest(
+                    x,
+                ) => {
+                    ::buffa::types::put_len_delimited_header(
+                        20u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    x.write_to(__cache, buf);
+                }
+                super::super::__buffa::view::oneof::envelope::Body::StorageReply(x) => {
+                    ::buffa::types::put_len_delimited_header(
+                        21u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    x.write_to(__cache, buf);
+                }
             }
         }
         self.__buffa_unknown_fields.write_to(buf);
@@ -742,6 +858,14 @@ impl<'__a> ::serde::Serialize for EnvelopeView<'__a> {
                 }
                 super::super::__buffa::view::oneof::envelope::Body::RebootAck(v) => {
                     __map.serialize_entry("rebootAck", v)?;
+                }
+                super::super::__buffa::view::oneof::envelope::Body::StorageRequest(
+                    v,
+                ) => {
+                    __map.serialize_entry("storageRequest", v)?;
+                }
+                super::super::__buffa::view::oneof::envelope::Body::StorageReply(v) => {
+                    __map.serialize_entry("storageReply", v)?;
                 }
             }
         }

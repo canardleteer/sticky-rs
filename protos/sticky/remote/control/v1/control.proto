@@ -24,6 +24,8 @@ enum SessionPhase {
 // Unary RPCs that own GATT. BLE is central-out; a bidi stream does
 // not fit. Each method has its own request and response types.
 service RemoteDebugControlService {
+  // Submit one storage operation on the paired device.
+  rpc Storage(StorageRequest) returns (StorageResponse);
   // Start pair on `target`. Returns pairing immediately. Poll Status.
   rpc Connect(ConnectRequest) returns (ConnectResponse);
   // Session meter for one advertise name.
@@ -272,6 +274,8 @@ message SnapshotClearResponse {
 
 // Arguments for Reboot. Optional pin / port / remember apply to reconnect.
 message RebootRequest {
+  // Recover a stuck device without waiting for storage.
+  bool force = 6;
   // BLE advertise name. Never a MAC.
   string target = 1;
   // Do not Connect again after the MCU reset.
@@ -321,4 +325,18 @@ message ShutdownRequest {}
 message ShutdownResponse {
   // Human line (no MAC).
   string message = 1;
+}
+
+// Broker arguments for the device storage operation.
+message StorageRequest {
+  // BLE advertise name; excludes radio addresses.
+  string target = 1;
+  // Device operation with a nonzero correlation id.
+  sticky.remote.shared.v1.StorageRequest request = 2;
+}
+
+// Device acknowledgement received through the held GATT session.
+message StorageResponse {
+  // Storage status and operation result.
+  sticky.remote.shared.v1.StorageReply reply = 1;
 }

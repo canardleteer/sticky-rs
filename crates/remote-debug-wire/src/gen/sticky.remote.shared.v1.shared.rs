@@ -434,6 +434,196 @@ impl ::buffa::Enumeration for TargetKind {
         ]
     }
 }
+/// On-device storage operations. Fault operations require storage-test firmware.
+#[allow(non_camel_case_types)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[repr(i32)]
+pub enum StorageOperation {
+    /// Reject an unspecified operation.
+    STORAGE_OPERATION_UNSPECIFIED = 0i32,
+    /// Query cached capacity, mount state, and job completion.
+    STORAGE_OPERATION_STATUS = 1i32,
+    /// Explicitly replace partition metadata and format the selected layout.
+    STORAGE_OPERATION_PROVISION = 2i32,
+    /// Verify stored test records and revalidate a ready package.
+    STORAGE_OPERATION_VERIFY = 3i32,
+    /// Start bounded write/readback rounds, then poll STATUS for completion.
+    STORAGE_OPERATION_STRESS = 4i32,
+    /// Synchronize, power-cycle the card rail, and remount.
+    STORAGE_OPERATION_POWER_CYCLE = 5i32,
+    /// Begin a new pending package without modifying the current ready package.
+    STORAGE_OPERATION_STAGE_BEGIN = 6i32,
+    /// Write the next ordered, acknowledged package chunk.
+    STORAGE_OPERATION_STAGE_CHUNK = 7i32,
+    /// Validate the pending package and atomically publish readiness.
+    STORAGE_OPERATION_STAGE_FINISH = 8i32,
+    /// Drain jobs and synchronize before normal reboot or sleep.
+    STORAGE_OPERATION_QUIESCE = 9i32,
+    /// Test image only: reset during a scheduled stress write.
+    STORAGE_OPERATION_FAULT_RESET = 10i32,
+    /// Test image only: cut the card rail during a scheduled stress write.
+    STORAGE_OPERATION_FAULT_SD = 11i32,
+    /// Test image only: release the battery latch during a stress write.
+    STORAGE_OPERATION_FAULT_POWER = 12i32,
+    /// Test image only: synchronize and sleep with a timer wake.
+    STORAGE_OPERATION_TIMED_SLEEP = 13i32,
+}
+impl StorageOperation {
+    ///Idiomatic alias for [`Self::STORAGE_OPERATION_UNSPECIFIED`]; `Debug` prints the variant name.
+    #[allow(non_upper_case_globals)]
+    pub const Unspecified: Self = Self::STORAGE_OPERATION_UNSPECIFIED;
+    ///Idiomatic alias for [`Self::STORAGE_OPERATION_STATUS`]; `Debug` prints the variant name.
+    #[allow(non_upper_case_globals)]
+    pub const Status: Self = Self::STORAGE_OPERATION_STATUS;
+    ///Idiomatic alias for [`Self::STORAGE_OPERATION_PROVISION`]; `Debug` prints the variant name.
+    #[allow(non_upper_case_globals)]
+    pub const Provision: Self = Self::STORAGE_OPERATION_PROVISION;
+    ///Idiomatic alias for [`Self::STORAGE_OPERATION_VERIFY`]; `Debug` prints the variant name.
+    #[allow(non_upper_case_globals)]
+    pub const Verify: Self = Self::STORAGE_OPERATION_VERIFY;
+    ///Idiomatic alias for [`Self::STORAGE_OPERATION_STRESS`]; `Debug` prints the variant name.
+    #[allow(non_upper_case_globals)]
+    pub const Stress: Self = Self::STORAGE_OPERATION_STRESS;
+    ///Idiomatic alias for [`Self::STORAGE_OPERATION_POWER_CYCLE`]; `Debug` prints the variant name.
+    #[allow(non_upper_case_globals)]
+    pub const PowerCycle: Self = Self::STORAGE_OPERATION_POWER_CYCLE;
+    ///Idiomatic alias for [`Self::STORAGE_OPERATION_STAGE_BEGIN`]; `Debug` prints the variant name.
+    #[allow(non_upper_case_globals)]
+    pub const StageBegin: Self = Self::STORAGE_OPERATION_STAGE_BEGIN;
+    ///Idiomatic alias for [`Self::STORAGE_OPERATION_STAGE_CHUNK`]; `Debug` prints the variant name.
+    #[allow(non_upper_case_globals)]
+    pub const StageChunk: Self = Self::STORAGE_OPERATION_STAGE_CHUNK;
+    ///Idiomatic alias for [`Self::STORAGE_OPERATION_STAGE_FINISH`]; `Debug` prints the variant name.
+    #[allow(non_upper_case_globals)]
+    pub const StageFinish: Self = Self::STORAGE_OPERATION_STAGE_FINISH;
+    ///Idiomatic alias for [`Self::STORAGE_OPERATION_QUIESCE`]; `Debug` prints the variant name.
+    #[allow(non_upper_case_globals)]
+    pub const Quiesce: Self = Self::STORAGE_OPERATION_QUIESCE;
+    ///Idiomatic alias for [`Self::STORAGE_OPERATION_FAULT_RESET`]; `Debug` prints the variant name.
+    #[allow(non_upper_case_globals)]
+    pub const FaultReset: Self = Self::STORAGE_OPERATION_FAULT_RESET;
+    ///Idiomatic alias for [`Self::STORAGE_OPERATION_FAULT_SD`]; `Debug` prints the variant name.
+    #[allow(non_upper_case_globals)]
+    pub const FaultSd: Self = Self::STORAGE_OPERATION_FAULT_SD;
+    ///Idiomatic alias for [`Self::STORAGE_OPERATION_FAULT_POWER`]; `Debug` prints the variant name.
+    #[allow(non_upper_case_globals)]
+    pub const FaultPower: Self = Self::STORAGE_OPERATION_FAULT_POWER;
+    ///Idiomatic alias for [`Self::STORAGE_OPERATION_TIMED_SLEEP`]; `Debug` prints the variant name.
+    #[allow(non_upper_case_globals)]
+    pub const TimedSleep: Self = Self::STORAGE_OPERATION_TIMED_SLEEP;
+}
+impl ::core::default::Default for StorageOperation {
+    fn default() -> Self {
+        Self::STORAGE_OPERATION_UNSPECIFIED
+    }
+}
+impl ::buffa::Enumeration for StorageOperation {
+    fn from_i32(value: i32) -> ::core::option::Option<Self> {
+        match value {
+            0i32 => ::core::option::Option::Some(Self::STORAGE_OPERATION_UNSPECIFIED),
+            1i32 => ::core::option::Option::Some(Self::STORAGE_OPERATION_STATUS),
+            2i32 => ::core::option::Option::Some(Self::STORAGE_OPERATION_PROVISION),
+            3i32 => ::core::option::Option::Some(Self::STORAGE_OPERATION_VERIFY),
+            4i32 => ::core::option::Option::Some(Self::STORAGE_OPERATION_STRESS),
+            5i32 => ::core::option::Option::Some(Self::STORAGE_OPERATION_POWER_CYCLE),
+            6i32 => ::core::option::Option::Some(Self::STORAGE_OPERATION_STAGE_BEGIN),
+            7i32 => ::core::option::Option::Some(Self::STORAGE_OPERATION_STAGE_CHUNK),
+            8i32 => ::core::option::Option::Some(Self::STORAGE_OPERATION_STAGE_FINISH),
+            9i32 => ::core::option::Option::Some(Self::STORAGE_OPERATION_QUIESCE),
+            10i32 => ::core::option::Option::Some(Self::STORAGE_OPERATION_FAULT_RESET),
+            11i32 => ::core::option::Option::Some(Self::STORAGE_OPERATION_FAULT_SD),
+            12i32 => ::core::option::Option::Some(Self::STORAGE_OPERATION_FAULT_POWER),
+            13i32 => ::core::option::Option::Some(Self::STORAGE_OPERATION_TIMED_SLEEP),
+            _ => ::core::option::Option::None,
+        }
+    }
+    fn to_i32(&self) -> i32 {
+        *self as i32
+    }
+    fn proto_name(&self) -> &'static str {
+        match self {
+            Self::STORAGE_OPERATION_UNSPECIFIED => "STORAGE_OPERATION_UNSPECIFIED",
+            Self::STORAGE_OPERATION_STATUS => "STORAGE_OPERATION_STATUS",
+            Self::STORAGE_OPERATION_PROVISION => "STORAGE_OPERATION_PROVISION",
+            Self::STORAGE_OPERATION_VERIFY => "STORAGE_OPERATION_VERIFY",
+            Self::STORAGE_OPERATION_STRESS => "STORAGE_OPERATION_STRESS",
+            Self::STORAGE_OPERATION_POWER_CYCLE => "STORAGE_OPERATION_POWER_CYCLE",
+            Self::STORAGE_OPERATION_STAGE_BEGIN => "STORAGE_OPERATION_STAGE_BEGIN",
+            Self::STORAGE_OPERATION_STAGE_CHUNK => "STORAGE_OPERATION_STAGE_CHUNK",
+            Self::STORAGE_OPERATION_STAGE_FINISH => "STORAGE_OPERATION_STAGE_FINISH",
+            Self::STORAGE_OPERATION_QUIESCE => "STORAGE_OPERATION_QUIESCE",
+            Self::STORAGE_OPERATION_FAULT_RESET => "STORAGE_OPERATION_FAULT_RESET",
+            Self::STORAGE_OPERATION_FAULT_SD => "STORAGE_OPERATION_FAULT_SD",
+            Self::STORAGE_OPERATION_FAULT_POWER => "STORAGE_OPERATION_FAULT_POWER",
+            Self::STORAGE_OPERATION_TIMED_SLEEP => "STORAGE_OPERATION_TIMED_SLEEP",
+        }
+    }
+    fn from_proto_name(name: &str) -> ::core::option::Option<Self> {
+        match name {
+            "STORAGE_OPERATION_UNSPECIFIED" => {
+                ::core::option::Option::Some(Self::STORAGE_OPERATION_UNSPECIFIED)
+            }
+            "STORAGE_OPERATION_STATUS" => {
+                ::core::option::Option::Some(Self::STORAGE_OPERATION_STATUS)
+            }
+            "STORAGE_OPERATION_PROVISION" => {
+                ::core::option::Option::Some(Self::STORAGE_OPERATION_PROVISION)
+            }
+            "STORAGE_OPERATION_VERIFY" => {
+                ::core::option::Option::Some(Self::STORAGE_OPERATION_VERIFY)
+            }
+            "STORAGE_OPERATION_STRESS" => {
+                ::core::option::Option::Some(Self::STORAGE_OPERATION_STRESS)
+            }
+            "STORAGE_OPERATION_POWER_CYCLE" => {
+                ::core::option::Option::Some(Self::STORAGE_OPERATION_POWER_CYCLE)
+            }
+            "STORAGE_OPERATION_STAGE_BEGIN" => {
+                ::core::option::Option::Some(Self::STORAGE_OPERATION_STAGE_BEGIN)
+            }
+            "STORAGE_OPERATION_STAGE_CHUNK" => {
+                ::core::option::Option::Some(Self::STORAGE_OPERATION_STAGE_CHUNK)
+            }
+            "STORAGE_OPERATION_STAGE_FINISH" => {
+                ::core::option::Option::Some(Self::STORAGE_OPERATION_STAGE_FINISH)
+            }
+            "STORAGE_OPERATION_QUIESCE" => {
+                ::core::option::Option::Some(Self::STORAGE_OPERATION_QUIESCE)
+            }
+            "STORAGE_OPERATION_FAULT_RESET" => {
+                ::core::option::Option::Some(Self::STORAGE_OPERATION_FAULT_RESET)
+            }
+            "STORAGE_OPERATION_FAULT_SD" => {
+                ::core::option::Option::Some(Self::STORAGE_OPERATION_FAULT_SD)
+            }
+            "STORAGE_OPERATION_FAULT_POWER" => {
+                ::core::option::Option::Some(Self::STORAGE_OPERATION_FAULT_POWER)
+            }
+            "STORAGE_OPERATION_TIMED_SLEEP" => {
+                ::core::option::Option::Some(Self::STORAGE_OPERATION_TIMED_SLEEP)
+            }
+            _ => ::core::option::Option::None,
+        }
+    }
+    fn values() -> &'static [Self] {
+        &[
+            Self::STORAGE_OPERATION_UNSPECIFIED,
+            Self::STORAGE_OPERATION_STATUS,
+            Self::STORAGE_OPERATION_PROVISION,
+            Self::STORAGE_OPERATION_VERIFY,
+            Self::STORAGE_OPERATION_STRESS,
+            Self::STORAGE_OPERATION_POWER_CYCLE,
+            Self::STORAGE_OPERATION_STAGE_BEGIN,
+            Self::STORAGE_OPERATION_STAGE_CHUNK,
+            Self::STORAGE_OPERATION_STAGE_FINISH,
+            Self::STORAGE_OPERATION_QUIESCE,
+            Self::STORAGE_OPERATION_FAULT_RESET,
+            Self::STORAGE_OPERATION_FAULT_SD,
+            Self::STORAGE_OPERATION_FAULT_POWER,
+            Self::STORAGE_OPERATION_TIMED_SLEEP,
+        ]
+    }
+}
 /// Pre-rotation framebuffer tap (native 800x480 on the Sticky),
 /// or page pixels when space=PAGE. Not UART p0= / glass, not raw GT911.
 #[derive(Clone, PartialEq, Default)]
@@ -1669,12 +1859,16 @@ impl ::buffa::ExtensionSet for LogLine {
 /// Host to device: reset the embedded MCU (not the desk host).
 #[derive(Clone, PartialEq, Default)]
 pub struct Reboot {
+    /// Skip storage draining when recovering a stuck device.
+    ///
+    /// Field 1: `force`
+    pub force: bool,
     #[doc(hidden)]
     pub __buffa_unknown_fields: ::buffa::UnknownFields,
 }
 impl ::core::fmt::Debug for Reboot {
     fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-        f.debug_struct("Reboot").finish()
+        f.debug_struct("Reboot").field("force", &self.force).finish()
     }
 }
 impl Reboot {
@@ -1704,6 +1898,9 @@ impl ::buffa::Message for Reboot {
         #[allow(unused_imports)]
         use ::buffa::Enumeration as _;
         let mut size = 0u64;
+        if self.force {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
         size += self.__buffa_unknown_fields.encoded_len() as u64;
         ::buffa::saturate_size(size)
     }
@@ -1714,6 +1911,9 @@ impl ::buffa::Message for Reboot {
     ) {
         #[allow(unused_imports)]
         use ::buffa::Enumeration as _;
+        if self.force {
+            ::buffa::types::put_bool_field(1u32, self.force, buf);
+        }
         self.__buffa_unknown_fields.write_to(buf);
     }
     fn merge_field(
@@ -1727,6 +1927,13 @@ impl ::buffa::Message for Reboot {
         #[allow(unused_imports)]
         use ::buffa::Enumeration as _;
         match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.force = ::buffa::types::decode_bool(buf)?;
+            }
             _ => {
                 self.__buffa_unknown_fields
                     .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
@@ -1735,6 +1942,7 @@ impl ::buffa::Message for Reboot {
         ::core::result::Result::Ok(())
     }
     fn clear(&mut self) {
+        self.force = false;
         self.__buffa_unknown_fields.clear();
     }
 }
@@ -1750,12 +1958,18 @@ impl ::buffa::ExtensionSet for Reboot {
 /// Device to host: ACK before the MCU software-reset so ATT can flush.
 #[derive(Clone, PartialEq, Default)]
 pub struct RebootAck {
+    /// Storage drain failed; the MCU stayed awake for forced recovery.
+    ///
+    /// Field 1: `storage_failed`
+    pub storage_failed: bool,
     #[doc(hidden)]
     pub __buffa_unknown_fields: ::buffa::UnknownFields,
 }
 impl ::core::fmt::Debug for RebootAck {
     fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-        f.debug_struct("RebootAck").finish()
+        f.debug_struct("RebootAck")
+            .field("storage_failed", &self.storage_failed)
+            .finish()
     }
 }
 impl RebootAck {
@@ -1785,6 +1999,9 @@ impl ::buffa::Message for RebootAck {
         #[allow(unused_imports)]
         use ::buffa::Enumeration as _;
         let mut size = 0u64;
+        if self.storage_failed {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
         size += self.__buffa_unknown_fields.encoded_len() as u64;
         ::buffa::saturate_size(size)
     }
@@ -1795,6 +2012,9 @@ impl ::buffa::Message for RebootAck {
     ) {
         #[allow(unused_imports)]
         use ::buffa::Enumeration as _;
+        if self.storage_failed {
+            ::buffa::types::put_bool_field(1u32, self.storage_failed, buf);
+        }
         self.__buffa_unknown_fields.write_to(buf);
     }
     fn merge_field(
@@ -1808,6 +2028,13 @@ impl ::buffa::Message for RebootAck {
         #[allow(unused_imports)]
         use ::buffa::Enumeration as _;
         match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.storage_failed = ::buffa::types::decode_bool(buf)?;
+            }
             _ => {
                 self.__buffa_unknown_fields
                     .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
@@ -1816,11 +2043,556 @@ impl ::buffa::Message for RebootAck {
         ::core::result::Result::Ok(())
     }
     fn clear(&mut self) {
+        self.storage_failed = false;
         self.__buffa_unknown_fields.clear();
     }
 }
 impl ::buffa::ExtensionSet for RebootAck {
     const PROTO_FQN: &'static str = "sticky.remote.shared.v1.RebootAck";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+/// One storage request. Package bytes include a uint32 JSON length prefix.
+#[derive(Clone, PartialEq, Default)]
+pub struct StorageRequest {
+    /// Nonzero correlation id for ordered replies.
+    ///
+    /// Field 1: `id`
+    pub id: u64,
+    /// Requested operation.
+    ///
+    /// Field 2: `operation`
+    pub operation: ::buffa::EnumValue<StorageOperation>,
+    /// Exact file offset for a package chunk/finish, or job id to query in STATUS.
+    ///
+    /// Field 3: `offset`
+    pub offset: u64,
+    /// At most 512 bytes per acknowledged chunk.
+    ///
+    /// Field 4: `data`
+    pub data: ::buffa::alloc::vec::Vec<u8>,
+    /// Bounded stress rounds, or fault delay in milliseconds.
+    ///
+    /// Field 5: `count`
+    pub count: u32,
+    /// Explicit confirmation for provisioning or destructive test controls.
+    ///
+    /// Field 6: `confirmed`
+    pub confirmed: bool,
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for StorageRequest {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("StorageRequest")
+            .field("id", &self.id)
+            .field("operation", &self.operation)
+            .field("offset", &self.offset)
+            .field("data", &self.data)
+            .field("count", &self.count)
+            .field("confirmed", &self.confirmed)
+            .finish()
+    }
+}
+impl StorageRequest {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/sticky.remote.shared.v1.StorageRequest";
+}
+::buffa::impl_default_instance!(StorageRequest);
+impl ::buffa::MessageName for StorageRequest {
+    const PACKAGE: &'static str = "sticky.remote.shared.v1";
+    const NAME: &'static str = "StorageRequest";
+    const FULL_NAME: &'static str = "sticky.remote.shared.v1.StorageRequest";
+    const TYPE_URL: &'static str = "type.googleapis.com/sticky.remote.shared.v1.StorageRequest";
+}
+impl ::buffa::Message for StorageRequest {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if self.id != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.id) as u64;
+        }
+        {
+            let val = self.operation.to_i32();
+            if val != 0 {
+                size += 1u64 + ::buffa::types::int32_encoded_len(val) as u64;
+            }
+        }
+        if self.offset != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.offset) as u64;
+        }
+        if !self.data.is_empty() {
+            size += 1u64 + ::buffa::types::bytes_encoded_len(&self.data) as u64;
+        }
+        if self.count != 0u32 {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(self.count) as u64;
+        }
+        if self.confirmed {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        _cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if self.id != 0u64 {
+            ::buffa::types::put_uint64_field(1u32, self.id, buf);
+        }
+        {
+            let val = self.operation.to_i32();
+            if val != 0 {
+                ::buffa::types::put_int32_field(2u32, val, buf);
+            }
+        }
+        if self.offset != 0u64 {
+            ::buffa::types::put_uint64_field(3u32, self.offset, buf);
+        }
+        if !self.data.is_empty() {
+            ::buffa::types::put_shared_bytes_field(4u32, &self.data, buf);
+        }
+        if self.count != 0u32 {
+            ::buffa::types::put_uint32_field(5u32, self.count, buf);
+        }
+        if self.confirmed {
+            ::buffa::types::put_bool_field(6u32, self.confirmed, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.id = ::buffa::types::decode_uint64(buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.operation = ::buffa::EnumValue::from(
+                    ::buffa::types::decode_int32(buf)?,
+                );
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.offset = ::buffa::types::decode_uint64(buf)?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_bytes(&mut self.data, buf)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.count = ::buffa::types::decode_uint32(buf)?;
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.confirmed = ::buffa::types::decode_bool(buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.id = 0u64;
+        self.operation = ::buffa::EnumValue::from(0);
+        self.offset = 0u64;
+        self.data.clear();
+        self.count = 0u32;
+        self.confirmed = false;
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for StorageRequest {
+    const PROTO_FQN: &'static str = "sticky.remote.shared.v1.StorageRequest";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+/// Storage reply. Long jobs acknowledge acceptance and complete through STATUS.
+#[derive(Clone, PartialEq, Default)]
+pub struct StorageReply {
+    /// Request correlation id.
+    ///
+    /// Field 1: `id`
+    pub id: u64,
+    /// Whether the operation succeeded or the background job was accepted.
+    ///
+    /// Field 2: `ok`
+    pub ok: bool,
+    /// Safe diagnostic token; excludes card identity and file contents.
+    ///
+    /// Field 3: `message`
+    pub message: ::buffa::alloc::string::String,
+    /// Card capacity in 512-byte sectors.
+    ///
+    /// Field 4: `sectors`
+    pub sectors: u64,
+    /// Whether the configured layout mounted successfully.
+    ///
+    /// Field 5: `mounted`
+    pub mounted: bool,
+    /// A provision/verify/stress job is running.
+    ///
+    /// Field 6: `busy`
+    pub busy: bool,
+    /// Persisted sequence recovered on mount and advanced after readback.
+    ///
+    /// Field 7: `verified`
+    pub verified: u32,
+    /// A ready application package passed validation.
+    ///
+    /// Field 8: `ready`
+    pub ready: bool,
+    /// Background request whose retained completion receipt is being reported.
+    ///
+    /// Field 9: `job_id`
+    pub job_id: u64,
+    /// All I/O for job_id has finished; acceptance alone leaves this false.
+    ///
+    /// Field 10: `job_complete`
+    pub job_complete: bool,
+    /// Outcome of completed job_id, independent of subsequent jobs.
+    ///
+    /// Field 11: `job_ok`
+    pub job_ok: bool,
+    /// HAL reset reason for this boot; diagnostic evidence, not a voltage reading.
+    ///
+    /// Field 12: `reset_reason`
+    pub reset_reason: ::buffa::alloc::string::String,
+    /// GPIO9 digital external-power indication; absent before the first sample.
+    ///
+    /// Field 13: `external_power`
+    pub external_power: ::core::option::Option<bool>,
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for StorageReply {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("StorageReply")
+            .field("id", &self.id)
+            .field("ok", &self.ok)
+            .field("message", &self.message)
+            .field("sectors", &self.sectors)
+            .field("mounted", &self.mounted)
+            .field("busy", &self.busy)
+            .field("verified", &self.verified)
+            .field("ready", &self.ready)
+            .field("job_id", &self.job_id)
+            .field("job_complete", &self.job_complete)
+            .field("job_ok", &self.job_ok)
+            .field("reset_reason", &self.reset_reason)
+            .field("external_power", &self.external_power)
+            .finish()
+    }
+}
+impl StorageReply {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/sticky.remote.shared.v1.StorageReply";
+}
+impl StorageReply {
+    #[must_use = "with_* setters return `self` by value; assign or chain the result"]
+    #[inline]
+    ///Sets [`Self::external_power`] to `Some(value)`, consuming and returning `self`.
+    pub fn with_external_power(mut self, value: bool) -> Self {
+        self.external_power = Some(value);
+        self
+    }
+}
+::buffa::impl_default_instance!(StorageReply);
+impl ::buffa::MessageName for StorageReply {
+    const PACKAGE: &'static str = "sticky.remote.shared.v1";
+    const NAME: &'static str = "StorageReply";
+    const FULL_NAME: &'static str = "sticky.remote.shared.v1.StorageReply";
+    const TYPE_URL: &'static str = "type.googleapis.com/sticky.remote.shared.v1.StorageReply";
+}
+impl ::buffa::Message for StorageReply {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if self.id != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.id) as u64;
+        }
+        if self.ok {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        if !self.message.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.message) as u64;
+        }
+        if self.sectors != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.sectors) as u64;
+        }
+        if self.mounted {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        if self.busy {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        if self.verified != 0u32 {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(self.verified) as u64;
+        }
+        if self.ready {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        if self.job_id != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.job_id) as u64;
+        }
+        if self.job_complete {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        if self.job_ok {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        if !self.reset_reason.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.reset_reason) as u64;
+        }
+        if self.external_power.is_some() {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        _cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if self.id != 0u64 {
+            ::buffa::types::put_uint64_field(1u32, self.id, buf);
+        }
+        if self.ok {
+            ::buffa::types::put_bool_field(2u32, self.ok, buf);
+        }
+        if !self.message.is_empty() {
+            ::buffa::types::put_string_field(3u32, &self.message, buf);
+        }
+        if self.sectors != 0u64 {
+            ::buffa::types::put_uint64_field(4u32, self.sectors, buf);
+        }
+        if self.mounted {
+            ::buffa::types::put_bool_field(5u32, self.mounted, buf);
+        }
+        if self.busy {
+            ::buffa::types::put_bool_field(6u32, self.busy, buf);
+        }
+        if self.verified != 0u32 {
+            ::buffa::types::put_uint32_field(7u32, self.verified, buf);
+        }
+        if self.ready {
+            ::buffa::types::put_bool_field(8u32, self.ready, buf);
+        }
+        if self.job_id != 0u64 {
+            ::buffa::types::put_uint64_field(9u32, self.job_id, buf);
+        }
+        if self.job_complete {
+            ::buffa::types::put_bool_field(10u32, self.job_complete, buf);
+        }
+        if self.job_ok {
+            ::buffa::types::put_bool_field(11u32, self.job_ok, buf);
+        }
+        if !self.reset_reason.is_empty() {
+            ::buffa::types::put_string_field(12u32, &self.reset_reason, buf);
+        }
+        if let Some(v) = self.external_power {
+            ::buffa::types::put_bool_field(13u32, v, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.id = ::buffa::types::decode_uint64(buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.ok = ::buffa::types::decode_bool(buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.message, buf)?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.sectors = ::buffa::types::decode_uint64(buf)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.mounted = ::buffa::types::decode_bool(buf)?;
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.busy = ::buffa::types::decode_bool(buf)?;
+            }
+            7u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.verified = ::buffa::types::decode_uint32(buf)?;
+            }
+            8u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.ready = ::buffa::types::decode_bool(buf)?;
+            }
+            9u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.job_id = ::buffa::types::decode_uint64(buf)?;
+            }
+            10u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.job_complete = ::buffa::types::decode_bool(buf)?;
+            }
+            11u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.job_ok = ::buffa::types::decode_bool(buf)?;
+            }
+            12u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.reset_reason, buf)?;
+            }
+            13u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.external_power = ::core::option::Option::Some(
+                    ::buffa::types::decode_bool(buf)?,
+                );
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.id = 0u64;
+        self.ok = false;
+        self.message.clear();
+        self.sectors = 0u64;
+        self.mounted = false;
+        self.busy = false;
+        self.verified = 0u32;
+        self.ready = false;
+        self.job_id = 0u64;
+        self.job_complete = false;
+        self.job_ok = false;
+        self.reset_reason.clear();
+        self.external_power = ::core::option::Option::None;
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for StorageReply {
+    const PROTO_FQN: &'static str = "sticky.remote.shared.v1.StorageReply";
     fn unknown_fields(&self) -> &::buffa::UnknownFields {
         &self.__buffa_unknown_fields
     }

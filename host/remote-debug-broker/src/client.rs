@@ -138,6 +138,14 @@ impl ControlClient {
         Ok(block_on(self.inner.snapshot_clear(request))?.into_owned())
     }
 
+    /// Send a storage request through the held device session.
+    pub fn storage(
+        &self,
+        request: crate::control::StorageRequest,
+    ) -> Result<crate::control::StorageResponse, Error> {
+        Ok(block_on(self.inner.storage(request))?.into_owned())
+    }
+
     /// Software-reset the embedded MCU (not this host).
     ///
     /// # Errors

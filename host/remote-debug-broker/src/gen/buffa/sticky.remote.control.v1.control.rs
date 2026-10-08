@@ -4405,6 +4405,15 @@ pub const __SNAPSHOT_CLEAR_RESPONSE_JSON_ANY: ::buffa::type_registry::JsonAnyEnt
 #[derive(::serde::Serialize, ::serde::Deserialize)]
 #[serde(default)]
 pub struct RebootRequest {
+    /// Recover a stuck device without waiting for storage.
+    ///
+    /// Field 6: `force`
+    #[serde(
+        rename = "force",
+        with = "::buffa::json_helpers::proto_bool",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_false"
+    )]
+    pub force: bool,
     /// BLE advertise name. Never a MAC.
     ///
     /// Field 1: `target`
@@ -4454,6 +4463,7 @@ pub struct RebootRequest {
 impl ::core::fmt::Debug for RebootRequest {
     fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
         f.debug_struct("RebootRequest")
+            .field("force", &self.force)
             .field("target", &self.target)
             .field("no_reconnect", &self.no_reconnect)
             .field("pin", &self.pin)
@@ -4523,6 +4533,9 @@ impl ::buffa::Message for RebootRequest {
         if self.remember {
             size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
         }
+        if self.force {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
         size += self.__buffa_unknown_fields.encoded_len() as u64;
         ::buffa::saturate_size(size)
     }
@@ -4547,6 +4560,9 @@ impl ::buffa::Message for RebootRequest {
         }
         if self.remember {
             ::buffa::types::put_bool_field(5u32, self.remember, buf);
+        }
+        if self.force {
+            ::buffa::types::put_bool_field(6u32, self.force, buf);
         }
         self.__buffa_unknown_fields.write_to(buf);
     }
@@ -4601,6 +4617,13 @@ impl ::buffa::Message for RebootRequest {
                 )?;
                 self.remember = ::buffa::types::decode_bool(buf)?;
             }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.force = ::buffa::types::decode_bool(buf)?;
+            }
             _ => {
                 self.__buffa_unknown_fields
                     .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
@@ -4614,6 +4637,7 @@ impl ::buffa::Message for RebootRequest {
         self.pin = ::core::option::Option::None;
         self.port = ::core::option::Option::None;
         self.remember = false;
+        self.force = false;
         self.__buffa_unknown_fields.clear();
     }
 }
@@ -5437,5 +5461,317 @@ pub const __SHUTDOWN_RESPONSE_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = :
     type_url: "type.googleapis.com/sticky.remote.control.v1.ShutdownResponse",
     to_json: ::buffa::type_registry::any_to_json::<ShutdownResponse>,
     from_json: ::buffa::type_registry::any_from_json::<ShutdownResponse>,
+    is_wkt: false,
+};
+/// Broker arguments for the device storage operation.
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct StorageRequest {
+    /// BLE advertise name; excludes radio addresses.
+    ///
+    /// Field 1: `target`
+    #[serde(
+        rename = "target",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub target: ::buffa::alloc::string::String,
+    /// Device operation with a nonzero correlation id.
+    ///
+    /// Field 2: `request`
+    #[serde(
+        rename = "request",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub request: ::buffa::MessageField<
+        super::super::shared::v1::StorageRequest,
+        ::buffa::Inline<super::super::shared::v1::StorageRequest>,
+    >,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for StorageRequest {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("StorageRequest")
+            .field("target", &self.target)
+            .field("request", &self.request)
+            .finish()
+    }
+}
+impl StorageRequest {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/sticky.remote.control.v1.StorageRequest";
+}
+::buffa::impl_default_instance!(StorageRequest);
+impl ::buffa::MessageName for StorageRequest {
+    const PACKAGE: &'static str = "sticky.remote.control.v1";
+    const NAME: &'static str = "StorageRequest";
+    const FULL_NAME: &'static str = "sticky.remote.control.v1.StorageRequest";
+    const TYPE_URL: &'static str = "type.googleapis.com/sticky.remote.control.v1.StorageRequest";
+}
+impl ::buffa::Message for StorageRequest {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.target.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.target) as u64;
+        }
+        if self.request.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.request.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.target.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.target, buf);
+        }
+        if self.request.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                2u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.request.write_to(__cache, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.target, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.request.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.target.clear();
+        self.request = ::buffa::MessageField::none();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for StorageRequest {
+    const PROTO_FQN: &'static str = "sticky.remote.control.v1.StorageRequest";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for StorageRequest {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __STORAGE_REQUEST_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/sticky.remote.control.v1.StorageRequest",
+    to_json: ::buffa::type_registry::any_to_json::<StorageRequest>,
+    from_json: ::buffa::type_registry::any_from_json::<StorageRequest>,
+    is_wkt: false,
+};
+/// Device acknowledgement received through the held GATT session.
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct StorageResponse {
+    /// Storage status and operation result.
+    ///
+    /// Field 1: `reply`
+    #[serde(
+        rename = "reply",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub reply: ::buffa::MessageField<
+        super::super::shared::v1::StorageReply,
+        ::buffa::Inline<super::super::shared::v1::StorageReply>,
+    >,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for StorageResponse {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("StorageResponse").field("reply", &self.reply).finish()
+    }
+}
+impl StorageResponse {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/sticky.remote.control.v1.StorageResponse";
+}
+::buffa::impl_default_instance!(StorageResponse);
+impl ::buffa::MessageName for StorageResponse {
+    const PACKAGE: &'static str = "sticky.remote.control.v1";
+    const NAME: &'static str = "StorageResponse";
+    const FULL_NAME: &'static str = "sticky.remote.control.v1.StorageResponse";
+    const TYPE_URL: &'static str = "type.googleapis.com/sticky.remote.control.v1.StorageResponse";
+}
+impl ::buffa::Message for StorageResponse {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if self.reply.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.reply.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if self.reply.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                1u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.reply.write_to(__cache, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.reply.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.reply = ::buffa::MessageField::none();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for StorageResponse {
+    const PROTO_FQN: &'static str = "sticky.remote.control.v1.StorageResponse";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for StorageResponse {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __STORAGE_RESPONSE_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/sticky.remote.control.v1.StorageResponse",
+    to_json: ::buffa::type_registry::any_to_json::<StorageResponse>,
+    from_json: ::buffa::type_registry::any_from_json::<StorageResponse>,
     is_wkt: false,
 };

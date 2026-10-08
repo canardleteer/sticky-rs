@@ -18,10 +18,10 @@ pub struct BoardInfo {
     pub identity: LiveIdentity,
     /// Raw `Flash size:` field.
     pub flash_size: String,
-    /// `Secure Boot:` reported enabled.
-    pub secure_boot: bool,
-    /// `Flash Encryption:` reported enabled.
-    pub flash_encryption: bool,
+    /// Explicit `Secure Boot:` report; missing or unfamiliar values are unknown.
+    pub secure_boot: Option<bool>,
+    /// Explicit `Flash Encryption:` report; unknown is never permission to flash.
+    pub flash_encryption: Option<bool>,
 }
 
 /// QinHeng udev by-id marker. Confirmed form:
@@ -126,8 +126,10 @@ pub fn validate_factory_serial(serial: &str) -> Result<(), Error> {
 pub fn parse_board_info(text: &str) -> Result<BoardInfo, Error> {
     let mut mac = None;
     let mut flash_size = None;
-    let mut secure_boot = false;
-    let mut flash_encryption = false;
+    let mut secure_boot = None;
+    let mut flash_encryption = None;
+    let mut secure_boot_seen = false;
+    let mut flash_encryption_seen = false;
 
     for line in text.lines() {
         let line = line.trim();
@@ -142,11 +144,22 @@ pub fn parse_board_info(text: &str) -> Result<BoardInfo, Error> {
         if let Some(rest) = line.strip_prefix("Flash size:") {
             flash_size = Some(rest.trim().to_string());
         }
-        if line.to_ascii_lowercase().contains("secure boot:") {
-            secure_boot = line.to_ascii_lowercase().contains("enabled");
+        let lower = line.to_ascii_lowercase();
+        if let Some(value) = lower.strip_prefix("secure boot:") {
+            secure_boot = if secure_boot_seen {
+                None
+            } else {
+                security_flag(value)
+            };
+            secure_boot_seen = true;
         }
-        if line.to_ascii_lowercase().contains("flash encryption:") {
-            flash_encryption = line.to_ascii_lowercase().contains("enabled");
+        if let Some(value) = lower.strip_prefix("flash encryption:") {
+            flash_encryption = if flash_encryption_seen {
+                None
+            } else {
+                security_flag(value)
+            };
+            flash_encryption_seen = true;
         }
     }
 
@@ -165,6 +178,15 @@ pub fn parse_board_info(text: &str) -> Result<BoardInfo, Error> {
         secure_boot,
         flash_encryption,
     })
+}
+
+/// Only exact reports establish security state. Duplicate fields remain unknown.
+fn security_flag(value: &str) -> Option<bool> {
+    match value.trim() {
+        "disabled" => Some(false),
+        "enabled" => Some(true),
+        _ => None,
+    }
 }
 
 fn normalize_mac(raw: &str) -> Result<String, Error> {
@@ -264,8 +286,25 @@ mod tests {
         );
         let info = parse_board_info(&text).unwrap();
         assert_eq!(info.identity.mac, mac);
-        assert!(!info.secure_boot);
-        assert!(!info.flash_encryption);
+        assert_eq!(info.secure_boot, Some(false));
+        assert_eq!(info.flash_encryption, Some(false));
+    }
+
+    #[test]
+    fn missing_unknown_and_duplicate_security_reports_stay_unknown() {
+        let base = format!("Flash size: 32MB\nMAC address: {}\n", test_mac());
+        for fields in ["", "Secure Boot: Unknown\nFlash Encryption: unsupported\n",
+            "Secure Boot: not enabled\nFlash Encryption: disabled (unverified)\n",
+            "Secure Boot: Disabled\nSecure Boot: Enabled\nSecure Boot: Disabled\nFlash Encryption: Disabled\nFlash Encryption: Disabled\n"] {
+            let info = parse_board_info(&(base.clone() + fields)).unwrap();
+            assert_eq!(info.secure_boot, None);
+            assert_eq!(info.flash_encryption, None);
+        }
+        let enabled =
+            parse_board_info(&(base + "Secure Boot: Enabled\nFlash Encryption: Enabled\n"))
+                .unwrap();
+        assert_eq!(enabled.secure_boot, Some(true));
+        assert_eq!(enabled.flash_encryption, Some(true));
     }
 
     #[test]

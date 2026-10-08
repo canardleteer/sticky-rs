@@ -16,6 +16,7 @@ pub mod dump;
 pub mod error;
 #[path = "flash_app.rs"]
 pub mod flash_app_impl;
+pub use flash_app_impl::{BackupPolicy, FlashAppOptions};
 pub mod git;
 pub mod identity;
 #[path = "learn_uart/mod.rs"]
@@ -148,6 +149,20 @@ pub fn flash_app(
         allow_unknown_layout,
         capture,
     )
+}
+
+/// Application-only write with an explicit backup prerequisite.
+///
+/// Takes the same exclusive UART session as the snapshot-bound entry point.
+pub fn flash_app_with_options(
+    layout: &Layout,
+    port: Option<String>,
+    image: &Path,
+    options: &FlashAppOptions,
+) -> Result<(), Error> {
+    let port = detect::resolve_sticky_port(port)?;
+    let _uart = uart_lock::try_acquire(&port, "flash-app")?;
+    flash_app_impl::flash_app_with_options(&RealDevice, layout, &port, image, options)
 }
 
 /// UART learn session. Takes the session lock for the whole call, including

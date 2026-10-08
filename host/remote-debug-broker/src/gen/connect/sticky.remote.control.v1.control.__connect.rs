@@ -1,3 +1,13 @@
+///Shorthand for `OwnedView<StorageRequestView<'static>>`.
+pub type OwnedStorageRequestView = ::buffa::view::OwnedView<
+    crate::proto::sticky::remote::control::v1::__buffa::view::StorageRequestView<'static>,
+>;
+///Shorthand for `OwnedView<StorageResponseView<'static>>`.
+pub type OwnedStorageResponseView = ::buffa::view::OwnedView<
+    crate::proto::sticky::remote::control::v1::__buffa::view::StorageResponseView<
+        'static,
+    >,
+>;
 ///Shorthand for `OwnedView<ConnectRequestView<'static>>`.
 pub type OwnedConnectRequestView = ::buffa::view::OwnedView<
     crate::proto::sticky::remote::control::v1::__buffa::view::ConnectRequestView<'static>,
@@ -130,6 +140,42 @@ pub type OwnedShutdownResponseView = ::buffa::view::OwnedView<
         'static,
     >,
 >;
+impl ::connectrpc::Encodable<crate::proto::sticky::remote::control::v1::StorageResponse>
+for crate::proto::sticky::remote::control::v1::__buffa::view::StorageResponseView<'_> {
+    fn encode(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::buffa::bytes::Bytes, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body(self, codec)
+    }
+}
+impl ::connectrpc::Encodable<crate::proto::sticky::remote::control::v1::StorageResponse>
+for ::buffa::view::OwnedView<
+    crate::proto::sticky::remote::control::v1::__buffa::view::StorageResponseView<
+        'static,
+    >,
+> {
+    fn encode(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::buffa::bytes::Bytes, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body(self.reborrow(), codec)
+    }
+    /// An `OwnedView` still holds the buffer it was decoded from, so
+    /// its large fields can be handed to the response body by
+    /// reference count instead of copied. The bare view impl above
+    /// cannot do this: it has borrows but no buffer to name.
+    fn encode_segments(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::connectrpc::EncodedBody, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body_segments(
+            self.reborrow(),
+            self.bytes(),
+            codec,
+        )
+    }
+}
 impl ::connectrpc::Encodable<crate::proto::sticky::remote::control::v1::ConnectResponse>
 for crate::proto::sticky::remote::control::v1::__buffa::view::ConnectResponseView<'_> {
     fn encode(
@@ -602,6 +648,12 @@ for ::buffa::view::OwnedView<
 }
 /// Full service name for this service.
 pub const REMOTE_DEBUG_CONTROL_SERVICE_SERVICE_NAME: &str = "sticky.remote.control.v1.RemoteDebugControlService";
+/// Static [`Spec`](::connectrpc::Spec) for the `Storage` RPC, as seen by the server; the generated client passes it with [`origin`](::connectrpc::Spec::origin) `Client` (compare across sides with [`Spec::same_method`](::connectrpc::Spec::same_method)).
+pub const REMOTE_DEBUG_CONTROL_SERVICE_STORAGE_SPEC: ::connectrpc::Spec = ::connectrpc::Spec::server(
+        "/sticky.remote.control.v1.RemoteDebugControlService/Storage",
+        ::connectrpc::StreamType::Unary,
+    )
+    .with_idempotency_level(::connectrpc::IdempotencyLevel::Unknown);
 /// Static [`Spec`](::connectrpc::Spec) for the `Connect` RPC, as seen by the server; the generated client passes it with [`origin`](::connectrpc::Spec::origin) `Client` (compare across sides with [`Spec::same_method`](::connectrpc::Spec::same_method)).
 pub const REMOTE_DEBUG_CONTROL_SERVICE_CONNECT_SPEC: ::connectrpc::Spec = ::connectrpc::Spec::server(
         "/sticky.remote.control.v1.RemoteDebugControlService/Connect",
@@ -726,6 +778,29 @@ pub const REMOTE_DEBUG_CONTROL_SERVICE_SHUTDOWN_SPEC: ::connectrpc::Spec = ::con
 /// example` doc.
 #[allow(clippy::type_complexity)]
 pub trait RemoteDebugControlService: Send + Sync + 'static {
+    /// Submit one storage operation on the paired device.
+    ///
+    /// `'a` lets the response body borrow from `&self` (e.g. server-resident state).
+    ///
+    /// `request` is borrowed from the request body and is valid for the
+    /// duration of the call; message fields are read directly on it
+    /// (zero-copy). The response cannot borrow from `request` — use
+    /// `.to_owned_message()` (or copy the specific fields) for anything
+    /// returned, stored, or moved into `tokio::spawn`.
+    fn storage<'a>(
+        &'a self,
+        ctx: ::connectrpc::RequestContext,
+        request: ::connectrpc::ServiceRequest<
+            '_,
+            crate::proto::sticky::remote::control::v1::StorageRequest,
+        >,
+    ) -> impl ::std::future::Future<
+        Output = ::connectrpc::ServiceResult<
+            impl ::connectrpc::Encodable<
+                crate::proto::sticky::remote::control::v1::StorageResponse,
+            > + Send + use<'a, Self>,
+        >,
+    > + Send;
     /// Start pair on `target`. Returns pairing immediately. Poll Status.
     ///
     /// `'a` lets the response body borrow from `&self` (e.g. server-resident state).
@@ -1034,6 +1109,35 @@ impl<S: RemoteDebugControlService> RemoteDebugControlServiceExt for S {
         router: ::connectrpc::Router,
     ) -> ::connectrpc::Router {
         router
+            .route_view(
+                REMOTE_DEBUG_CONTROL_SERVICE_SERVICE_NAME,
+                "Storage",
+                {
+                    let svc = ::std::sync::Arc::clone(&self);
+                    ::connectrpc::view_handler_fn(move |
+                        ctx,
+                        req: ::buffa::view::OwnedView<
+                            crate::proto::sticky::remote::control::v1::__buffa::view::StorageRequestView<
+                                'static,
+                            >,
+                        >,
+                        format|
+                    {
+                        let svc = ::std::sync::Arc::clone(&svc);
+                        async move {
+                            let sreq = ::connectrpc::ServiceRequest::<
+                                crate::proto::sticky::remote::control::v1::StorageRequest,
+                            >::from_parts(req.reborrow(), req.bytes());
+                            svc.storage(ctx, sreq)
+                                .await?
+                                .encode::<
+                                    crate::proto::sticky::remote::control::v1::StorageResponse,
+                                >(format)
+                        }
+                    })
+                },
+            )
+            .with_spec(REMOTE_DEBUG_CONTROL_SERVICE_STORAGE_SPEC)
             .route_view(
                 REMOTE_DEBUG_CONTROL_SERVICE_SERVICE_NAME,
                 "Connect",
@@ -1440,6 +1544,12 @@ for RemoteDebugControlServiceServer<T> {
         let method = path
             .strip_prefix("sticky.remote.control.v1.RemoteDebugControlService/")?;
         match method {
+            "Storage" => {
+                Some(
+                    ::connectrpc::dispatcher::codegen::MethodDescriptor::unary(false)
+                        .with_spec(REMOTE_DEBUG_CONTROL_SERVICE_STORAGE_SPEC),
+                )
+            }
             "Connect" => {
                 Some(
                     ::connectrpc::dispatcher::codegen::MethodDescriptor::unary(false)
@@ -1528,6 +1638,28 @@ for RemoteDebugControlServiceServer<T> {
         };
         let _ = (&ctx, &request, &format);
         match method {
+            "Storage" => {
+                let svc = ::std::sync::Arc::clone(&self.inner);
+                Box::pin(async move {
+                    let body = ::connectrpc::dispatcher::codegen::request_proto_bytes::<
+                        crate::proto::sticky::remote::control::v1::StorageRequest,
+                    >(request.encoded()?, format)?;
+                    let req: crate::proto::sticky::remote::control::v1::__buffa::view::StorageRequestView<
+                        '_,
+                    > = ::connectrpc::dispatcher::codegen::decode_borrowed_request_view(
+                        &body,
+                        ctx.decode_options(),
+                    )?;
+                    let req = ::connectrpc::ServiceRequest::<
+                        crate::proto::sticky::remote::control::v1::StorageRequest,
+                    >::from_parts(&req, &body);
+                    svc.storage(ctx, req)
+                        .await?
+                        .encode::<
+                            crate::proto::sticky::remote::control::v1::StorageResponse,
+                        >(format)
+                })
+            }
             "Connect" => {
                 let svc = ::std::sync::Arc::clone(&self.inner);
                 Box::pin(async move {
@@ -1862,7 +1994,7 @@ for RemoteDebugControlServiceServer<T> {
 /// let config = ClientConfig::new(uri).with_protocol(Protocol::Grpc);
 ///
 /// let client = RemoteDebugControlServiceClient::new(conn, config);
-/// let response = client.connect(request).await?;
+/// let response = client.storage(request).await?;
 /// ```
 ///
 /// # Example (Connect / HTTP/1.1 or ALPN)
@@ -1874,7 +2006,7 @@ for RemoteDebugControlServiceServer<T> {
 /// let config = ClientConfig::new("http://localhost:8080".parse()?);
 ///
 /// let client = RemoteDebugControlServiceClient::new(http, config);
-/// let response = client.connect(request).await?;
+/// let response = client.storage(request).await?;
 /// ```
 ///
 /// # Working with the response
@@ -1884,7 +2016,7 @@ for RemoteDebugControlServiceServer<T> {
 /// message, so field access is zero-copy:
 ///
 /// ```rust,ignore
-/// let resp = client.connect(request).await?;
+/// let resp = client.storage(request).await?;
 /// let name: &str = resp.view().name;  // borrow into the response buffer
 /// ```
 ///
@@ -1892,7 +2024,7 @@ for RemoteDebugControlServiceServer<T> {
 /// [`into_owned()`](::connectrpc::client::UnaryResponse::into_owned):
 ///
 /// ```rust,ignore
-/// let owned = client.connect(request).await?.into_owned();
+/// let owned = client.storage(request).await?.into_owned();
 /// ```
 ///
 /// [`into_view()`](::connectrpc::client::UnaryResponse::into_view) keeps the
@@ -1922,6 +2054,48 @@ where
     /// Get a mutable reference to the client configuration.
     pub fn config_mut(&mut self) -> &mut ::connectrpc::client::ClientConfig {
         &mut self.config
+    }
+    /// Call the Storage RPC. Sends a request to /sticky.remote.control.v1.RemoteDebugControlService/Storage.
+    pub async fn storage(
+        &self,
+        request: crate::proto::sticky::remote::control::v1::StorageRequest,
+    ) -> Result<
+        ::connectrpc::client::UnaryResponse<
+            ::buffa::view::OwnedView<
+                crate::proto::sticky::remote::control::v1::__buffa::view::StorageResponseView<
+                    'static,
+                >,
+            >,
+        >,
+        ::connectrpc::ConnectError,
+    > {
+        self.storage_with_options(request, ::connectrpc::client::CallOptions::default())
+            .await
+    }
+    /// Call the Storage RPC with explicit per-call options. Options override [`ClientConfig`](::connectrpc::client::ClientConfig) defaults.
+    pub async fn storage_with_options(
+        &self,
+        request: crate::proto::sticky::remote::control::v1::StorageRequest,
+        options: ::connectrpc::client::CallOptions,
+    ) -> Result<
+        ::connectrpc::client::UnaryResponse<
+            ::buffa::view::OwnedView<
+                crate::proto::sticky::remote::control::v1::__buffa::view::StorageResponseView<
+                    'static,
+                >,
+            >,
+        >,
+        ::connectrpc::ConnectError,
+    > {
+        ::connectrpc::client::call_unary(
+                &self.transport,
+                &self.config,
+                REMOTE_DEBUG_CONTROL_SERVICE_STORAGE_SPEC
+                    .with_origin(::connectrpc::SpecOrigin::Client),
+                request,
+                options,
+            )
+            .await
     }
     /// Call the Connect RPC. Sends a request to /sticky.remote.control.v1.RemoteDebugControlService/Connect.
     pub async fn connect(

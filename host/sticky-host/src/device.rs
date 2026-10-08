@@ -147,8 +147,8 @@ fn format_board_info(flasher: &mut Flasher) -> Result<String, Error> {
                 let _ = write!(text, "{security}");
             }
             Err(_) => {
-                let _ = writeln!(text, "Secure Boot: Disabled");
-                let _ = writeln!(text, "Flash Encryption: Disabled");
+                let _ = writeln!(text, "Secure Boot: Unknown");
+                let _ = writeln!(text, "Flash Encryption: Unknown");
             }
         }
     }

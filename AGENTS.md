@@ -20,7 +20,8 @@ members, not default-members).
    logs or buses.
 
 Full hazard table: [docs/SAFETY.md](docs/SAFETY.md). Board facts and source
-precedence: [seeed-sticky-hardware](.agents/skills/seeed-sticky-hardware/SKILL.md).
+precedence:
+[seeed-sticky-hardware](.agents/skills/seeed-sticky-hardware/SKILL.md).
 `docs/SAFETY.md` and [docs/DATASHEETS.md](docs/DATASHEETS.md) are
 symlinks into that skill (`references/safety.md`,
 `resources/datasheets.md`). Edit the skill files; rumdl lints those
@@ -257,6 +258,18 @@ conflicts in the hardware skill instead of flattening them.
 Do not treat `cargo xtask --help` as a substitute for the sticky-rs catalog
 and the README list.
 
+## Storage rules
+
+- The default Embassy image includes storage with pair and Wi-Fi. Read
+  [docs/storage.md](docs/storage.md) for layout, flush, staging and recovery.
+- Storage provisioning and test faults require explicit confirmation. Mount
+  never formats. Only `storage-test` admits fault and timed-sleep controls.
+- Core 1 owns shared SPI and filesystems; Core 0 submits bounded requests.
+  Quiesce before normal reboot, sleep or latch release, preserving the session
+  when refused. Do not substitute global status for a correlated job receipt.
+- SD rail sequence evidence is distinct from measured voltage and card FTL
+  guarantees. Keep raw trial records and identities in `developer-data/`.
+
 ## Working rules
 
 - Follow [docs/API-RULES.md](docs/API-RULES.md) for any new crate: typestate
@@ -272,7 +285,7 @@ and the README list.
 - **Do not invent registers or opcodes.** If the datasheet has not been read,
   expose a documented raw primitive and record the gap in the hardware skill
   catalog ([docs/DATASHEETS.md](docs/DATASHEETS.md), a symlink of
-  [datasheets.md](.agents/skills/seeed-sticky-hardware/resources/datasheets.md)).
+[datasheets.md](.agents/skills/seeed-sticky-hardware/resources/datasheets.md)).
   Cached PDFs and extracted markdown are gitignored under that skill’s
   `resources/datasheets/`. Ask the user to populate the cache
   (`scripts/fetch_datasheets.py` from the skill directory); do not download
@@ -312,8 +325,9 @@ and the README list.
   under `developer-data/` may.
 - A rustc newer than MSRV can fail the host trio clippy on
   default-members. Keep `cargo clippy --locked --all-targets -- -D
-  warnings` green; do not pin an older clippy. Workspace MSRV 1.85
-  treats `const { assert!(…) }` items as experimental.
+  warnings` green; do not pin an older clippy. Workspace host/no_std MSRV is
+  1.88; firmware uses the separately installed
+  ESP compiler (the selected HAL requires Rust 1.95 or newer).
 - Measurement-backlog items in the hardware skill stay open until someone
   measures them. Firmware evidence proves intent and sequencing, never
   electrical fact.
@@ -346,7 +360,8 @@ and the README list.
 
 Project-local skills exist under `.agents/skills/` and should remain
 discoverable by agents working in this repository. Maintain those skills
-according to the [Agent Skills specification](https://agentskills.io/specification),
+according to the [Agent Skills
+specification](https://agentskills.io/specification),
 and maintain this file according to the
 [AGENTS.md standard](https://agents.md/). Some directories have their
 own topical `AGENTS.md`; maintain those the same way. Keep both

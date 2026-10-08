@@ -40,6 +40,10 @@ pub enum EnvelopeOutcome {
     },
     /// Host asked to software-reset the **embedded MCU** (not the host).
     Reboot,
+    /// Reset immediately without storage draining.
+    ForceReboot,
+    /// Firmware handles the decoded storage request on its storage worker.
+    Storage,
 }
 
 /// Image callbacks. LAST buffers stay with the implementor.
@@ -170,11 +174,22 @@ where
             let _ = device.slot_clear();
             EnvelopeOutcome::None
         }
-        Some(Body::Reboot(_)) => {
+        Some(Body::Reboot(message)) => {
             device.on_reboot();
-            EnvelopeOutcome::Reboot
+            if message.force {
+                EnvelopeOutcome::ForceReboot
+            } else {
+                EnvelopeOutcome::Reboot
+            }
         }
-        Some(Body::Snapshot(_) | Body::SnapshotBusy(_) | Body::LogLine(_) | Body::RebootAck(_))
+        Some(Body::StorageRequest(_)) => EnvelopeOutcome::Storage,
+        Some(
+            Body::Snapshot(_)
+            | Body::SnapshotBusy(_)
+            | Body::LogLine(_)
+            | Body::RebootAck(_)
+            | Body::StorageReply(_),
+        )
         | None => EnvelopeOutcome::None,
     };
     Ok(outcome)

@@ -128,6 +128,23 @@ Structured output is the generated ConnectRPC `*Response` JSON.
 path) and `pageWidth` / `pageHeight` after the write.
 `message` must not include a MAC.
 
+## Storage tool
+
+The interface has twelve tools, including typed `storage`. Its `action` is a
+structured operation: status, provision, verify, stress, power-cycle, quiesce,
+stage, fault or sleep. Destructive operations require `yes=true`; test controls
+also require `storage-test`. Input bounds match clap. Completion refers to the
+submitted job ID, retained for four jobs; reboot/eviction/timeout fails instead
+of reporting an older ready package or another operation's success. CLI and
+MCP use the same host staging and receipt-polling logic. Chunk size is at most
+512 bytes, metadata at most 1024 bytes, and app0 at most 6 MiB. Publisher
+authentication and update activation remain future work.
+
+A normal `reboot` waits for storage; refusal keeps the GATT session. `force`
+explicitly bypasses that barrier. `quiesce` parks SD; `power-cycle` resumes it.
+See [storage guide](../../../../docs/storage.md) for desk recipes and measured
+acceptance outcomes.
+
 ## Self-test
 
 After rmcp wiring or new tool names, self-test in a
@@ -163,6 +180,15 @@ edges under [Difficult / crude](#difficult--crude).
 
 ## Discoveries
 
+- Storage MCP revalidation (2026-10-08): a fresh subagent launched the rebuilt
+  stdio server with an isolated runtime directory and passed 121 checks using
+  a loopback mock ConnectRPC owner. All twelve tools, three prompts/resources,
+  and nine typed storage operations passed. Checks covered confirmations,
+  field bounds, malformed inputs, receipt correlation and failure, reboot's
+  default `force=false`, and `externalPower` true, false, and absent. EOF exited
+  cleanly. This probe used ConnectRPC 0.9.1 and performed no hardware access;
+  firmware refusals were simulated and the real five-minute timeout was not
+  waited. Earlier probes passed 48 isolated checks and 24 live read-only checks.
 - Host-only MCP attach (2026-10-07): a rebuilt binary with an
   isolated runtime directory verified initialize, discovery
   of all eleven leaves with object output schemas, all three
@@ -325,6 +351,22 @@ edges under [Difficult / crude](#difficult--crude).
 
 ## Difficult / crude
 
+- Large storage chunks require ATT fragments no larger than the firmware's
+  244-byte receive buffer. BlueR applies its own MTU adjustment; the transport
+  additionally caps the resulting payload. An uncapped large negotiated MTU
+  truncated a physical staging request and left its frame waiting for bytes.
+  Firmware now rejects oversized writes and discards partial frames after five
+  seconds without a fragment. Rebuild/restart an older broker before retrying.
+- Storage waits require a job receipt. A completed later job, an idle cache,
+  or a previously ready package cannot complete an earlier request. Receipt
+  eviction and MCU reset fail the wait. A timeout clears the host assembler
+  while retaining the session for recovery. Stress budgets include one second
+  per requested round beyond the five-minute base; the earlier fixed
+  deadline expired during a physical 1,000-round job that completed later.
+- Storage status includes an optional GPIO9 `externalPower` indication. It
+  reports a sampled digital level, not an analog voltage. Confirmed latch
+  faults refuse a high or unknown indication; USB enumeration loss cannot
+  substitute for checking external power.
 - rmcp exposes only the remote-debug leaves. There is no
   stdio path for `flash-app`, restore, or `serve` (on purpose).
 - The CLI owner holds the session. stdio MCP is a client of

@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Sticky host CLI: UART, snapshots, flash-app, and host-only builds"
 publish = false
 edition.workspace = true
-# Matches cargo-espflash / espflash 4.5. Workspace crates stay 1.85.
+# Matches the workspace and espflash 4.5 MSRV.
 rust-version = "1.88"
 license.workspace = true
 repository.workspace = true
@@ -22,8 +22,6 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std"] }
 env_logger = "0.11.8"
 embassy-debug = { path = "../crates/embassy-debug", features = ["pair", "wifi"] }
 remote-debug-host = { path = "../host/remote-debug-host" }
-remote-debug-wire = { path = "../crates/remote-debug-wire" }
-panel-view = { path = "../crates/panel-view" }
 schemars = { version = "1.2.2", features = ["derive"] }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"

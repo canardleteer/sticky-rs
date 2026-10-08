@@ -6,7 +6,11 @@ put clap types here. The remote-debug ConnectRPC owner is a
 client of `remote-debug-broker` (advertise name, never a MAC);
 `connect` auto-starts a detached `serve` and returns `pairing`.
 Poll `status` until `connected`.
-Clap stays in xtask.
+Clap stays in xtask. Storage controls share `storage_control` with CLI/MCP;
+long operations require their correlated completion receipt. Cached status
+cannot establish another operation's success. Bound image reads before
+allocation and flash the same bytes that passed complete-image validation.
+Unknown security state must fail closed on externally backed-up flash.
 
 Live methods that reset or listen take the UART session lock. Do not
 open a port unless a human **explicitly asked** that live command.

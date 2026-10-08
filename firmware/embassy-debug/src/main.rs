@@ -44,7 +44,7 @@ use embassy_debug::{
 // Embassy runtime: tasks, channels, time.
 use embassy_executor::Spawner;
 use embassy_futures::select::{select, Either};
-#[cfg(not(feature = "remote-debug"))]
+#[cfg(any(not(feature = "remote-debug"), feature = "storage-test"))]
 use embassy_futures::select::{select3, Either3};
 #[cfg(feature = "remote-debug")]
 use embassy_futures::select::{select4, Either4};
@@ -56,6 +56,8 @@ use embassy_time::{Duration, Instant, Timer};
 // esp-hal: GPIO, I2C, LEDC buzzer, timer group.
 use embedded_hal::delay::DelayNs;
 use esp_backtrace as _;
+// Feature unification supplies the C backend's minimal string routines and
+// portable bit operations; it does not link a second allocator or full libc.
 use esp_hal::delay::Delay;
 use esp_hal::gpio::{DriveMode, Flex, Input, InputConfig, Level, Output, OutputConfig, Pull};
 use esp_hal::i2c::master::{Config as I2cConfig, I2c};
@@ -69,6 +71,8 @@ use esp_hal::time::Rate;
 use esp_hal::timer::timg::TimerGroup;
 use esp_hal::Blocking;
 use esp_println::println;
+#[cfg(feature = "storage")]
+use littlefs2_sys as _;
 
 // IMU on the sensor bus.
 use lsm6ds3tr::interface::i2c::I2cInterface;
@@ -79,7 +83,7 @@ use seeed_reterminal_sticky::display::PageRotation;
 use seeed_reterminal_sticky::power::Latched;
 #[cfg(not(feature = "mic"))]
 use seeed_reterminal_sticky::rails::MicRail;
-#[cfg(not(feature = "sd"))]
+#[cfg(not(any(feature = "sd", feature = "storage")))]
 use seeed_reterminal_sticky::rails::SdRail;
 use seeed_reterminal_sticky::rails::{Disabled, Enabled, Rail, TouchRail};
 use seeed_reterminal_sticky::touch::{
@@ -152,9 +156,9 @@ struct ParkedHazards {
     /// Held so `/CE` stays parked. `--features charge` reassigns after the pulse.
     charger: Charger<Output<'static>, bq25616::Disabled>,
     gpio7: Input<'static>,
-    #[cfg(not(feature = "sd"))]
+    #[cfg(not(any(feature = "sd", feature = "storage")))]
     sd_cs: Output<'static>,
-    #[cfg(not(feature = "sd"))]
+    #[cfg(not(any(feature = "sd", feature = "storage")))]
     sd_rail: SdRail<Output<'static>, Disabled>,
     #[cfg(not(feature = "mic"))]
     mic_rail: MicRail<Output<'static>, Disabled>,
@@ -183,8 +187,12 @@ fn acquire_latch(
 fn park_charger_and_unused(
     ce: esp_hal::peripherals::GPIO39<'static>,
     gpio7: esp_hal::peripherals::GPIO7<'static>,
-    #[cfg(not(feature = "sd"))] sd_cs: esp_hal::peripherals::GPIO8<'static>,
-    #[cfg(not(feature = "sd"))] sd_en: esp_hal::peripherals::GPIO10<'static>,
+    #[cfg(not(any(feature = "sd", feature = "storage")))] sd_cs: esp_hal::peripherals::GPIO8<
+        'static,
+    >,
+    #[cfg(not(any(feature = "sd", feature = "storage")))] sd_en: esp_hal::peripherals::GPIO10<
+        'static,
+    >,
     #[cfg(not(feature = "mic"))] mic_en: esp_hal::peripherals::GPIO38<'static>,
     latch: &Latched,
 ) -> ParkedHazards {
@@ -192,9 +200,9 @@ fn park_charger_and_unused(
         .expect("driving /CE cannot fail");
     let gpio7 = Input::new(gpio7, InputConfig::default().with_pull(Pull::Up));
     // CS idle-high. `--features sd` takes these pins for identify.
-    #[cfg(not(feature = "sd"))]
+    #[cfg(not(any(feature = "sd", feature = "storage")))]
     let sd_cs = Output::new(sd_cs, Level::High, OutputConfig::default());
-    #[cfg(not(feature = "sd"))]
+    #[cfg(not(any(feature = "sd", feature = "storage")))]
     let sd_rail: SdRail<_, _> = Rail::new(
         Output::new(sd_en, Level::Low, OutputConfig::default()),
         latch,
@@ -209,9 +217,9 @@ fn park_charger_and_unused(
     ParkedHazards {
         charger,
         gpio7,
-        #[cfg(not(feature = "sd"))]
+        #[cfg(not(any(feature = "sd", feature = "storage")))]
         sd_cs,
-        #[cfg(not(feature = "sd"))]
+        #[cfg(not(any(feature = "sd", feature = "storage")))]
         sd_rail,
         #[cfg(not(feature = "mic"))]
         mic_rail,
@@ -228,7 +236,7 @@ fn hold_parked(parked: ParkedHazards) {
     crate::sleep::hold_input(&mut gpio7);
     core::mem::forget(gpio7);
 
-    #[cfg(not(feature = "sd"))]
+    #[cfg(not(any(feature = "sd", feature = "storage")))]
     {
         let mut cs = parked.sd_cs;
         crate::sleep::hold_output(&mut cs);
@@ -380,7 +388,14 @@ struct SpawnParts {
 }
 
 /// Start UART log, keys, glass, IMU, beep, and panel.
-fn spawn_tasks(spawner: &Spawner, parts: SpawnParts, start: Scene, rotation: PageRotation) {
+fn spawn_tasks(
+    spawner: &Spawner,
+    parts: SpawnParts,
+    start: Scene,
+    rotation: PageRotation,
+    #[cfg(feature = "storage")] cpu_control: esp_hal::peripherals::CPU_CTRL<'static>,
+    #[cfg(feature = "storage")] int1: esp_hal::peripherals::FROM_CPU_INTR1<'static>,
+) {
     spawner.spawn(log_task().expect("log task"));
     spawner.spawn(
         button_task(parts.ai_voice, parts.page_up, parts.page_down, start).expect("button task"),
@@ -397,10 +412,45 @@ fn spawn_tasks(spawner: &Spawner, parts: SpawnParts, start: Scene, rotation: Pag
     );
     spawner.spawn(imu_task(parts.sensor_i2c, rotation).expect("imu task"));
     spawner.spawn(buzzer_task(parts.ledc, parts.buzzer).expect("buzzer task"));
+    #[cfg(not(feature = "storage"))]
     spawner.spawn(
-        crate::display::display_task(parts.panel, parts.epd_rail, start, rotation)
+        crate::display::display_task(parts.panel, parts.epd_rail, start, rotation, *spawner)
             .expect("display task"),
     );
+    #[cfg(feature = "storage")]
+    {
+        // The RTOS has already started on Core 0. Core 1 owns every SPI2 device;
+        // radio and UART work remain responsive during blocking card callbacks.
+        /// Core 1 has a separate 16 KiB call stack for synchronous SPI/C calls.
+        /// Embassy task futures occupy static task pools outside this stack.
+        static CORE1_STACK: static_cell::StaticCell<esp_hal::system::Stack<16384>> =
+            static_cell::StaticCell::new();
+        /// Interrupt-backed Core 1 executor; its tasks retain all SPI owners.
+        /// Static placement prevents moving the executor after registration.
+        static CORE1_EXECUTOR: static_cell::StaticCell<esp_rtos::embassy::Executor> =
+            static_cell::StaticCell::new();
+        esp_rtos::start_second_core(
+            cpu_control,
+            int1,
+            CORE1_STACK.init(esp_hal::system::Stack::new()),
+            move || {
+                CORE1_EXECUTOR
+                    .init(esp_rtos::embassy::Executor::new())
+                    .run(|spawner| {
+                        spawner.spawn(
+                            crate::display::display_task(
+                                parts.panel,
+                                parts.epd_rail,
+                                start,
+                                rotation,
+                                spawner,
+                            )
+                            .expect("Core 1 display task"),
+                        );
+                    });
+            },
+        );
+    }
 }
 
 /// Latch, park hazards, bring up buses, then hand the unit to Embassy.
@@ -451,9 +501,9 @@ async fn main(spawner: Spawner) {
     let mut parked = park_charger_and_unused(
         peripherals.GPIO39,
         peripherals.GPIO7,
-        #[cfg(not(feature = "sd"))]
+        #[cfg(not(any(feature = "sd", feature = "storage")))]
         peripherals.GPIO8,
-        #[cfg(not(feature = "sd"))]
+        #[cfg(not(any(feature = "sd", feature = "storage")))]
         peripherals.GPIO10,
         #[cfg(not(feature = "mic"))]
         peripherals.GPIO38,
@@ -482,7 +532,17 @@ async fn main(spawner: Spawner) {
                 println!("{line}");
             }
         }
-        match crate::sleep::wait_resume_hold(&page_up, &mut delay) {
+        let resume_hold = {
+            #[cfg(feature = "storage-test")]
+            if esp_hal::rtc_cntl::wakeup_cause().contains(esp_hal::rtc_cntl::WakeupSource::Timer) {
+                ResumeHold::Ready
+            } else {
+                crate::sleep::wait_resume_hold(&page_up, &mut delay)
+            }
+            #[cfg(not(feature = "storage-test"))]
+            crate::sleep::wait_resume_hold(&page_up, &mut delay)
+        };
+        match resume_hold {
             ResumeHold::Ready => (snap.scene, snap.rotation),
             ResumeHold::Abort | ResumeHold::Waiting => {
                 crate::sleep::park_epd_en_low(peripherals.GPIO47);
@@ -543,6 +603,15 @@ async fn main(spawner: Spawner) {
     let timg0 = TimerGroup::new(peripherals.TIMG0);
     esp_rtos::start(timg0.timer0, peripherals.FROM_CPU_INTR0);
 
+    #[cfg(feature = "storage")]
+    spawner.spawn(
+        crate::storage::external_power_task(Input::new(
+            peripherals.GPIO9,
+            InputConfig::default().with_pull(Pull::None),
+        ))
+        .expect("external-power observer task"),
+    );
+
     spawn_tasks(
         &spawner,
         SpawnParts {
@@ -561,12 +630,18 @@ async fn main(spawner: Spawner) {
                 spi: peripherals.SPI2,
                 sclk: peripherals.GPIO13,
                 mosi: peripherals.GPIO14,
-                #[cfg(feature = "sd")]
+                #[cfg(any(feature = "sd", feature = "storage"))]
                 miso: peripherals.GPIO12,
                 cs: peripherals.GPIO15,
                 dc: peripherals.GPIO16,
                 rst: peripherals.GPIO17,
                 busy: peripherals.GPIO18,
+                #[cfg(feature = "storage")]
+                storage: crate::storage::StorageParts {
+                    cs: peripherals.GPIO8,
+                    detect: peripherals.GPIO11,
+                    rail: crate::storage::park_rail(peripherals.GPIO10, latch.witness()),
+                },
                 #[cfg(feature = "sd")]
                 sd: crate::sd::SdParts {
                     cs: peripherals.GPIO8,
@@ -578,6 +653,10 @@ async fn main(spawner: Spawner) {
         },
         start_scene,
         start_rotation,
+        #[cfg(feature = "storage")]
+        peripherals.CPU_CTRL,
+        #[cfg(feature = "storage")]
+        peripherals.FROM_CPU_INTR1,
     );
 
     #[cfg(feature = "mic")]
@@ -604,19 +683,73 @@ async fn main(spawner: Spawner) {
     #[cfg(feature = "wifi")]
     crate::wifi::init_wifi(peripherals.WIFI, spawner);
 
-    match select(
+    #[cfg(not(feature = "storage-test"))]
+    let shutdown = select(
         crate::sleep::PANEL_PARKED.wait(),
         crate::sleep::POWER_OFF_READY.wait(),
     )
-    .await
-    {
+    .await;
+    #[cfg(feature = "storage-test")]
+    let shutdown = loop {
+        match select3(
+            crate::sleep::PANEL_PARKED.wait(),
+            crate::sleep::POWER_OFF_READY.wait(),
+            crate::storage::FAULT.wait(),
+        )
+        .await
+        {
+            Either3::First(()) => break Either::First(()),
+            Either3::Second(()) => break Either::Second(()),
+            Either3::Third((operation, delay_ms)) => {
+                use remote_debug_wire::v1::StorageOperation as Op;
+                if operation == Op::STORAGE_OPERATION_TIMED_SLEEP {
+                    // The display owns panel shutdown. Its parked acknowledgement
+                    // precedes final SD parking: the sleep-card paint still uses
+                    // the shared SPI pins while the card remains powered.
+                    crate::sleep::request_sleep();
+                    crate::sleep::PANEL_PARKED.wait().await;
+                    if crate::storage::quiesce().await.is_err() {
+                        await_storage_recovery().await;
+                    }
+                    hold_parked(parked);
+                    crate::sleep::hold_latch(latch);
+                    crate::sleep::enter_timed_sleep(lpwr, delay_ms);
+                }
+                Timer::after(Duration::from_millis(u64::from(delay_ms))).await;
+                match operation {
+                    Op::STORAGE_OPERATION_FAULT_RESET => esp_hal::system::software_reset(),
+                    Op::STORAGE_OPERATION_FAULT_SD => {
+                        crate::storage::CUT_SD.store(true, Ordering::Release)
+                    }
+                    Op::STORAGE_OPERATION_FAULT_POWER => {
+                        // USB VBUS must already be absent for this to cut battery
+                        // power. The host restores that exact port to boot again.
+                        crate::sleep::release_latch(latch);
+                        loop {
+                            Timer::after(Duration::from_secs(3600)).await;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    };
+    match shutdown {
         Either::First(()) => {
+            #[cfg(feature = "storage")]
+            if crate::storage::quiesce().await.is_err() {
+                await_storage_recovery().await;
+            }
             crate::sleep::WAKE_ARMED.wait().await;
             hold_parked(parked);
             crate::sleep::hold_latch(latch);
             crate::sleep::enter_deep_sleep(lpwr);
         }
         Either::Second(()) => {
+            #[cfg(feature = "storage")]
+            if crate::storage::quiesce().await.is_err() {
+                await_storage_recovery().await;
+            }
             hold_parked(parked);
             crate::sleep::release_latch(latch);
             loop {
@@ -1316,3 +1449,15 @@ mod sleep;
 mod targets;
 #[cfg(feature = "wifi")]
 mod wifi;
+
+/// Preserve latch power after a storage drain failure. Core 0 keeps BLE running
+/// so an operator can force reboot; never claim that failed flushes are durable.
+#[cfg(feature = "storage")]
+async fn await_storage_recovery() -> ! {
+    println!("storage drain failed; force reboot available");
+    loop {
+        Timer::after(Duration::from_secs(1)).await;
+    }
+}
+#[cfg(feature = "storage")]
+mod storage;

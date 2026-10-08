@@ -162,7 +162,91 @@ message LogLine {
 }
 
 // Host to device: reset the embedded MCU (not the desk host).
-message Reboot {}
+message Reboot {
+  // Skip storage draining when recovering a stuck device.
+  bool force = 1;
+}
 
 // Device to host: ACK before the MCU software-reset so ATT can flush.
-message RebootAck {}
+message RebootAck {
+  // Storage drain failed; the MCU stayed awake for forced recovery.
+  bool storage_failed = 1;
+}
+
+// On-device storage operations. Fault operations require storage-test firmware.
+enum StorageOperation {
+  // Reject an unspecified operation.
+  STORAGE_OPERATION_UNSPECIFIED = 0;
+  // Query cached capacity, mount state, and job completion.
+  STORAGE_OPERATION_STATUS = 1;
+  // Explicitly replace partition metadata and format the selected layout.
+  STORAGE_OPERATION_PROVISION = 2;
+  // Verify stored test records and revalidate a ready package.
+  STORAGE_OPERATION_VERIFY = 3;
+  // Start bounded write/readback rounds, then poll STATUS for completion.
+  STORAGE_OPERATION_STRESS = 4;
+  // Synchronize, power-cycle the card rail, and remount.
+  STORAGE_OPERATION_POWER_CYCLE = 5;
+  // Begin a new pending package without modifying the current ready package.
+  STORAGE_OPERATION_STAGE_BEGIN = 6;
+  // Write the next ordered, acknowledged package chunk.
+  STORAGE_OPERATION_STAGE_CHUNK = 7;
+  // Validate the pending package and atomically publish readiness.
+  STORAGE_OPERATION_STAGE_FINISH = 8;
+  // Drain jobs and synchronize before normal reboot or sleep.
+  STORAGE_OPERATION_QUIESCE = 9;
+  // Test image only: reset during a scheduled stress write.
+  STORAGE_OPERATION_FAULT_RESET = 10;
+  // Test image only: cut the card rail during a scheduled stress write.
+  STORAGE_OPERATION_FAULT_SD = 11;
+  // Test image only: release the battery latch during a stress write.
+  STORAGE_OPERATION_FAULT_POWER = 12;
+  // Test image only: synchronize and sleep with a timer wake.
+  STORAGE_OPERATION_TIMED_SLEEP = 13;
+}
+
+// One storage request. Package bytes include a uint32 JSON length prefix.
+message StorageRequest {
+  // Nonzero correlation id for ordered replies.
+  uint64 id = 1;
+  // Requested operation.
+  StorageOperation operation = 2;
+  // Exact file offset for a package chunk/finish, or job id to query in STATUS.
+  uint64 offset = 3;
+  // At most 512 bytes per acknowledged chunk.
+  bytes data = 4;
+  // Bounded stress rounds, or fault delay in milliseconds.
+  uint32 count = 5;
+  // Explicit confirmation for provisioning or destructive test controls.
+  bool confirmed = 6;
+}
+
+// Storage reply. Long jobs acknowledge acceptance and complete through STATUS.
+message StorageReply {
+  // Request correlation id.
+  uint64 id = 1;
+  // Whether the operation succeeded or the background job was accepted.
+  bool ok = 2;
+  // Safe diagnostic token; excludes card identity and file contents.
+  string message = 3;
+  // Card capacity in 512-byte sectors.
+  uint64 sectors = 4;
+  // Whether the configured layout mounted successfully.
+  bool mounted = 5;
+  // A provision/verify/stress job is running.
+  bool busy = 6;
+  // Persisted sequence recovered on mount and advanced after readback.
+  uint32 verified = 7;
+  // A ready application package passed validation.
+  bool ready = 8;
+  // Background request whose retained completion receipt is being reported.
+  uint64 job_id = 9;
+  // All I/O for job_id has finished; acceptance alone leaves this false.
+  bool job_complete = 10;
+  // Outcome of completed job_id, independent of subsequent jobs.
+  bool job_ok = 11;
+  // HAL reset reason for this boot; diagnostic evidence, not a voltage reading.
+  string reset_reason = 12;
+  // GPIO9 digital external-power indication; absent before the first sample.
+  optional bool external_power = 13;
+}

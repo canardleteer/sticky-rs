@@ -23,6 +23,7 @@ use serde_json::Value;
 use crate::remote_debug::{
     run, BrokerTarget, ConnectArgs, GetSnapshotArgs, InjectButtonArgs, InjectTouchArgs,
     ListTargetsArgs, LogsArgs, RebootArgs, RemoteDebugCommand, RemoteDebugState, SnapshotAckArgs,
+    StorageArgs, StorageCommand, StorageFault,
 };
 
 /// Initialize / discover instructions for a desk sit.
@@ -30,7 +31,7 @@ pub const INSTRUCTIONS: &str = "\
 You are a client of the sticky-rs remote-debug owner (encrypted GATT after \
 DisplayOnly pair). This process does not own GATT. Tools are clap leaves: \
 connect, status, list-targets, inject-touch, inject-button, get-snapshot, \
-snapshot-ack, snapshot-clear, reboot, disconnect, logs. Not remote-debug_*.
+snapshot-ack, snapshot-clear, reboot, disconnect, logs, storage. Not remote-debug_*.
 
 Stay on splash for pair (Ferris never shows the PIN). Do not ask the operator \
 to pair from a phone. Do not run monitor during auto-PIN. No --remember unless \
@@ -93,7 +94,8 @@ const TOOLS: &str = "\
 | get-snapshot | Arms LAST DRAW. JSON png is the page-space image to open; pageWidth / pageHeight follow hold (0/1 → 480×800, 2/3 → 800×480). Sibling .bw / .red are SSD1677 planes (.red = gray4 plane 1, not pigment) and are omitted from JSON. scene / hold / step / expect on the line. |
 | snapshot-ack | Release the armed nonce. |
 | snapshot-clear | Abort with no nonce. Use after a failed get. |
-| reboot | Software-reset the embedded MCU (not this host). Re-pairs unless no_reconnect. |
+| reboot | Drain storage then reset the MCU. force bypasses a failed barrier. Re-pairs unless no_reconnect. |
+| storage | Typed operation: status, provision, verify, stress, power-cycle, quiesce, stage, fault, sleep. Confirm destructive operations with yes=true. Commands wait for their correlated completion; status reports cached state. |
 | disconnect | Drop one GATT session. Empty map also shuts the owner down. Unknown units lose the BlueZ bond. |
 
 Structured output is the generated ConnectRPC `*Response` JSON, plus \
@@ -251,6 +253,9 @@ struct LogsParams {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct RebootParams {
+    /// Bypass a failed storage shutdown barrier for explicit recovery.
+    #[serde(default)]
+    force: bool,
     #[serde(default)]
     no_reconnect: bool,
     pin: Option<u32>,
@@ -259,6 +264,57 @@ struct RebootParams {
     name: String,
     #[serde(default)]
     remember: bool,
+}
+
+/// Storage control inputs shared by the command-line adapter.
+#[derive(Debug, Deserialize, JsonSchema)]
+struct StorageParams {
+    #[serde(default = "default_name")]
+    name: String,
+    #[serde(flatten)]
+    action: StorageAction,
+}
+
+/// Typed operations prevent missing image paths or ambiguous fault selection.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(tag = "operation", rename_all = "kebab-case")]
+enum StorageAction {
+    Status,
+    Provision {
+        yes: bool,
+    },
+    Verify,
+    Stress {
+        #[schemars(range(min = 1, max = 10000))]
+        rounds: u32,
+    },
+    PowerCycle,
+    Quiesce,
+    Stage {
+        image: std::path::PathBuf,
+        #[schemars(length(min = 1, max = 64))]
+        version: String,
+    },
+    Fault {
+        kind: FaultKind,
+        #[schemars(range(min = 1, max = 60000))]
+        after_ms: u32,
+        yes: bool,
+    },
+    Sleep {
+        #[schemars(range(min = 1, max = 60))]
+        seconds: u32,
+        yes: bool,
+    },
+}
+
+/// Hardware interruption available only on storage-test firmware.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+enum FaultKind {
+    Reset,
+    Sd,
+    Power,
 }
 
 /// stdio MCP handler. Clone so rmcp can share the session.
@@ -283,6 +339,55 @@ impl RemoteDebugMcp {
 
 #[tool_router]
 impl RemoteDebugMcp {
+    #[tool(
+        name = "storage",
+        description = "Paired SD controls: status, provision, verify, stress, power-cycle, quiesce, stage, fault, sleep. Provision replaces the card and requires yes=true. Stage validates an app0 package without activating it. Fault and sleep require storage-test firmware and yes=true. Commands wait for their correlated completion; status reports cached state.",
+        annotations(destructive_hint = true, open_world_hint = true)
+    )]
+    fn storage(
+        &self,
+        Parameters(params): Parameters<StorageParams>,
+    ) -> Result<Json<RemoteDebugToolOutput>, McpError> {
+        let operation = match params.action {
+            StorageAction::Status => StorageCommand::Status,
+            StorageAction::Provision { yes } => StorageCommand::Provision { yes },
+            StorageAction::Verify => StorageCommand::Verify,
+            StorageAction::Stress { rounds } if (1..=10000).contains(&rounds) => {
+                StorageCommand::Stress { rounds }
+            }
+            StorageAction::PowerCycle => StorageCommand::PowerCycle,
+            StorageAction::Quiesce => StorageCommand::Quiesce,
+            StorageAction::Stage { image, version } => StorageCommand::Stage { image, version },
+            StorageAction::Fault {
+                kind,
+                after_ms,
+                yes,
+            } if (1..=60000).contains(&after_ms) => StorageCommand::Fault {
+                kind: match kind {
+                    FaultKind::Reset => StorageFault::Reset,
+                    FaultKind::Sd => StorageFault::Sd,
+                    FaultKind::Power => StorageFault::Power,
+                },
+                after_ms,
+                yes,
+            },
+            StorageAction::Sleep { seconds, yes } if (1..=60).contains(&seconds) => {
+                StorageCommand::Sleep { seconds, yes }
+            }
+            _ => {
+                return Err(McpError::invalid_params(
+                    "storage count outside supported range",
+                    None,
+                ))
+            }
+        };
+        self.dispatch(RemoteDebugCommand::Storage(StorageArgs {
+            name: params.name,
+            socket_dir: None,
+            operation,
+        }))
+    }
+
     #[tool(
         name = "connect",
         description = "Start pair (returns pairing; poll status until connected). BlueZ Connect, not Pair(). UART auto-PIN unless pin. Stay on splash. Never a MAC.",
@@ -415,6 +520,7 @@ impl RemoteDebugMcp {
         Parameters(params): Parameters<RebootParams>,
     ) -> Result<Json<RemoteDebugToolOutput>, McpError> {
         self.dispatch(RemoteDebugCommand::Reboot(RebootArgs {
+            force: params.force,
             no_reconnect: params.no_reconnect,
             pin: params.pin,
             port: params.port,
@@ -636,6 +742,7 @@ mod tests {
         "reboot",
         "disconnect",
         "logs",
+        "storage",
     ];
 
     #[test]

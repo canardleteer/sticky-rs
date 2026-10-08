@@ -88,6 +88,8 @@ pub struct BrokerTarget {
 /// Leaf tools. Broker owns GATT; one serialized link.
 #[derive(Debug, Clone, Subcommand)]
 pub enum RemoteDebugCommand {
+    /// Manage on-device SD volumes and staged application packages
+    Storage(StorageArgs),
     /// Foreground broker (desk log). Ctrl-C disconnects
     Serve(ServeArgs),
     /// Start pair (returns `pairing`; poll `status` until `connected`)
@@ -276,6 +278,9 @@ pub struct SnapshotAckArgs {
 /// Reset the **embedded MCU**, then optionally Connect again.
 #[derive(Debug, Clone, Args)]
 pub struct RebootArgs {
+    /// Recover without waiting for storage to synchronize.
+    #[arg(long)]
+    pub force: bool,
     /// Do not re-pair after the device reset.
     #[arg(long)]
     pub no_reconnect: bool,
@@ -444,6 +449,7 @@ pub fn run(cmd: RemoteDebugCommand, state: &Mutex<RemoteDebugState>) -> Result<V
         RemoteDebugCommand::SnapshotAck(args) => value(client.snapshot_ack(args.into())),
         RemoteDebugCommand::SnapshotClear(target) => value(client.snapshot_clear(target.into())),
         RemoteDebugCommand::Reboot(args) => value(client.reboot(args.into())),
+        RemoteDebugCommand::Storage(args) => run_storage(&client, args),
         RemoteDebugCommand::Disconnect(target) => {
             let resp = client.disconnect(target.into()).map_err(map_broker)?;
             if resp.remaining == 0 {
@@ -456,6 +462,7 @@ pub fn run(cmd: RemoteDebugCommand, state: &Mutex<RemoteDebugState>) -> Result<V
 
 fn socket_dir_of(cmd: &RemoteDebugCommand) -> Option<PathBuf> {
     match cmd {
+        RemoteDebugCommand::Storage(args) => args.socket_dir.clone(),
         RemoteDebugCommand::Serve(args) => args.socket_dir.clone(),
         RemoteDebugCommand::Connect(args) => args.socket_dir.clone(),
         RemoteDebugCommand::InjectTouch(args) => args.socket_dir.clone(),
@@ -545,6 +552,7 @@ impl From<RebootArgs> for control::RebootRequest {
         Self {
             target: args.name,
             no_reconnect: args.no_reconnect,
+            force: args.force,
             pin: args.pin,
             port: args.port,
             remember: args.remember,
@@ -807,6 +815,11 @@ fn json_value<T: serde::Serialize>(body: T) -> Result<Value, String> {
 }
 
 fn message_of(value: &Value) -> String {
+    // Storage needs the correlated receipt and cached state, beyond the broker
+    // message. Keep the CLI result machine-readable for trial recording.
+    if value.get("reply").is_some() {
+        return value.to_string();
+    }
     if let Some(message) = value.get("message").and_then(Value::as_str) {
         if !message.is_empty() {
             return message.to_string();
@@ -834,6 +847,136 @@ fn map_host(error: Error) -> String {
     text.strip_prefix("remote-debug: ")
         .unwrap_or(&text)
         .to_string()
+}
+
+/// Paired-device SD controls. Name and socket flags apply to every child.
+#[derive(Debug, Clone, clap::Args)]
+pub struct StorageArgs {
+    /// BLE advertise name; radio addresses are never accepted here.
+    #[arg(long, default_value = DEFAULT_ADV_NAME, global = true)]
+    pub name: String,
+    /// Runtime directory for the broker endpoint.
+    #[arg(long, hide = true, global = true)]
+    pub socket_dir: Option<PathBuf>,
+    /// SD operation.
+    #[command(subcommand)]
+    pub operation: StorageCommand,
+}
+/// Storage operations; formatting and test faults require explicit confirmation.
+#[derive(Debug, Clone, clap::Subcommand)]
+pub enum StorageCommand {
+    /// Cached capacity, mount state, and latest job result
+    Status,
+    /// Replace SD partitions and format the default layout
+    Provision {
+        /// Required: replace the card contents.
+        #[arg(long, required = true)]
+        yes: bool,
+    },
+    /// Read test records and revalidate a ready update package
+    Verify,
+    /// Complete bounded write/readback rounds and report their outcome
+    Stress {
+        /// Number of bounded rounds.
+        #[arg(long, default_value_t = 100, value_parser = clap::value_parser!(u32).range(1..=10000))]
+        rounds: u32,
+    },
+    /// Synchronize, reset the SD rail, and remount
+    PowerCycle,
+    /// Drain storage and park the SD rail; power-cycle resumes it
+    Quiesce,
+    /// Package and transfer an app0 image; activation is deferred
+    Stage {
+        /// Raw application binary produced by build-fw.
+        #[arg(long)]
+        image: PathBuf,
+        /// Version written into the package manifest.
+        #[arg(long)]
+        version: String,
+    },
+    /// Schedule a write interruption; requires storage-test firmware
+    Fault {
+        /// MCU reset, card rail, or battery latch.
+        #[arg(long, value_enum)]
+        kind: StorageFault,
+        /// Delay from acknowledgement before interruption.
+        #[arg(long, default_value_t = 50, value_parser = clap::value_parser!(u32).range(1..=60000))]
+        after_ms: u32,
+        /// Required: interruption may lose uncommitted data.
+        #[arg(long, required = true)]
+        yes: bool,
+    },
+    /// Synchronize and enter timed deep sleep on a storage-test image
+    Sleep {
+        /// Wake delay in seconds.
+        #[arg(long, default_value_t = 2, value_parser = clap::value_parser!(u32).range(1..=60))]
+        seconds: u32,
+        /// Required: the Bluetooth connection will drop.
+        #[arg(long, required = true)]
+        yes: bool,
+    },
+}
+/// Test interruption selected by a desk operator.
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub enum StorageFault {
+    /// Reset the embedded MCU.
+    Reset,
+    /// Cut and restore the SD supply.
+    Sd,
+    /// Release the battery latch; host must arrange USB restoration.
+    Power,
+}
+/// Execute the same storage operation for the CLI and MCP adapter.
+pub fn run_storage(client: &ControlClient, args: StorageArgs) -> Result<Value, String> {
+    use shared::StorageOperation as Op;
+    let (operation, count, confirmed) = match args.operation {
+        StorageCommand::Status => (Op::STORAGE_OPERATION_STATUS, 0, false),
+        StorageCommand::Provision { yes } => (Op::STORAGE_OPERATION_PROVISION, 0, yes),
+        StorageCommand::Verify => (Op::STORAGE_OPERATION_VERIFY, 0, false),
+        StorageCommand::Stress { rounds } => (Op::STORAGE_OPERATION_STRESS, rounds, false),
+        StorageCommand::PowerCycle => (Op::STORAGE_OPERATION_POWER_CYCLE, 0, false),
+        StorageCommand::Quiesce => (Op::STORAGE_OPERATION_QUIESCE, 0, false),
+        StorageCommand::Fault {
+            kind,
+            after_ms,
+            yes,
+        } => (
+            match kind {
+                StorageFault::Reset => Op::STORAGE_OPERATION_FAULT_RESET,
+                StorageFault::Sd => Op::STORAGE_OPERATION_FAULT_SD,
+                StorageFault::Power => Op::STORAGE_OPERATION_FAULT_POWER,
+            },
+            after_ms,
+            yes,
+        ),
+        StorageCommand::Sleep { seconds, yes } => {
+            (Op::STORAGE_OPERATION_TIMED_SLEEP, seconds * 1000, yes)
+        }
+        StorageCommand::Stage { image, version } => {
+            return json_value(
+                sticky_host::remote_debug::stage_storage(client, &args.name, &image, &version)
+                    .map_err(|e| e.to_string())?,
+            )
+        }
+    };
+    json_value(
+        sticky_host::remote_debug::storage_control(
+            client,
+            control::StorageRequest {
+                target: args.name,
+                request: shared::StorageRequest {
+                    id: sticky_host::remote_debug::storage_request_id(),
+                    operation: operation.into(),
+                    count,
+                    confirmed,
+                    ..Default::default()
+                }
+                .into(),
+                ..Default::default()
+            },
+        )
+        .map_err(|e| e.to_string())?,
+    )
 }
 
 #[cfg(test)]

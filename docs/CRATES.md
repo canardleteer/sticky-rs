@@ -1,28 +1,63 @@
 # Crate audit
 
 Every third-party driver needs a recorded verdict before adoption. Catalog
-presence is not a verdict: both [drive-rs](https://tweedegolf.github.io/drive-rs/)
-and [awesome-embedded-rust](https://github.com/rust-embedded/awesome-embedded-rust)
+presence is not a verdict: both
+[drive-rs](https://tweedegolf.github.io/drive-rs/)
+and
+[awesome-embedded-rust](https://github.com/rust-embedded/awesome-embedded-rust)
 mostly miss this board's parts, and the ones they do list are not all correct
 for it.
 
-Verdicts are **pass** (use as-is), **pass-with-wrapper** (use, but board
+Verdicts are **pass** (use as-is), pass-with-wrapper (use, but board
 specifics stay in `seeed-reterminal-sticky`), or **fail** (write our own).
 
 ## Adopted
 
 | Part | Crate | Version audited | Verdict | Basis |
 | --- | --- | --- | --- | --- |
-| GT911 touch | [`gt911`](https://crates.io/crates/gt911) | 0.3.0 | **pass-with-wrapper** | `Gt911Blocking::new(i2c_addr: u8)` and the async `Gt911` take an explicit address, so `0x14` is constructible — the open question from planning. Blocking and async surfaces both exist; multi-touch returns a `heapless::Vec` of up to 5 points (matches Rev.09 §1 silicon max). `init()` writes command `0` at `0x8040` and clears status `0x814E`; it does not write config RAM. `Error::NotReady` means buffer bit `0x80` is clear (idle). **Rev.09 deleted the register map** (Rev.07), so command-`0` and bit `0x80` are crate / on-unit encodings, not a Rev.09 table; Espressif `ENTER_SLEEP` is not a claim of this PDF. Power enable, the INT-during-reset address dance, and the Sticky coordinate transform stay in the board crate (`to_screen` takes the GT911 **480×800** sample). After that dance, leave GPIO21 floating (`Pull::None`; ESP32-S3 v2.2 Table 2-1 has no default pull on that pad). simple-debug writes `StatusWrite::Clear` at `Register::Status` only (no `Register::Command`); 100 kHz. embassy-debug poll is board `Register` I2C at `I2C_MAX_HZ` (crate `init()` not used); INT-low (Rev.09 §6.1) delivered `touch n=5`. Read-only `gt911 st=` cadence is board `touch::STATUS_HEARTBEAT` (`EverySecs(10)` or `Off`). 100 kHz is inside the datasheet 400 kbps cap. |
-| LSM6DS3TR-C IMU | [`lsm6ds3tr`](https://crates.io/crates/lsm6ds3tr) | 0.2.2 | **pass-with-wrapper** | `interface` module provides **both** `i2c` and `spi` back ends, so the SPI-only examples were misleading; I2C at `0x6A` is supported. Enclosure axis mapping and the 0.70 g placement threshold stay in the board crate. Do not touch GPIO7. |
+| GT911 touch | [`gt911`](https://crates.io/crates/gt911) | 0.3.0 | pass-with-wrapper | `Gt911Blocking::new(i2c_addr: u8)` and the async `Gt911` take an explicit address, so `0x14` is constructible — the open question from planning. Blocking and async surfaces both exist; multi-touch returns a `heapless::Vec` of up to 5 points (matches Rev.09 §1 silicon max). `init()` writes command `0` at `0x8040` and clears status `0x814E`; it does not write config RAM. `Error::NotReady` means buffer bit `0x80` is clear (idle). **Rev.09 deleted the register map** (Rev.07), so command-`0` and bit `0x80` are crate / on-unit encodings, not a Rev.09 table; Espressif `ENTER_SLEEP` is not a claim of this PDF. Power enable, the INT-during-reset address dance, and the Sticky coordinate transform stay in the board crate (`to_screen` takes the GT911 **480×800** sample). After that dance, leave GPIO21 floating (`Pull::None`; ESP32-S3 v2.2 Table 2-1 has no default pull on that pad). simple-debug writes `StatusWrite::Clear` at `Register::Status` only (no `Register::Command`); 100 kHz. embassy-debug poll is board `Register` I2C at `I2C_MAX_HZ` (crate `init()` not used); INT-low (Rev.09 §6.1) delivered `touch n=5`. Read-only `gt911 st=` cadence is board `touch::STATUS_HEARTBEAT` (`EverySecs(10)` or `Off`). 100 kHz is inside the datasheet 400 kbps cap. |
+| LSM6DS3TR-C IMU | [`lsm6ds3tr`](https://crates.io/crates/lsm6ds3tr) | 0.2.2 | pass-with-wrapper | `interface` module provides **both** `i2c` and `spi` back ends, so the SPI-only examples were misleading; I2C at `0x6A` is supported. Enclosure axis mapping and the 0.70 g placement threshold stay in the board crate. Do not touch GPIO7. |
 | SHT40 | [`sht4x`](https://crates.io/crates/sht4x) | 0.2.0 | **pass** | `embedded-hal` 1.0, address `0x44`. Command bytes match the Sensirion SHT4x datasheet (`Precision::High` → `0xFD` high-precision measure, `0xF6` / `0xE0` medium/low, `0x94` soft reset, `0x89` serial number). Used on silicon: a high-precision measure ACKed at `0x44` where a 1-byte read NAKed. Do not print `serial_number` from this crate. |
 | PCF8563 RTC | [`pcf8563-dd`](https://crates.io/crates/pcf8563-dd) | 0.3.0 | **pass** for the register map; **do not take the crate in this workspace** (`bisync` 0.3 is yanked) | NXP Rev 11: seconds bit 7 is VL. simple-debug reads `0x02` raw. On a physical unit: seconds tick and **`vl=0`**. |
-| MicroSD | [`embedded-sdmmc`](https://crates.io/crates/embedded-sdmmc) | 0.10.0 | **pass-with-wrapper** | Init at <= 400 kHz then raise. Shares one SPI controller with the panel, so CS arbitration is the application's job via `embedded-hal-bus`. |
+| MicroSD | [`embedded-sdmmc`](https://crates.io/crates/embedded-sdmmc) | 0.10.0 | pass-with-wrapper | Init at <= 400 kHz then raise. Shares one SPI controller with the panel, so CS arbitration is the application's job via `embedded-hal-bus`. |
 
 The two rows that were “pending register spot-check” are closed on
 silicon: `sht4x` `0xFD` printed live milli °C / milli % RH; PCF8563
 VL is seconds bit 7 and read **`vl=0`** from `0x02` (no `pcf8563-dd`
 in the lockfile).
+
+## Storage adoption (2026-10-08)
+
+The pinned versions below were checked against their crates.io release records,
+packaged Cargo manifests, license files, and upstream source. All are unyanked;
+the stable versions are current when checked.
+The host graph passes Rust 1.88 with all features. Firmware uses the ESP
+compiler independently; the selected esp-hal tag requires Rust 1.95.
+
+| Dependency | License / declared Rust | Verdict and required features | Maintenance evidence |
+| --- | --- | --- | --- |
+| [`embedded-sdmmc` 0.10.0](https://github.com/rust-embedded-community/embedded-sdmmc-rs) | MIT OR Apache-2.0 / 1.87 | pass-with-wrapper for SPI transport, optional `sd`, defaults off. Application owns CS, clocks, power and recovery; its FAT volume manager is not used. | Stable release 2026-08-10. |
+| [`littlefs2` 0.8.1](https://github.com/trussed-dev/littlefs2) | MIT OR Apache-2.0 / 1.87 | pass-with-wrapper, defaults off, `alloc`. Compile-time geometry; caller chooses profile. Flush every program callback because the binding's C sync callback performs no I/O. Close files explicitly before rename. | Stable release 2026-08-08. |
+| [`littlefs2-sys` 0.4.0](https://github.com/nickray/littlefs2-sys) | BSD-3-Clause / unspecified | pass-with-wrapper as littlefs2's C backend. Clang builtin headers and target C ABI must match. Xtensa enables C stubs with `tinyrlibc` and `software-intrinsics`; no tracked host header paths. | Stable release 2026-06-22; Rust 1.88 verified through the complete host graph. |
+| [`starry-fatfs` 0.4.1-preview.2](https://crates.io/crates/starry-fatfs/0.4.1-preview.2) | MIT / 1.65 | pass-with-wrapper, imported as `fatfs`, defaults off, `alloc`, `lfn`, `unicode`. Supports no_std byte streams. Explicit file flush and filesystem unmount required; upstream Drop attempts unmount. Our poisoned stream suppresses cleanup device I/O after failure. FAT bulk data is replaceable. | Preview released 2026-02-06; no stable release published. Pin exactly and retain fault tests before changing it. |
+| [`hadris-storage` / `hadris-io` 2.5.0](https://github.com/hxyulin/hadris) | MIT / 1.88 | pass-with-wrapper, defaults off; storage enables `sync`. Supplies synchronous managed-media traits without board resources or implicit bus locks. | Stable releases 2026-10-03. |
+| [`gpt_disk_types` 0.16.1 / `gpt_disk_io` 0.17.0](https://github.com/google/gpt-disk-rs) | MIT OR Apache-2.0 / 1.81 and 1.85 | pass-with-wrapper, defaults off. Codecs validate CRCs; our wrapper additionally checks bounds, primary/backup placement, usable ranges and unique nonzero GUIDs. Caller supplies the 16 KiB entry-array buffer. | Stable releases 2025-04-01 / 2026-10-01. Upstream explicitly disclaims official Google product support. |
+
+These permissive licenses are compatible with this workspace's MIT
+license; retain upstream notices when distributing the C backend.
+The FAT preview requires review and renewed failure tests before upgrades.
+The original [`fatfs` 0.3.6](https://github.com/rafalh/rust-fatfs) release
+(2023-01-17) lacks this fork's no_std feature surface. `embedded-sdmmc`'s FAT
+manager remains useful for the read-only diagnostic; the byte-stream adapter
+lets the storage library use the same device and partition contracts for both
+filesystems. Raw `littlefs2` callbacks are insufficient here because sync is a
+no-op. No filesystem engine can guarantee the consumer card controller's
+undocumented power-loss behavior.
+
+Supporting storage dependencies use embedded-hal, embedded-io 0.7, SHA-256,
+serde with `derive`/`alloc`, and serde-json-core. Defaults are disabled where
+needed for no_std; JSON and hashing buffers have explicit bounds. SHA-256
+detects corruption; publisher authentication requires a separate policy.
 
 ## Rejected
 
@@ -47,6 +82,7 @@ in the lockfile).
 | [`seeed-reterminal-sticky`](../crates/seeed-reterminal-sticky) | No board crate exists for this product. Owns `DigitizerSample` / `FramebufferPoint` / `GlassPoint` / `PagePoint` / `HitRect` so UART `p0=` cannot compile as a gray4 hit-test. |
 | [`simple-debug`](../crates/simple-debug) | UART heartbeat, GPIO edges, and [`IdleListen`](../crates/simple-debug/src/idle.rs) for unattended `vet-idle-log`. Host-tested because the Xtensa image cannot run `cargo test` on the host compiler. |
 | [`embassy-debug`](../crates/embassy-debug) | Timestamped button / touch / IMU / mic / radio / BLE pair-card / Wi-Fi survey + SoftAP / touch-validation (`target show` / `hit` / `miss` / `loop`) / read-only SD identify / charge-sit lines and [`IdleListen`](../crates/embassy-debug/src/idle.rs) for unattended `vet-idle-log`. `--features remote-debug` appends `src=phys` / `src=syn` on `touch` lines, `src=syn` on synthetic `btn` edges, and `snap` / `touch drop` lines; default image omits those tokens. Host-tested because the Xtensa image cannot run `cargo test` on the host compiler. |
+| [`embedded-storage-volume`](../crates/embedded-storage-volume) | Reuses upstream engines with partition bounds, failure poisoning, explicit shutdown, commit policy, correlated receipts and bounded package verification. Devices, buffers and synchronization belong to the caller. |
 | [`remote-debug-wire`](../crates/remote-debug-wire) | Transport-agnostic protobuf codec (`Envelope`, inject, one frozen snapshot slot, `ControlLayout`) plus documented GATT UUIDs and ATT reassembly. UART stays plaintext. Generated `buffa` types are committed so host and firmware clippy stay offline. Git dep (`publish = false`). |
 | [`remote-debug-peripheral`](../crates/remote-debug-peripheral) | Device-side Envelope dispatch (`Device`) and optional Trouble `RemoteDebugService` (`gatt`). No esp-hal. The image owns LAST planes and the radio. Git dep (`publish = false`). |
 | [`remote-debug-host`](../host/remote-debug-host) | Generic Linux BLE central for those framed envelopes. No clap, no UART, no Sticky pins. Other codebases implement the same GATT UUIDs after their own pairing policy. Git dep (`publish = false`). |
@@ -59,6 +95,11 @@ in the lockfile).
 `buf` via [`buf-tools`](https://crates.io/crates/buf-tools)
 `>=1.73.0-rc.1` when `REGEN_PROTO=1`. That is infrastructure for the
 codec, not a chip-driver verdict. Do not add `buffa` to `panel-view`.
+
+The host broker uses `connectrpc` 0.9.1, the upstream patch for
+[RUSTSEC-2026-0304](https://github.com/connectrpc/connect-rust/pull/313).
+The stalled streaming-body reader is bounded after its handler finishes.
+Companion code generators remain at 0.9.0, as specified by that release.
 
 `sticky-host` uses [`espflash`](https://crates.io/crates/espflash) 4.5 as a
 library (`default-features = false`, feature `serialport`).

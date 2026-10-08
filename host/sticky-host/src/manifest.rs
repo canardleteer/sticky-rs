@@ -49,10 +49,10 @@ pub struct Manifest {
     pub mac: String,
     /// Raw flash-size field.
     pub flash_size: String,
-    /// Secure boot reported enabled.
-    pub secure_boot: bool,
-    /// Flash encryption reported enabled.
-    pub flash_encryption: bool,
+    /// Explicit secure-boot report; null means unavailable or unfamiliar.
+    pub secure_boot: Option<bool>,
+    /// Explicit flash-encryption report; legacy boolean values still deserialize.
+    pub flash_encryption: Option<bool>,
     /// SHA-256 of `flash-32mb.bin`.
     pub dump_sha256: String,
     /// SHA-256 of the bootloader slice.

@@ -137,6 +137,22 @@ impl ::buffa::Message for Envelope {
                         += 2u64 + ::buffa::encoding::varint_len(inner as u64) as u64
                             + inner as u64;
                 }
+                __buffa::oneof::envelope::Body::StorageRequest(x) => {
+                    let __slot = __cache.reserve();
+                    let inner = x.compute_size(__cache);
+                    __cache.set(__slot, inner);
+                    size
+                        += 2u64 + ::buffa::encoding::varint_len(inner as u64) as u64
+                            + inner as u64;
+                }
+                __buffa::oneof::envelope::Body::StorageReply(x) => {
+                    let __slot = __cache.reserve();
+                    let inner = x.compute_size(__cache);
+                    __cache.set(__slot, inner);
+                    size
+                        += 2u64 + ::buffa::encoding::varint_len(inner as u64) as u64
+                            + inner as u64;
+                }
             }
         }
         size += self.__buffa_unknown_fields.encoded_len() as u64;
@@ -229,6 +245,22 @@ impl ::buffa::Message for Envelope {
                 __buffa::oneof::envelope::Body::RebootAck(x) => {
                     ::buffa::types::put_len_delimited_header(
                         19u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    x.write_to(__cache, buf);
+                }
+                __buffa::oneof::envelope::Body::StorageRequest(x) => {
+                    ::buffa::types::put_len_delimited_header(
+                        20u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    x.write_to(__cache, buf);
+                }
+                __buffa::oneof::envelope::Body::StorageReply(x) => {
+                    ::buffa::types::put_len_delimited_header(
+                        21u32,
                         u64::from(__cache.consume_next()),
                         buf,
                     );
@@ -451,6 +483,46 @@ impl ::buffa::Message for Envelope {
                     ::buffa::Message::merge_length_delimited(&mut val, buf, ctx)?;
                     self.body = ::core::option::Option::Some(
                         __buffa::oneof::envelope::Body::RebootAck(
+                            ::buffa::alloc::boxed::Box::new(val),
+                        ),
+                    );
+                }
+            }
+            20u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                if let ::core::option::Option::Some(
+                    __buffa::oneof::envelope::Body::StorageRequest(ref mut existing),
+                ) = self.body
+                {
+                    ::buffa::Message::merge_length_delimited(&mut **existing, buf, ctx)?;
+                } else {
+                    let mut val = ::core::default::Default::default();
+                    ::buffa::Message::merge_length_delimited(&mut val, buf, ctx)?;
+                    self.body = ::core::option::Option::Some(
+                        __buffa::oneof::envelope::Body::StorageRequest(
+                            ::buffa::alloc::boxed::Box::new(val),
+                        ),
+                    );
+                }
+            }
+            21u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                if let ::core::option::Option::Some(
+                    __buffa::oneof::envelope::Body::StorageReply(ref mut existing),
+                ) = self.body
+                {
+                    ::buffa::Message::merge_length_delimited(&mut **existing, buf, ctx)?;
+                } else {
+                    let mut val = ::core::default::Default::default();
+                    ::buffa::Message::merge_length_delimited(&mut val, buf, ctx)?;
+                    self.body = ::core::option::Option::Some(
+                        __buffa::oneof::envelope::Body::StorageReply(
                             ::buffa::alloc::boxed::Box::new(val),
                         ),
                     );

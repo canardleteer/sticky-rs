@@ -39,5 +39,9 @@ message Envelope {
     sticky.remote.shared.v1.Reboot reboot = 18;
     // Device to host: ACK before the MCU software-reset so ATT can flush.
     sticky.remote.shared.v1.RebootAck reboot_ack = 19;
+    // Host to device: partitioned storage control.
+    sticky.remote.shared.v1.StorageRequest storage_request = 20;
+    // Device to host: storage acknowledgement or status.
+    sticky.remote.shared.v1.StorageReply storage_reply = 21;
   }
 }

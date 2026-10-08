@@ -391,6 +391,175 @@ fn crc32_finish(crc: u32) -> u32 {
     !crc
 }
 
+/// Package an app0 image and transfer it in ordered acknowledged chunks.
+/// Existing ready data stays intact until device readback verification succeeds.
+pub fn stage_storage(
+    client: &remote_debug_broker::ControlClient,
+    target: &str,
+    image: &std::path::Path,
+    version: &str,
+) -> Result<remote_debug_broker::control::StorageResponse, crate::Error> {
+    use remote_debug_broker::control::StorageRequest as StorageControlRequest;
+    use remote_debug_broker::shared::{StorageOperation as Op, StorageRequest};
+    use sha2::{Digest, Sha256};
+    let bytes = crate::flash_app_impl::read_app_image(image, APP0_MAX as u32)?;
+    if bytes.len() > APP0_MAX || version.is_empty() || version.len() > 64 {
+        return Err(crate::Error::ImageNotApp);
+    }
+    crate::flash_app_impl::validate_esp32s3_image(&bytes)?;
+    let digest: [u8; 32] = Sha256::digest(&bytes).into();
+    let manifest = serde_json::to_vec(
+        &serde_json::json!({"format":1,"board":"seeed-reterminal-sticky",
+        "chip":"esp32s3","kind":"app0","version":version,"length":bytes.len(),"sha256":digest}),
+    )?;
+    if manifest.len() > 1024 {
+        return Err(crate::Error::ImageNotApp);
+    }
+    let mut package = Vec::with_capacity(4 + manifest.len() + bytes.len());
+    package.extend_from_slice(&(manifest.len() as u32).to_le_bytes());
+    package.extend_from_slice(&manifest);
+    package.extend_from_slice(&bytes);
+    let send = |operation: Op, offset: u64, data: &[u8]| {
+        storage_control(
+            client,
+            StorageControlRequest {
+                target: target.into(),
+                request: StorageRequest {
+                    id: storage_request_id(),
+                    operation: operation.into(),
+                    offset,
+                    data: data.to_vec(),
+                    ..Default::default()
+                }
+                .into(),
+                ..Default::default()
+            },
+        )
+    };
+    send(Op::STORAGE_OPERATION_STAGE_BEGIN, 0, &[])?;
+    for (index, chunk) in package.chunks(512).enumerate() {
+        send(
+            Op::STORAGE_OPERATION_STAGE_CHUNK,
+            (index * 512) as u64,
+            chunk,
+        )?;
+    }
+    let response = send(
+        Op::STORAGE_OPERATION_STAGE_FINISH,
+        package.len() as u64,
+        &[],
+    )?;
+    Ok(response)
+}
+
+/// Factory app0's maximum payload length; host staging never writes flash.
+const APP0_MAX: usize = 0x600000;
+
+/// Generate process-local increasing ids with a time-based seed across clients.
+/// These identifiers contain no device or personal identity.
+pub fn storage_request_id() -> u64 {
+    use std::sync::{
+        atomic::{AtomicU64, Ordering},
+        OnceLock,
+    };
+    static ID: OnceLock<AtomicU64> = OnceLock::new();
+    ID.get_or_init(|| {
+        AtomicU64::new(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos() as u64
+                | 1,
+        )
+    })
+    .fetch_add(1, Ordering::Relaxed)
+}
+
+/// Run one storage operation and wait for its correlated completion receipt.
+/// Background jobs leave the broker available between polls. An evicted receipt,
+/// reboot, device failure, or timeout is an error, never success. Stress gains
+/// one second per requested round beyond the base five-minute job budget.
+pub fn storage_control(
+    client: &remote_debug_broker::ControlClient,
+    request: remote_debug_broker::control::StorageRequest,
+) -> Result<remote_debug_broker::control::StorageResponse, crate::Error> {
+    use remote_debug_broker::{
+        control::StorageRequest as StorageControlRequest,
+        shared::{StorageOperation as Op, StorageRequest},
+    };
+    let job_id = if request.request.operation.as_known() == Some(Op::STORAGE_OPERATION_STATUS)
+        && request.request.offset != 0
+    {
+        request.request.offset
+    } else {
+        request.request.id
+    };
+    let budget_seconds = 300
+        + if request.request.operation.as_known() == Some(Op::STORAGE_OPERATION_STRESS) {
+            u64::from(request.request.count.min(10000))
+        } else {
+            0
+        };
+    let cached_status = request.request.operation.as_known() == Some(Op::STORAGE_OPERATION_STATUS)
+        && request.request.offset == 0;
+    let target = request.target.clone();
+    let mut response = client
+        .storage(request)
+        .map_err(|e| crate::Error::RemoteDebug(e.to_string()))?;
+    if response.reply.is_set() && cached_status {
+        return Ok(response);
+    }
+    if !response.reply.is_set() || !response.reply.ok {
+        return Err(crate::Error::RemoteDebug(format!(
+            "storage: {}",
+            response.reply.message
+        )));
+    }
+    if response.reply.job_id == 0 {
+        return Ok(response);
+    }
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(budget_seconds);
+    loop {
+        if response.reply.job_id != job_id {
+            return Err(crate::Error::RemoteDebug(
+                "storage completion id mismatch".into(),
+            ));
+        }
+        if response.reply.job_complete {
+            return if response.reply.job_ok {
+                Ok(response)
+            } else {
+                Err(crate::Error::RemoteDebug("storage job failed".into()))
+            };
+        }
+        if std::time::Instant::now() >= deadline {
+            return Err(crate::Error::RemoteDebug(format!(
+                "storage job {job_id} timed out"
+            )));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        response = client
+            .storage(StorageControlRequest {
+                target: target.clone(),
+                request: StorageRequest {
+                    id: storage_request_id(),
+                    operation: Op::STORAGE_OPERATION_STATUS.into(),
+                    offset: job_id,
+                    ..Default::default()
+                }
+                .into(),
+                ..Default::default()
+            })
+            .map_err(|e| crate::Error::RemoteDebug(e.to_string()))?;
+        if !response.reply.is_set() || !response.reply.ok {
+            return Err(crate::Error::RemoteDebug(format!(
+                "storage: {}",
+                response.reply.message
+            )));
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

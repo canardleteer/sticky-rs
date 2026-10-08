@@ -239,34 +239,115 @@ impl<T: Transport> Session<T> {
 
     /// Software-reset the **embedded MCU** (not this host).
     ///
-    /// Writes `Reboot`, waits for `RebootAck` or a link drop, then
+    /// Writes `Reboot`, requires `RebootAck`, then
     /// forgets the BlueZ bond. RAM keys on the device do not survive.
     ///
     /// # Errors
     ///
-    /// Write failure before the reset starts.
+    /// Write, framing, timeout or storage-barrier failure. Refusal preserves
+    /// the session and bond for recovery.
     pub fn reboot(&mut self) -> Result<(), Error> {
-        self.transport.write_frame(&encode_reboot())?;
-        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        self.reboot_with_force(false)
+    }
+
+    /// Reset the MCU with an explicit recovery policy. Forced reset skips the
+    /// firmware's storage drain and can interrupt an outstanding write.
+    pub fn reboot_with_force(&mut self, force: bool) -> Result<(), Error> {
+        let frame = if force {
+            encode_body(remote_debug_wire::v1::Reboot {
+                force,
+                ..Default::default()
+            })
+        } else {
+            encode_reboot()
+        };
+        self.transport.write_frame(&frame)?;
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
         loop {
-            if std::time::Instant::now() > deadline {
-                break;
+            if std::time::Instant::now() >= deadline {
+                self.assembler.clear();
+                return Err(Error::Io("reboot acknowledgement timeout".into()));
             }
-            match self.transport.read_chunk() {
-                Ok(chunk) => match self.assembler.push(&chunk) {
-                    Ok(None) => continue,
-                    Ok(Some(frame)) => {
-                        if matches!(decode_envelope(&frame)?.body, Some(Body::RebootAck(_))) {
-                            break;
+            let chunk = match self.transport.read_chunk() {
+                Ok(chunk) => chunk,
+                Err(error) => {
+                    self.assembler.clear();
+                    return Err(error);
+                }
+            };
+            let frame = match self.assembler.push(&chunk) {
+                Ok(frame) => frame,
+                Err(error) => {
+                    self.assembler.clear();
+                    return Err(error.into());
+                }
+            };
+            if let Some(frame) = frame {
+                match decode_envelope(&frame)?.body {
+                    Some(Body::RebootAck(ack)) => {
+                        if ack.storage_failed {
+                            return Err(Error::Io(
+                                "storage drain failed; use reboot --force".into(),
+                            ));
                         }
+                        break;
                     }
-                    Err(_) => break,
-                },
-                Err(_) => break,
+                    Some(Body::LogLine(line)) => self.push_log(line.t_ms, line.text),
+                    _ => {}
+                }
             }
         }
         let _ = self.transport.disconnect(false);
         Ok(())
+    }
+
+    /// Submit one bounded storage request and await its matching reply.
+    /// Long device jobs acknowledge acceptance; callers poll STATUS while the
+    /// same connection remains available for snapshots and forced reboot.
+    pub fn storage(
+        &mut self,
+        request: remote_debug_wire::v1::StorageRequest,
+    ) -> Result<remote_debug_wire::v1::StorageReply, Error> {
+        if request.id == 0 || request.data.len() > 512 {
+            return Err(Error::Io("invalid storage request".into()));
+        }
+        let id = request.id;
+        self.transport.write_frame(&encode_body(request))?;
+        let deadline = std::time::Instant::now() + Duration::from_secs(30);
+        loop {
+            if std::time::Instant::now() >= deadline {
+                self.assembler.clear();
+                return Err(Error::Io("storage reply timeout".into()));
+            }
+            let chunk = match self.transport.read_chunk() {
+                Ok(chunk) => chunk,
+                Err(error) => {
+                    self.assembler.clear();
+                    return Err(error);
+                }
+            };
+            let frame = match self.assembler.push(&chunk) {
+                Ok(frame) => frame,
+                Err(error) => {
+                    self.assembler.clear();
+                    return Err(error.into());
+                }
+            };
+            if let Some(frame) = frame {
+                let envelope = match decode_envelope(&frame) {
+                    Ok(envelope) => envelope,
+                    Err(error) => {
+                        self.assembler.clear();
+                        return Err(error.into());
+                    }
+                };
+                match envelope.body {
+                    Some(Body::StorageReply(reply)) if reply.id == id => return Ok(*reply),
+                    Some(Body::LogLine(line)) => self.push_log(line.t_ms, line.text),
+                    _ => {}
+                }
+            }
+        }
     }
 
     fn push_log(&mut self, t_ms: u32, text: String) {
@@ -330,6 +411,175 @@ impl<T: Transport> Session<T> {
 mod tests {
     use super::{Session, LOG_RING};
     use crate::FakeTransport;
+
+    /// Script notifications independently of requests, including partial frames.
+    struct StorageTransport {
+        chunks: std::collections::VecDeque<Vec<u8>>,
+        writes: usize,
+        disconnects: usize,
+    }
+    impl crate::Transport for StorageTransport {
+        fn write_frame(&mut self, _: &[u8]) -> Result<(), crate::Error> {
+            self.writes += 1;
+            Ok(())
+        }
+        fn read_chunk(&mut self) -> Result<Vec<u8>, crate::Error> {
+            self.chunks
+                .pop_front()
+                .ok_or(crate::Error::Io("scripted timeout".into()))
+        }
+        fn try_read_chunk(&mut self) -> Option<Vec<u8>> {
+            self.chunks.pop_front()
+        }
+        fn disconnect(&mut self, _: bool) -> Result<(), crate::Error> {
+            self.disconnects += 1;
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn storage_ignores_other_ids_and_preserves_logs_between_att_chunks() {
+        use remote_debug_wire::{
+            encode_body, encode_log_line,
+            v1::{StorageReply, StorageRequest},
+        };
+        let reply = encode_body(StorageReply {
+            id: 42,
+            ok: true,
+            job_id: 42,
+            job_complete: true,
+            job_ok: false,
+            ..Default::default()
+        });
+        let mut chunks = std::collections::VecDeque::from([
+            encode_body(StorageReply {
+                id: 41,
+                ok: true,
+                ..Default::default()
+            }),
+            encode_log_line(12, "storage verification complete"),
+        ]);
+        chunks.extend(reply.chunks(3).map(<[u8]>::to_vec));
+        let mut session = Session::new(
+            StorageTransport {
+                chunks,
+                writes: 0,
+                disconnects: 0,
+            },
+            false,
+        );
+        let result = session
+            .storage(StorageRequest {
+                id: 42,
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(result.id, 42);
+        assert!(result.job_complete);
+        assert!(!result.job_ok);
+        assert_eq!(session.last_log(), Some("storage verification complete"));
+        assert_eq!(session.transport.writes, 1);
+    }
+
+    #[test]
+    fn storage_timeout_discards_partial_frame_before_next_request() {
+        use remote_debug_wire::{
+            encode_body,
+            v1::{StorageReply, StorageRequest},
+        };
+        let old = encode_body(StorageReply {
+            id: 1,
+            ..Default::default()
+        });
+        let mut session = Session::new(
+            StorageTransport {
+                chunks: [old[..6].to_vec()].into(),
+                writes: 0,
+                disconnects: 0,
+            },
+            false,
+        );
+        assert!(session
+            .storage(StorageRequest {
+                id: 1,
+                ..Default::default()
+            })
+            .is_err());
+        session
+            .transport
+            .chunks
+            .push_back(encode_body(StorageReply {
+                id: 2,
+                ok: true,
+                ..Default::default()
+            }));
+        assert!(
+            session
+                .storage(StorageRequest {
+                    id: 2,
+                    ..Default::default()
+                })
+                .unwrap()
+                .ok
+        );
+        assert!(session
+            .storage(StorageRequest {
+                id: 0,
+                ..Default::default()
+            })
+            .is_err());
+        assert!(session
+            .storage(StorageRequest {
+                id: 3,
+                data: vec![0; 513],
+                ..Default::default()
+            })
+            .is_err());
+        assert_eq!(session.transport.writes, 2);
+    }
+
+    #[test]
+    fn reboot_refusal_and_missing_ack_preserve_session_for_recovery() {
+        use remote_debug_wire::{
+            encode_body,
+            v1::{RebootAck, StorageReply, StorageRequest},
+        };
+        for chunks in [
+            vec![],
+            vec![encode_body(RebootAck {
+                storage_failed: true,
+                ..Default::default()
+            })],
+        ] {
+            let mut session = Session::new(
+                StorageTransport {
+                    chunks: chunks.into(),
+                    writes: 0,
+                    disconnects: 0,
+                },
+                true,
+            );
+            assert!(session.reboot().is_err());
+            assert_eq!(session.transport.disconnects, 0);
+            session
+                .transport
+                .chunks
+                .push_back(encode_body(StorageReply {
+                    id: 7,
+                    ok: true,
+                    ..Default::default()
+                }));
+            assert!(
+                session
+                    .storage(StorageRequest {
+                        id: 7,
+                        ..Default::default()
+                    })
+                    .unwrap()
+                    .ok
+            );
+        }
+    }
 
     #[test]
     fn reboot_acks_then_forgets_the_bluez_bond() {

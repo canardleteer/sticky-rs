@@ -5,8 +5,9 @@
 | Path | Contents |
 | --- | --- |
 | `crates/*` | Default-members. Host-testable format crates and (when present) `no_std` `embedded-hal` 1.0 drivers |
+| `crates/embedded-storage-volume/` | Reusable no_std partition views, littlefs/FAT adapters, commit policy, completion receipts and bounded package validation. Optional SD SPI adapter; caller owns devices and scheduling |
 | `host/` | Default-members. Host libraries and future host CLIs (not `xtask`) |
-| `host/sticky-host/` | Host library (`publish = true`, not crates.io yet). Detect, factory backup / confirm / restore, `build-fw`, `flash-app`, learn-uart, monitor, remote-debug UART PIN / allowlist / page-space PNG. Wraps the generic broker with xtask `remote-debug serve` argv and the Sticky flock dir. Callers pass `Layout`; live methods take the UART lock |
+| `host/sticky-host/` | Host library (`publish = true`, not crates.io yet). Detect, factory backup / confirm / restore, `build-fw`, `flash-app`, learn-uart, monitor, remote-debug UART PIN / allowlist / page-space PNG and correlated storage controls. Wraps the generic broker with xtask `remote-debug serve` argv and the Sticky flock dir. Callers pass `Layout`; live methods take the UART lock |
 | `host/remote-debug-host/` | Generic BLE central (`publish = false`; git dep). No clap, no UART, no Sticky pins. Linux uses `bluer` (Connect, not Pair) |
 | `host/remote-debug-broker/` | ConnectRPC owner (`publish = false`; git dep). Holds 0..N GATT `Session`s keyed by advertise name. Loopback HTTP + `remote-debug.connect` endpoint file. `serve_with` + `SpawnSpec` (exe + argv). No clap, no UART, no Seeed crate |
 | `protos/` | Shared IDL (`sticky.remote.shared.v1`, GATT `Envelope`, ConnectRPC control). `buf lint` STANDARD+COMMENTS. Generated trees are committed; `REGEN_PROTO=1` rewrites |
@@ -72,7 +73,8 @@ pins, latch, rails, transforms, and typed spaces
   binary-only Cargo plugin wrapping that crate. Do not enable
   espflash's `cli` feature. `sticky-host`, `remote-debug-host`,
   `remote-debug-broker`, and xtask require rustc 1.88 (espflash 4.5);
-  the `no_std` crates stay at workspace MSRV 1.85. Live
+  the host and `no_std` workspace MSRV is 1.88. Firmware uses the ESP
+  compiler; its selected HAL requires Rust 1.95. Live
   `sticky-host` methods take [`uart_lock::try_acquire`](xtask.md#uart-session-lock-shared)
   internally. New UART-touching in-repo tools reuse that same lock; do not
   invent another. UART-touching subprocesses go through
@@ -92,9 +94,9 @@ pins, latch, rails, transforms, and typed spaces
   PDF extracts under the hardware skill `resources/datasheets/md/`.
   A rustc newer than MSRV can fail that clippy on default-members
   (`too_many_arguments`, `assertions_on_constants`). Keep the trio
-  green; do not pin an older clippy. Workspace MSRV 1.85 treats
-  `const { assert!(…) }` items as experimental — use a named
-  `const _: u32 = A - B` underflow (or pack arguments) instead.
+  green; do not pin an older clippy. Verify the default-member graph on Rust
+  1.88; use the ESP toolchain
+  for firmware.
 - One workspace lockfile is committed. Pass `--locked` and keep the claimed
   MSRV. After changing `host/sticky-host/Cargo.toml`, `xtask/Cargo.toml`,
   `firmware/*/Cargo.toml`, or workspace members, refresh it with
@@ -114,3 +116,9 @@ pins, latch, rails, transforms, and typed spaces
   [README.md](../../../../README.md) in the same change. Touch `AGENTS.md`
   only if the live-ask or safety set changed. `cargo xtask --help` is not a
   substitute for those two lists.
+
+`embedded-storage-volume` is a default-member no_std crate. It owns no board
+GPIOs, locks or global buffers. Firmware storage owns SPI on Core 1 and uses
+bounded request/reply channels to Core 0. Both `build-fw` and firmware CI set
+the linker script once even in nested worktrees, and discover Clang resource
+headers without tracked machine paths. See [storage](../../../../docs/storage.md).

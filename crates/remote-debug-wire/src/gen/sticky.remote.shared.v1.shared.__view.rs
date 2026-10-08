@@ -2225,6 +2225,10 @@ impl ::buffa::HasMessageView for super::super::LogLine {
 /// Host to device: reset the embedded MCU (not the desk host).
 #[derive(Clone, Debug, Default)]
 pub struct RebootView<'a> {
+    /// Skip storage draining when recovering a stuck device.
+    ///
+    /// Field 1: `force`
+    pub force: bool,
     pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
 }
 impl<'a> ::buffa::MessageView<'a> for RebootView<'a> {
@@ -2257,6 +2261,13 @@ impl<'a> ::buffa::MessageView<'a> for RebootView<'a> {
         let view = self;
         let mut cur = cur;
         match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.force = ::buffa::types::decode_bool(&mut cur)?;
+            }
             _ => {
                 ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
                 let span_len = before_tag.len() - cur.len();
@@ -2279,6 +2290,7 @@ impl<'a> ::buffa::MessageView<'a> for RebootView<'a> {
         use ::buffa::alloc::string::ToString as _;
         let _ = __buffa_src;
         ::core::result::Result::Ok(super::super::Reboot {
+            force: self.force,
             __buffa_unknown_fields: self.__buffa_unknown_fields.to_owned()?.into(),
             ..::core::default::Default::default()
         })
@@ -2290,6 +2302,9 @@ impl<'a> ::buffa::ViewEncode<'a> for RebootView<'a> {
         #[allow(unused_imports)]
         use ::buffa::Enumeration as _;
         let mut size = 0u64;
+        if self.force {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
         size += self.__buffa_unknown_fields.encoded_len() as u64;
         ::buffa::saturate_size(size)
     }
@@ -2301,6 +2316,9 @@ impl<'a> ::buffa::ViewEncode<'a> for RebootView<'a> {
     ) {
         #[allow(unused_imports)]
         use ::buffa::Enumeration as _;
+        if self.force {
+            ::buffa::types::put_bool_field(1u32, self.force, buf);
+        }
         self.__buffa_unknown_fields.write_to(buf);
     }
 }
@@ -2388,6 +2406,13 @@ impl RebootOwnedView {
     pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
         self.0.into_bytes()
     }
+    /// Skip storage draining when recovering a stuck device.
+    ///
+    /// Field 1: `force`
+    #[must_use]
+    pub fn force(&self) -> bool {
+        self.0.reborrow().force
+    }
 }
 impl ::core::convert::From<::buffa::OwnedView<RebootView<'static>>> for RebootOwnedView {
     fn from(inner: ::buffa::OwnedView<RebootView<'static>>) -> Self {
@@ -2412,6 +2437,10 @@ impl ::buffa::HasMessageView for super::super::Reboot {
 /// Device to host: ACK before the MCU software-reset so ATT can flush.
 #[derive(Clone, Debug, Default)]
 pub struct RebootAckView<'a> {
+    /// Storage drain failed; the MCU stayed awake for forced recovery.
+    ///
+    /// Field 1: `storage_failed`
+    pub storage_failed: bool,
     pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
 }
 impl<'a> ::buffa::MessageView<'a> for RebootAckView<'a> {
@@ -2444,6 +2473,13 @@ impl<'a> ::buffa::MessageView<'a> for RebootAckView<'a> {
         let view = self;
         let mut cur = cur;
         match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.storage_failed = ::buffa::types::decode_bool(&mut cur)?;
+            }
             _ => {
                 ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
                 let span_len = before_tag.len() - cur.len();
@@ -2466,6 +2502,7 @@ impl<'a> ::buffa::MessageView<'a> for RebootAckView<'a> {
         use ::buffa::alloc::string::ToString as _;
         let _ = __buffa_src;
         ::core::result::Result::Ok(super::super::RebootAck {
+            storage_failed: self.storage_failed,
             __buffa_unknown_fields: self.__buffa_unknown_fields.to_owned()?.into(),
             ..::core::default::Default::default()
         })
@@ -2477,6 +2514,9 @@ impl<'a> ::buffa::ViewEncode<'a> for RebootAckView<'a> {
         #[allow(unused_imports)]
         use ::buffa::Enumeration as _;
         let mut size = 0u64;
+        if self.storage_failed {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
         size += self.__buffa_unknown_fields.encoded_len() as u64;
         ::buffa::saturate_size(size)
     }
@@ -2488,6 +2528,9 @@ impl<'a> ::buffa::ViewEncode<'a> for RebootAckView<'a> {
     ) {
         #[allow(unused_imports)]
         use ::buffa::Enumeration as _;
+        if self.storage_failed {
+            ::buffa::types::put_bool_field(1u32, self.storage_failed, buf);
+        }
         self.__buffa_unknown_fields.write_to(buf);
     }
 }
@@ -2579,6 +2622,13 @@ impl RebootAckOwnedView {
     pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
         self.0.into_bytes()
     }
+    /// Storage drain failed; the MCU stayed awake for forced recovery.
+    ///
+    /// Field 1: `storage_failed`
+    #[must_use]
+    pub fn storage_failed(&self) -> bool {
+        self.0.reborrow().storage_failed
+    }
 }
 impl ::core::convert::From<::buffa::OwnedView<RebootAckView<'static>>>
 for RebootAckOwnedView {
@@ -2601,4 +2651,875 @@ for RebootAckOwnedView {
 impl ::buffa::HasMessageView for super::super::RebootAck {
     type View<'a> = RebootAckView<'a>;
     type ViewHandle = RebootAckOwnedView;
+}
+/// One storage request. Package bytes include a uint32 JSON length prefix.
+#[derive(Clone, Debug, Default)]
+pub struct StorageRequestView<'a> {
+    /// Nonzero correlation id for ordered replies.
+    ///
+    /// Field 1: `id`
+    pub id: u64,
+    /// Requested operation.
+    ///
+    /// Field 2: `operation`
+    pub operation: ::buffa::EnumValue<super::super::StorageOperation>,
+    /// Exact file offset for a package chunk/finish, or job id to query in STATUS.
+    ///
+    /// Field 3: `offset`
+    pub offset: u64,
+    /// At most 512 bytes per acknowledged chunk.
+    ///
+    /// Field 4: `data`
+    pub data: &'a [u8],
+    /// Bounded stress rounds, or fault delay in milliseconds.
+    ///
+    /// Field 5: `count`
+    pub count: u32,
+    /// Explicit confirmation for provisioning or destructive test controls.
+    ///
+    /// Field 6: `confirmed`
+    pub confirmed: bool,
+    pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+}
+impl<'a> ::buffa::MessageView<'a> for StorageRequestView<'a> {
+    type Owned = super::super::StorageRequest;
+    fn decode_view(buf: &'a [u8]) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+        let __limit = ::core::cell::Cell::new(::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT);
+        let __elem = ::core::cell::Cell::new(::buffa::DEFAULT_ELEMENT_MEMORY_LIMIT);
+        <Self as ::buffa::MessageView>::decode_view_ctx(
+            buf,
+            ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit)
+                .with_element_memory(&__elem),
+        )
+    }
+    fn decode_view_with_ctx(
+        buf: &'a [u8],
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+        <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+    }
+    #[inline]
+    fn merge_view_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        cur: &'a [u8],
+        before_tag: &'a [u8],
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+        let _ = ctx;
+        #[allow(unused_variables)]
+        let view = self;
+        let mut cur = cur;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.id = ::buffa::types::decode_uint64(&mut cur)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.operation = ::buffa::EnumValue::from(
+                    ::buffa::types::decode_int32(&mut cur)?,
+                );
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.offset = ::buffa::types::decode_uint64(&mut cur)?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                view.data = ::buffa::types::borrow_bytes(&mut cur)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.count = ::buffa::types::decode_uint32(&mut cur)?;
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.confirmed = ::buffa::types::decode_bool(&mut cur)?;
+            }
+            _ => {
+                ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                let span_len = before_tag.len() - cur.len();
+                view.__buffa_unknown_fields.push_record(before_tag, span_len, ctx)?;
+            }
+        }
+        ::core::result::Result::Ok(cur)
+    }
+    fn to_owned_message(
+        &self,
+    ) -> ::core::result::Result<super::super::StorageRequest, ::buffa::DecodeError> {
+        self.to_owned_from_source(None)
+    }
+    #[allow(clippy::useless_conversion, clippy::needless_update)]
+    fn to_owned_from_source(
+        &self,
+        __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+    ) -> ::core::result::Result<super::super::StorageRequest, ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::alloc::string::ToString as _;
+        let _ = __buffa_src;
+        ::core::result::Result::Ok(super::super::StorageRequest {
+            id: self.id,
+            operation: self.operation,
+            offset: self.offset,
+            data: (self.data).to_vec(),
+            count: self.count,
+            confirmed: self.confirmed,
+            __buffa_unknown_fields: self.__buffa_unknown_fields.to_owned()?.into(),
+            ..::core::default::Default::default()
+        })
+    }
+}
+impl<'a> ::buffa::ViewEncode<'a> for StorageRequestView<'a> {
+    #[allow(clippy::needless_borrow, clippy::let_and_return)]
+    fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if self.id != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.id) as u64;
+        }
+        {
+            let val = self.operation.to_i32();
+            if val != 0 {
+                size += 1u64 + ::buffa::types::int32_encoded_len(val) as u64;
+            }
+        }
+        if self.offset != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.offset) as u64;
+        }
+        if !self.data.is_empty() {
+            size += 1u64 + ::buffa::types::bytes_encoded_len(&self.data) as u64;
+        }
+        if self.count != 0u32 {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(self.count) as u64;
+        }
+        if self.confirmed {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    #[allow(clippy::needless_borrow)]
+    fn write_to(
+        &self,
+        _cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if self.id != 0u64 {
+            ::buffa::types::put_uint64_field(1u32, self.id, buf);
+        }
+        {
+            let val = self.operation.to_i32();
+            if val != 0 {
+                ::buffa::types::put_int32_field(2u32, val, buf);
+            }
+        }
+        if self.offset != 0u64 {
+            ::buffa::types::put_uint64_field(3u32, self.offset, buf);
+        }
+        if !self.data.is_empty() {
+            ::buffa::types::put_shared_bytes_field(4u32, &self.data, buf);
+        }
+        if self.count != 0u32 {
+            ::buffa::types::put_uint32_field(5u32, self.count, buf);
+        }
+        if self.confirmed {
+            ::buffa::types::put_bool_field(6u32, self.confirmed, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+}
+impl<'a> ::buffa::MessageName for StorageRequestView<'a> {
+    const PACKAGE: &'static str = "sticky.remote.shared.v1";
+    const NAME: &'static str = "StorageRequest";
+    const FULL_NAME: &'static str = "sticky.remote.shared.v1.StorageRequest";
+    const TYPE_URL: &'static str = "type.googleapis.com/sticky.remote.shared.v1.StorageRequest";
+}
+::buffa::impl_default_view_instance!(StorageRequestView);
+::buffa::impl_view_reborrow!(StorageRequestView);
+/** Self-contained, `'static` owned view of a `StorageRequest` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`StorageRequestView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`StorageRequestView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+#[derive(Clone, Debug)]
+pub struct StorageRequestOwnedView(::buffa::OwnedView<StorageRequestView<'static>>);
+impl StorageRequestOwnedView {
+    /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+    ///
+    /// The view borrows directly from the buffer's data; the buffer is
+    /// retained inside the returned handle.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+    /// protobuf data.
+    pub fn decode(
+        bytes: ::buffa::bytes::Bytes,
+    ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+        ::core::result::Result::Ok(
+            StorageRequestOwnedView(::buffa::OwnedView::decode(bytes)?),
+        )
+    }
+    /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+    /// max message size).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+    /// exceeds the configured limits.
+    pub fn decode_with_options(
+        bytes: ::buffa::bytes::Bytes,
+        opts: &::buffa::DecodeOptions,
+    ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+        ::core::result::Result::Ok(
+            StorageRequestOwnedView(
+                ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+            ),
+        )
+    }
+    /// Build from an owned message via an encode → decode round-trip.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+    /// message's encoded size exceeds the 2 GiB protobuf limit, or
+    /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+    /// somehow invalid (should not happen for well-formed messages).
+    pub fn from_owned(
+        msg: &super::super::StorageRequest,
+    ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+        ::core::result::Result::Ok(
+            StorageRequestOwnedView(::buffa::OwnedView::from_owned(msg)?),
+        )
+    }
+    /// Borrow the full [`StorageRequestView`] with its lifetime tied to `&self`.
+    #[must_use]
+    pub fn view(&self) -> &StorageRequestView<'_> {
+        self.0.reborrow()
+    }
+    /// Convert to the owned message type.
+    ///
+    /// Infallible: this type's constructors wire-decode their
+    /// buffer, and a view produced by wire decoding always
+    /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+    /// whose contract also governs handles converted from a raw
+    /// [`::buffa::OwnedView`].
+    #[must_use]
+    pub fn to_owned_message(&self) -> super::super::StorageRequest {
+        self.0.to_owned_message()
+    }
+    /// The underlying bytes buffer.
+    #[must_use]
+    pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+        self.0.bytes()
+    }
+    /// Consume the handle, returning the underlying bytes buffer.
+    #[must_use]
+    pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+        self.0.into_bytes()
+    }
+    /// Nonzero correlation id for ordered replies.
+    ///
+    /// Field 1: `id`
+    #[must_use]
+    pub fn id(&self) -> u64 {
+        self.0.reborrow().id
+    }
+    /// Requested operation.
+    ///
+    /// Field 2: `operation`
+    #[must_use]
+    pub fn operation(&self) -> ::buffa::EnumValue<super::super::StorageOperation> {
+        self.0.reborrow().operation
+    }
+    /// Exact file offset for a package chunk/finish, or job id to query in STATUS.
+    ///
+    /// Field 3: `offset`
+    #[must_use]
+    pub fn offset(&self) -> u64 {
+        self.0.reborrow().offset
+    }
+    /// At most 512 bytes per acknowledged chunk.
+    ///
+    /// Field 4: `data`
+    #[must_use]
+    pub fn data(&self) -> &'_ [u8] {
+        self.0.reborrow().data
+    }
+    /// Bounded stress rounds, or fault delay in milliseconds.
+    ///
+    /// Field 5: `count`
+    #[must_use]
+    pub fn count(&self) -> u32 {
+        self.0.reborrow().count
+    }
+    /// Explicit confirmation for provisioning or destructive test controls.
+    ///
+    /// Field 6: `confirmed`
+    #[must_use]
+    pub fn confirmed(&self) -> bool {
+        self.0.reborrow().confirmed
+    }
+}
+impl ::core::convert::From<::buffa::OwnedView<StorageRequestView<'static>>>
+for StorageRequestOwnedView {
+    fn from(inner: ::buffa::OwnedView<StorageRequestView<'static>>) -> Self {
+        StorageRequestOwnedView(inner)
+    }
+}
+impl ::core::convert::From<StorageRequestOwnedView>
+for ::buffa::OwnedView<StorageRequestView<'static>> {
+    fn from(wrapper: StorageRequestOwnedView) -> Self {
+        wrapper.0
+    }
+}
+impl ::core::convert::AsRef<::buffa::OwnedView<StorageRequestView<'static>>>
+for StorageRequestOwnedView {
+    fn as_ref(&self) -> &::buffa::OwnedView<StorageRequestView<'static>> {
+        &self.0
+    }
+}
+impl ::buffa::HasMessageView for super::super::StorageRequest {
+    type View<'a> = StorageRequestView<'a>;
+    type ViewHandle = StorageRequestOwnedView;
+}
+/// Storage reply. Long jobs acknowledge acceptance and complete through STATUS.
+#[derive(Clone, Debug, Default)]
+pub struct StorageReplyView<'a> {
+    /// Request correlation id.
+    ///
+    /// Field 1: `id`
+    pub id: u64,
+    /// Whether the operation succeeded or the background job was accepted.
+    ///
+    /// Field 2: `ok`
+    pub ok: bool,
+    /// Safe diagnostic token; excludes card identity and file contents.
+    ///
+    /// Field 3: `message`
+    pub message: &'a str,
+    /// Card capacity in 512-byte sectors.
+    ///
+    /// Field 4: `sectors`
+    pub sectors: u64,
+    /// Whether the configured layout mounted successfully.
+    ///
+    /// Field 5: `mounted`
+    pub mounted: bool,
+    /// A provision/verify/stress job is running.
+    ///
+    /// Field 6: `busy`
+    pub busy: bool,
+    /// Persisted sequence recovered on mount and advanced after readback.
+    ///
+    /// Field 7: `verified`
+    pub verified: u32,
+    /// A ready application package passed validation.
+    ///
+    /// Field 8: `ready`
+    pub ready: bool,
+    /// Background request whose retained completion receipt is being reported.
+    ///
+    /// Field 9: `job_id`
+    pub job_id: u64,
+    /// All I/O for job_id has finished; acceptance alone leaves this false.
+    ///
+    /// Field 10: `job_complete`
+    pub job_complete: bool,
+    /// Outcome of completed job_id, independent of subsequent jobs.
+    ///
+    /// Field 11: `job_ok`
+    pub job_ok: bool,
+    /// HAL reset reason for this boot; diagnostic evidence, not a voltage reading.
+    ///
+    /// Field 12: `reset_reason`
+    pub reset_reason: &'a str,
+    /// GPIO9 digital external-power indication; absent before the first sample.
+    ///
+    /// Field 13: `external_power`
+    pub external_power: ::core::option::Option<bool>,
+    pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+}
+impl<'a> ::buffa::MessageView<'a> for StorageReplyView<'a> {
+    type Owned = super::super::StorageReply;
+    fn decode_view(buf: &'a [u8]) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+        let __limit = ::core::cell::Cell::new(::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT);
+        let __elem = ::core::cell::Cell::new(::buffa::DEFAULT_ELEMENT_MEMORY_LIMIT);
+        <Self as ::buffa::MessageView>::decode_view_ctx(
+            buf,
+            ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit)
+                .with_element_memory(&__elem),
+        )
+    }
+    fn decode_view_with_ctx(
+        buf: &'a [u8],
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+        <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+    }
+    #[inline]
+    fn merge_view_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        cur: &'a [u8],
+        before_tag: &'a [u8],
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+        let _ = ctx;
+        #[allow(unused_variables)]
+        let view = self;
+        let mut cur = cur;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.id = ::buffa::types::decode_uint64(&mut cur)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.ok = ::buffa::types::decode_bool(&mut cur)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                view.message = ::buffa::types::borrow_str(&mut cur)?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.sectors = ::buffa::types::decode_uint64(&mut cur)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.mounted = ::buffa::types::decode_bool(&mut cur)?;
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.busy = ::buffa::types::decode_bool(&mut cur)?;
+            }
+            7u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.verified = ::buffa::types::decode_uint32(&mut cur)?;
+            }
+            8u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.ready = ::buffa::types::decode_bool(&mut cur)?;
+            }
+            9u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.job_id = ::buffa::types::decode_uint64(&mut cur)?;
+            }
+            10u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.job_complete = ::buffa::types::decode_bool(&mut cur)?;
+            }
+            11u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.job_ok = ::buffa::types::decode_bool(&mut cur)?;
+            }
+            12u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                view.reset_reason = ::buffa::types::borrow_str(&mut cur)?;
+            }
+            13u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.external_power = Some(::buffa::types::decode_bool(&mut cur)?);
+            }
+            _ => {
+                ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                let span_len = before_tag.len() - cur.len();
+                view.__buffa_unknown_fields.push_record(before_tag, span_len, ctx)?;
+            }
+        }
+        ::core::result::Result::Ok(cur)
+    }
+    fn to_owned_message(
+        &self,
+    ) -> ::core::result::Result<super::super::StorageReply, ::buffa::DecodeError> {
+        self.to_owned_from_source(None)
+    }
+    #[allow(clippy::useless_conversion, clippy::needless_update)]
+    fn to_owned_from_source(
+        &self,
+        __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+    ) -> ::core::result::Result<super::super::StorageReply, ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::alloc::string::ToString as _;
+        let _ = __buffa_src;
+        ::core::result::Result::Ok(super::super::StorageReply {
+            id: self.id,
+            ok: self.ok,
+            message: self.message.to_string(),
+            sectors: self.sectors,
+            mounted: self.mounted,
+            busy: self.busy,
+            verified: self.verified,
+            ready: self.ready,
+            job_id: self.job_id,
+            job_complete: self.job_complete,
+            job_ok: self.job_ok,
+            reset_reason: self.reset_reason.to_string(),
+            external_power: self.external_power,
+            __buffa_unknown_fields: self.__buffa_unknown_fields.to_owned()?.into(),
+            ..::core::default::Default::default()
+        })
+    }
+}
+impl<'a> ::buffa::ViewEncode<'a> for StorageReplyView<'a> {
+    #[allow(clippy::needless_borrow, clippy::let_and_return)]
+    fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if self.id != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.id) as u64;
+        }
+        if self.ok {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        if !self.message.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.message) as u64;
+        }
+        if self.sectors != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.sectors) as u64;
+        }
+        if self.mounted {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        if self.busy {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        if self.verified != 0u32 {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(self.verified) as u64;
+        }
+        if self.ready {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        if self.job_id != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.job_id) as u64;
+        }
+        if self.job_complete {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        if self.job_ok {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        if !self.reset_reason.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.reset_reason) as u64;
+        }
+        if self.external_power.is_some() {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    #[allow(clippy::needless_borrow)]
+    fn write_to(
+        &self,
+        _cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if self.id != 0u64 {
+            ::buffa::types::put_uint64_field(1u32, self.id, buf);
+        }
+        if self.ok {
+            ::buffa::types::put_bool_field(2u32, self.ok, buf);
+        }
+        if !self.message.is_empty() {
+            ::buffa::types::put_string_field(3u32, &self.message, buf);
+        }
+        if self.sectors != 0u64 {
+            ::buffa::types::put_uint64_field(4u32, self.sectors, buf);
+        }
+        if self.mounted {
+            ::buffa::types::put_bool_field(5u32, self.mounted, buf);
+        }
+        if self.busy {
+            ::buffa::types::put_bool_field(6u32, self.busy, buf);
+        }
+        if self.verified != 0u32 {
+            ::buffa::types::put_uint32_field(7u32, self.verified, buf);
+        }
+        if self.ready {
+            ::buffa::types::put_bool_field(8u32, self.ready, buf);
+        }
+        if self.job_id != 0u64 {
+            ::buffa::types::put_uint64_field(9u32, self.job_id, buf);
+        }
+        if self.job_complete {
+            ::buffa::types::put_bool_field(10u32, self.job_complete, buf);
+        }
+        if self.job_ok {
+            ::buffa::types::put_bool_field(11u32, self.job_ok, buf);
+        }
+        if !self.reset_reason.is_empty() {
+            ::buffa::types::put_string_field(12u32, &self.reset_reason, buf);
+        }
+        if let Some(v) = self.external_power {
+            ::buffa::types::put_bool_field(13u32, v, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+}
+impl<'a> ::buffa::MessageName for StorageReplyView<'a> {
+    const PACKAGE: &'static str = "sticky.remote.shared.v1";
+    const NAME: &'static str = "StorageReply";
+    const FULL_NAME: &'static str = "sticky.remote.shared.v1.StorageReply";
+    const TYPE_URL: &'static str = "type.googleapis.com/sticky.remote.shared.v1.StorageReply";
+}
+::buffa::impl_default_view_instance!(StorageReplyView);
+::buffa::impl_view_reborrow!(StorageReplyView);
+/** Self-contained, `'static` owned view of a `StorageReply` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`StorageReplyView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`StorageReplyView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+#[derive(Clone, Debug)]
+pub struct StorageReplyOwnedView(::buffa::OwnedView<StorageReplyView<'static>>);
+impl StorageReplyOwnedView {
+    /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+    ///
+    /// The view borrows directly from the buffer's data; the buffer is
+    /// retained inside the returned handle.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+    /// protobuf data.
+    pub fn decode(
+        bytes: ::buffa::bytes::Bytes,
+    ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+        ::core::result::Result::Ok(
+            StorageReplyOwnedView(::buffa::OwnedView::decode(bytes)?),
+        )
+    }
+    /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+    /// max message size).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+    /// exceeds the configured limits.
+    pub fn decode_with_options(
+        bytes: ::buffa::bytes::Bytes,
+        opts: &::buffa::DecodeOptions,
+    ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+        ::core::result::Result::Ok(
+            StorageReplyOwnedView(::buffa::OwnedView::decode_with_options(bytes, opts)?),
+        )
+    }
+    /// Build from an owned message via an encode → decode round-trip.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+    /// message's encoded size exceeds the 2 GiB protobuf limit, or
+    /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+    /// somehow invalid (should not happen for well-formed messages).
+    pub fn from_owned(
+        msg: &super::super::StorageReply,
+    ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+        ::core::result::Result::Ok(
+            StorageReplyOwnedView(::buffa::OwnedView::from_owned(msg)?),
+        )
+    }
+    /// Borrow the full [`StorageReplyView`] with its lifetime tied to `&self`.
+    #[must_use]
+    pub fn view(&self) -> &StorageReplyView<'_> {
+        self.0.reborrow()
+    }
+    /// Convert to the owned message type.
+    ///
+    /// Infallible: this type's constructors wire-decode their
+    /// buffer, and a view produced by wire decoding always
+    /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+    /// whose contract also governs handles converted from a raw
+    /// [`::buffa::OwnedView`].
+    #[must_use]
+    pub fn to_owned_message(&self) -> super::super::StorageReply {
+        self.0.to_owned_message()
+    }
+    /// The underlying bytes buffer.
+    #[must_use]
+    pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+        self.0.bytes()
+    }
+    /// Consume the handle, returning the underlying bytes buffer.
+    #[must_use]
+    pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+        self.0.into_bytes()
+    }
+    /// Request correlation id.
+    ///
+    /// Field 1: `id`
+    #[must_use]
+    pub fn id(&self) -> u64 {
+        self.0.reborrow().id
+    }
+    /// Whether the operation succeeded or the background job was accepted.
+    ///
+    /// Field 2: `ok`
+    #[must_use]
+    pub fn ok(&self) -> bool {
+        self.0.reborrow().ok
+    }
+    /// Safe diagnostic token; excludes card identity and file contents.
+    ///
+    /// Field 3: `message`
+    #[must_use]
+    pub fn message(&self) -> &'_ str {
+        self.0.reborrow().message
+    }
+    /// Card capacity in 512-byte sectors.
+    ///
+    /// Field 4: `sectors`
+    #[must_use]
+    pub fn sectors(&self) -> u64 {
+        self.0.reborrow().sectors
+    }
+    /// Whether the configured layout mounted successfully.
+    ///
+    /// Field 5: `mounted`
+    #[must_use]
+    pub fn mounted(&self) -> bool {
+        self.0.reborrow().mounted
+    }
+    /// A provision/verify/stress job is running.
+    ///
+    /// Field 6: `busy`
+    #[must_use]
+    pub fn busy(&self) -> bool {
+        self.0.reborrow().busy
+    }
+    /// Persisted sequence recovered on mount and advanced after readback.
+    ///
+    /// Field 7: `verified`
+    #[must_use]
+    pub fn verified(&self) -> u32 {
+        self.0.reborrow().verified
+    }
+    /// A ready application package passed validation.
+    ///
+    /// Field 8: `ready`
+    #[must_use]
+    pub fn ready(&self) -> bool {
+        self.0.reborrow().ready
+    }
+    /// Background request whose retained completion receipt is being reported.
+    ///
+    /// Field 9: `job_id`
+    #[must_use]
+    pub fn job_id(&self) -> u64 {
+        self.0.reborrow().job_id
+    }
+    /// All I/O for job_id has finished; acceptance alone leaves this false.
+    ///
+    /// Field 10: `job_complete`
+    #[must_use]
+    pub fn job_complete(&self) -> bool {
+        self.0.reborrow().job_complete
+    }
+    /// Outcome of completed job_id, independent of subsequent jobs.
+    ///
+    /// Field 11: `job_ok`
+    #[must_use]
+    pub fn job_ok(&self) -> bool {
+        self.0.reborrow().job_ok
+    }
+    /// HAL reset reason for this boot; diagnostic evidence, not a voltage reading.
+    ///
+    /// Field 12: `reset_reason`
+    #[must_use]
+    pub fn reset_reason(&self) -> &'_ str {
+        self.0.reborrow().reset_reason
+    }
+    /// GPIO9 digital external-power indication; absent before the first sample.
+    ///
+    /// Field 13: `external_power`
+    #[must_use]
+    pub fn external_power(&self) -> ::core::option::Option<bool> {
+        self.0.reborrow().external_power
+    }
+}
+impl ::core::convert::From<::buffa::OwnedView<StorageReplyView<'static>>>
+for StorageReplyOwnedView {
+    fn from(inner: ::buffa::OwnedView<StorageReplyView<'static>>) -> Self {
+        StorageReplyOwnedView(inner)
+    }
+}
+impl ::core::convert::From<StorageReplyOwnedView>
+for ::buffa::OwnedView<StorageReplyView<'static>> {
+    fn from(wrapper: StorageReplyOwnedView) -> Self {
+        wrapper.0
+    }
+}
+impl ::core::convert::AsRef<::buffa::OwnedView<StorageReplyView<'static>>>
+for StorageReplyOwnedView {
+    fn as_ref(&self) -> &::buffa::OwnedView<StorageReplyView<'static>> {
+        &self.0
+    }
+}
+impl ::buffa::HasMessageView for super::super::StorageReply {
+    type View<'a> = StorageReplyView<'a>;
+    type ViewHandle = StorageReplyOwnedView;
 }

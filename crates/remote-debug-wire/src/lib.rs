@@ -55,8 +55,8 @@ pub mod proto {
 pub mod v1 {
     pub use crate::proto::sticky::remote::shared::v1::{
         FrameKind, GetSnapshot, InjectButton, InjectTouch, LogLine, ProductKey, Reboot, RebootAck,
-        Snapshot, SnapshotAck, SnapshotBusy, SnapshotClear, TargetKind, TouchPhase, TouchSource,
-        TouchSpace,
+        Snapshot, SnapshotAck, SnapshotBusy, SnapshotClear, StorageOperation, StorageReply,
+        StorageRequest, TargetKind, TouchPhase, TouchSource, TouchSpace,
     };
     pub use crate::proto::sticky::remote::v1::__buffa::oneof::envelope;
     pub use crate::proto::sticky::remote::v1::Envelope;
@@ -78,7 +78,7 @@ pub use frame::{
     snapshot_envelope_payload_len, snapshot_preamble_to_slice, unframe, write_bytes_field_header,
     write_framed_snapshot, write_snapshot_preamble, FrameError, SnapshotMeta, ENVELOPE_VERSION,
 };
-pub use gatt::{GATT_RX_UUID, GATT_SERVICE_UUID, GATT_TX_UUID};
+pub use gatt::{GATT_RX_UUID, GATT_SERVICE_UUID, GATT_TX_UUID, GATT_WRITE_MAX};
 pub use map::{
     frame_kind_from_wire, frame_kind_to_wire, hold_from_u32, hold_to_u32, inject_button_gpio,
     inject_button_id, inject_touch_phase, inject_touch_sample, inject_touch_space,

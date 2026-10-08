@@ -67,6 +67,7 @@ const FERRIS_W: u16 = 360;
 /// Ferris height in page pixels.
 const FERRIS_H: u16 = 240;
 
+/// Reject assets whose width cannot form complete four-pixel 2bpp groups.
 const _: () = assert!(FERRIS_W.is_multiple_of(4));
 
 /// Recursion depth for the geometric-calibration Koch snowflake.
@@ -180,6 +181,7 @@ pub(crate) fn draw_splash(bw: &mut [u8], red: &mut [u8], rotation: PageRotation)
 /// USB-down. Portrait is a stacked document; landscape is one
 /// key/value line per row so the 480-tall page still fits.
 pub(crate) fn draw_legend(bw: &mut [u8], red: &mut [u8], rotation: PageRotation) {
+    /// Static educational labels, rendered into planes without device I/O.
     const ITEMS: [(&str, &str); 8] = [
         ("AI VOICE", "Top key. Hold ~3 s: power on"),
         ("PAGE UP", "2 s standby. 5 s sleep. 1 s wake"),
@@ -265,13 +267,17 @@ pub(crate) fn draw_legend(bw: &mut [u8], red: &mut [u8], rotation: PageRotation)
 /// the papermono margins. Landscape: four-across so the 800×480 page
 /// is not four cropped portrait boxes. Waveform stays Seeed OTP gray4.
 pub(crate) fn draw_tones(bw: &mut [u8], red: &mut [u8], rotation: PageRotation) {
+    /// Logical gray levels consumed by the existing OTP plane encoding.
     const TONES: [u8; 4] = [gray::BLACK, gray::DARK_GRAY, gray::LIGHT_GRAY, gray::WHITE];
 
     clear_gray(bw, red, gray::WHITE, rotation);
     let (page_w, page_h) = rotation.page_size();
     if is_portrait(rotation) {
+        /// Portrait swatch left margin, in logical page pixels.
         const BOX_X: u16 = 40;
+        /// Portrait swatch height, leaving white separation between tones.
         const BOX_H: u16 = 140;
+        /// Top edge of each portrait swatch, matched to TONES order.
         const YS: [u16; 4] = [80, 250, 420, 590];
         let box_w = page_w.saturating_sub(80);
         for (y, tone) in YS.iter().zip(TONES) {
@@ -279,8 +285,11 @@ pub(crate) fn draw_tones(bw: &mut [u8], red: &mut [u8], rotation: PageRotation) 
             stroke_rect_gray(bw, red, BOX_X, *y, box_w, BOX_H, gray::BLACK, rotation);
         }
     } else {
+        /// Landscape left/right whitespace, in logical page pixels.
         const MARGIN_X: u16 = 32;
+        /// Landscape top/bottom whitespace around the four swatches.
         const MARGIN_Y: u16 = 48;
+        /// White separation between adjacent landscape swatches.
         const GAP: u16 = 16;
         let box_w = page_w
             .saturating_sub(MARGIN_X.saturating_mul(2))
@@ -1049,8 +1058,11 @@ fn draw_splash_stack(
     page_w: u16,
     page_h: u16,
 ) {
+    /// Page-pixel whitespace between the asset and title baseline region.
     const TITLE_GAP: i32 = 28;
+    /// Page-pixel whitespace between title and the first hint region.
     const HINT_GAP: i32 = 28;
+    /// Additional whitespace between the two hint lines.
     const LINE_GAP: i32 = 8;
 
     clear_gray(bw, red, gray::WHITE, rotation);
@@ -1536,6 +1548,7 @@ impl<'a> GrayInk<'a> {
 }
 
 impl OriginDimensions for GrayInk<'_> {
+    /// Report page-space bounds for the selected hold without accessing SPI.
     fn size(&self) -> Size {
         let (w, h) = self.rotation.page_size();
         Size::new(u32::from(w), u32::from(h))
@@ -1543,9 +1556,15 @@ impl OriginDimensions for GrayInk<'_> {
 }
 
 impl DrawTarget for GrayInk<'_> {
+    /// Monochrome glyph input; On paints black into the existing gray4 planes.
     type Color = BinaryColor;
+    /// Drawing clips pixels into caller-owned planes and has no bus failure.
     type Error = core::convert::Infallible;
 
+    /// Rasterize ink pixels as enlarged blocks in logical page coordinates.
+    /// Negative or unrepresentable coordinates are skipped; page mapping clips
+    /// the rest. The caller supplies full-sized planes. This writes RAM only,
+    /// leaving panel transfers and refresh sequencing to the display owner.
     fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
     where
         I: IntoIterator<Item = Pixel<Self::Color>>,
@@ -1560,6 +1579,8 @@ impl DrawTarget for GrayInk<'_> {
             let Ok(y0) = u16::try_from(point.y) else {
                 continue;
             };
+            // Only compose RAM here. Per-pixel mapping performs page clipping;
+            // the display owner later sends complete planes on shared SPI2.
             for dy in 0..self.fat {
                 for dx in 0..self.fat {
                     set_gray_page(
@@ -1596,6 +1617,7 @@ impl<'a> MonoInk<'a> {
 }
 
 impl OriginDimensions for MonoInk<'_> {
+    /// Report logical page bounds for the held orientation, with no panel I/O.
     fn size(&self) -> Size {
         let (w, h) = self.rotation.page_size();
         Size::new(u32::from(w), u32::from(h))
@@ -1603,9 +1625,15 @@ impl OriginDimensions for MonoInk<'_> {
 }
 
 impl DrawTarget for MonoInk<'_> {
+    /// Binary glyph input; only On pixels clear bits in the white mono plane.
     type Color = BinaryColor;
+    /// RAM-only clipped drawing cannot produce a transport error.
     type Error = core::convert::Infallible;
 
+    /// Map representable nonnegative ink pixels into the caller's mono plane.
+    /// Off pixels leave the background unchanged and out-of-page points are
+    /// skipped. The caller provides a full-sized plane and later rotates its
+    /// transmit copy; this method performs no allocation or SPI transaction.
     fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
     where
         I: IntoIterator<Item = Pixel<Self::Color>>,
@@ -1635,6 +1663,9 @@ struct BufWriter<'a> {
 }
 
 impl core::fmt::Write for BufWriter<'_> {
+    /// Append at most the remaining byte capacity and silently truncate excess.
+    /// Callers supply ASCII labels, so byte truncation preserves their encoding.
+    /// The fixed buffer bounds every copy; no heap allocation or UART I/O occurs.
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         let bytes = s.as_bytes();
         let remain = self.buf.len().saturating_sub(self.pos);

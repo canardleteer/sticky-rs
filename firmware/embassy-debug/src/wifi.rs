@@ -70,6 +70,7 @@ use esp_radio::wifi::{
     WifiController,
 };
 
+/// Static Wi-Fi UART prefix, shared with the image's public event formatter.
 const LOG: &str = "embassy-debug";
 
 /// How many APs one survey window keeps for ranking.
@@ -175,13 +176,20 @@ static WIFI_MODE: AtomicU8 = AtomicU8::new(0);
 static WIFI_STATE_REV: AtomicU32 = AtomicU32::new(0);
 /// Wake the display task.
 pub static WIFI_VIEW: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+/// Gate DHCP/HTTP work from the Wi-Fi owner; starts false before AP setup.
 static HOTSPOT_ACTIVE: AtomicBool = AtomicBool::new(false);
+/// Associated-station count for this session, excluding station addresses.
 static AP_CLIENTS: AtomicU16 = AtomicU16::new(0);
+/// Requests accepted by the single HTTP socket during the current AP session.
 static HTTP_REQUESTS: AtomicU32 = AtomicU32::new(0);
+/// Bounded survey result cache; short borrows end before radio or display awaits.
 static SURVEY_DATA: Mutex<CriticalSectionRawMutex, RefCell<Option<WifiSurveyData>>> =
     Mutex::new(RefCell::new(None));
+/// Four pending mode commands; producers discard overflow instead of blocking.
 static WIFI_CMD: Channel<CriticalSectionRawMutex, WifiCommand, 4> = Channel::new();
+/// One-time static network-stack socket storage, owned by the Embassy runner.
 static STACK_RESOURCES: static_cell::StaticCell<StackResources<4>> = static_cell::StaticCell::new();
+/// Fixed DHCP UDP buffers and metadata; avoids allocating per received datagram.
 static UDP_BUFFERS: static_cell::StaticCell<UdpBuffers<2, 1024, 1024, 4>> =
     static_cell::StaticCell::new();
 
@@ -300,6 +308,9 @@ fn decrement_ap_clients() -> u16 {
 /// blob default (often 300 s).
 fn apply_softap_idle_timeout() {
     unsafe extern "C" {
+        /// ESP-IDF ABI for the interface's inactivity timeout, in seconds.
+        /// AP values must be at least ten; the outer helper calls after setup
+        /// and leaves the driver default in place if this reports an error.
         fn esp_wifi_set_inactive_time(ifx: u32, sec: u16) -> i32;
     }
     let _ = unsafe { esp_wifi_set_inactive_time(WIFI_IF_AP, AP_STA_INACTIVE_SECS) };
@@ -412,8 +423,13 @@ impl<'a> BufWriter<'a> {
 }
 
 impl core::fmt::Write for BufWriter<'_> {
+    /// Copy the fitting byte prefix and truncate excess without allocating.
+    /// HTTP callers format bounded ASCII fields. A split UTF-8 codepoint would
+    /// make as_str/finish return their empty fallback; no socket I/O occurs here.
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         let bytes = s.as_bytes();
+        // Leave header/JSON storage on the task stack. Bounded copying keeps
+        // formatting independent of the network runner's socket buffers.
         let remain = self.buf.len().saturating_sub(self.pos);
         let to_copy = bytes.len().min(remain);
         self.buf[self.pos..self.pos + to_copy].copy_from_slice(&bytes[..to_copy]);

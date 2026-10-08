@@ -214,6 +214,16 @@ Firmware, not host tools:
 Firmware sources under `firmware/` are educational reference code.
 Rustdoc and in-line comments (including on private items) follow
 [Firmware examples as tutorial code](../../../../firmware/AGENTS.md#firmware-examples-as-tutorial-code).
+Peripheral ownership follows the
+[Embedded Rust Book's singleton model](https://docs.rust-embedded.org/book/peripherals/singletons.html).
+Explain timer waits and bounded work using the
+[Embassy executor's cooperative scheduling model](https://embassy.dev/book/#_embassy_executor).
+For cross-core drivers, the
+[Rust on ESP Book's async guidance](https://docs.espressif.com/projects/rust/book/application-development/async.html)
+requires moving a blocking driver before converting it to async on its owning
+core, where interrupts are registered. Storage keeps shared SPI2 synchronous
+on Core 1 and yields between bounded requests; filesystem formatting can
+still delay other work on that core.
 
 Load a custom image only after a factory original exists, with
 `cargo xtask flash-app --image FILE --yes` (factory `app0` at `0x90000`).
@@ -225,7 +235,10 @@ and `firmware/embassy-debug` (Embassy log task, buttons, GT911 INT-low
 cards that follow the in-plane hold, including `scene=targets`
 page-space touch validation, host-tested lines and
 `IdleListen` in `crates/embassy-debug`).
-Default embassy-debug includes `pair` + `wifi`. Advertise
+Default embassy-debug includes `pair` + `wifi` + `storage`. Core 1 owns shared
+SPI2, display and filesystems; Core 0 owns radios and inputs. See the
+[storage guide](../../../../docs/storage.md) for provisioning, shutdown and
+staging contracts. Advertise
 `sticky-rs` (DisplayOnly passkey, RAM bond this connection) **only
 while the pair card is showing**. UART tokens are `pair pin=`,
 `pair ok`, and `pair fail=` — never a MAC or eFuse. Pairing

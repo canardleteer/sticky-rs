@@ -42,12 +42,18 @@ use ssd1677_gray4::planes::rotate180_mono;
 use ssd1677_gray4::{Ssd1677, UpdateSequence};
 use static_cell::ConstStaticCell;
 
+/// Bound a panel BUSY wait so a failed refresh can report and recover.
+/// This is firmware scheduling policy; it does not select a panel waveform.
 const REFRESH_TIMEOUT: Duration = Duration::from_secs(15);
 /// After clock-off, BUSY can stay high. Do not sit on it for a full refresh.
 const RESUME_POLL: Duration = Duration::from_millis(2000);
 
+/// Caller-owned mono compose plane, taken once by the display owner.
+/// Static storage keeps the full panel buffer off the task stack.
 static DRAW: ConstStaticCell<[u8; display::PLANE_BYTES]> =
     ConstStaticCell::new([0; display::PLANE_BYTES]);
+/// Separate rotated mono transmit plane; composing DRAW cannot alias SPI bytes.
+/// This static buffer is taken once and reused instead of allocating per paint.
 static TX: ConstStaticCell<[u8; display::PLANE_BYTES]> =
     ConstStaticCell::new([0; display::PLANE_BYTES]);
 
@@ -56,8 +62,11 @@ compile_error!("do not combine spi20 with mic");
 #[cfg(all(feature = "spi20", feature = "radio"))]
 compile_error!("do not combine spi20 with radio");
 
+/// Explicit diagnostic clock above the normal 10 MHz panel/card policy.
+/// The exclusive spi20 build selects this value; normal storage does not.
 #[cfg(feature = "spi20")]
 const SPI_HZ: u32 = 20_000_000;
+/// Normal panel SPI2 clock from the board contract; SD uses the shared owner.
 #[cfg(not(feature = "spi20"))]
 const SPI_HZ: u32 = display::SPI_MAX_HZ;
 

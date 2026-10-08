@@ -75,6 +75,7 @@ use esp_println::println;
 use esp_radio::ble::controller::BleConnector;
 use trouble_host::prelude::*;
 
+/// Static pairing diagnostic prefix; identity fields are excluded from events.
 const LOG: &str = "embassy-debug";
 
 /// Live BLE links `HostResources` can hold.

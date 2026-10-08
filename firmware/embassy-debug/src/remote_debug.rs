@@ -595,18 +595,30 @@ pub(crate) use remote_debug_peripheral::EnvelopeOutcome;
 struct FwDevice;
 
 impl Device for FwDevice {
+    /// Route a decoded touch into the bounded synthetic-input queue.
+    /// Mapping and bounds checks belong to handle_inject_touch_mapped; the real
+    /// touch task later applies the same hit-test without a GT911 bus operation.
     fn on_inject_touch(&mut self, sample: TouchSample, phase: TouchPhase, space: TouchSpace) {
         handle_inject_touch_mapped(sample, phase, space);
     }
 
+    /// Route a decoded key edge through the synthetic short-press dispatcher.
+    /// Unsupported IDs or backed-up input queues are handled by that dispatcher;
+    /// this callback never drives a button GPIO or synthesizes a physical hold.
     fn on_inject_button(&mut self, key_id: u8, down: bool) {
         handle_inject_button_id(key_id, down);
     }
 
+    /// Inspect whether a complete LAST compose is available under a short borrow.
+    /// Missing or incomplete planes return false; no panel readback occurs.
     fn last_ready(&self) -> bool {
         REMOTE.lock(|cell| cell.borrow().last.as_ref().is_some_and(|last| last.ready))
     }
 
+    /// Apply the frozen-slot nonce state machine and emit its diagnostic outcome.
+    /// Zero, empty, retry and busy results remain explicit for the wire layer.
+    /// The borrow ends before transport work; this neither allocates new planes
+    /// nor performs SPI I/O to the panel.
     fn slot_get(&mut self, nonce: u64, last_ready: bool) -> GetOutcome {
         let outcome = REMOTE.lock(|cell| cell.borrow_mut().slot.on_get(nonce, last_ready));
         let (op, n) = match outcome {
@@ -620,6 +632,9 @@ impl Device for FwDevice {
         outcome
     }
 
+    /// Release the snapshot only when its armed nonce matches the acknowledgement.
+    /// Miss, stale and zero outcomes are reported without releasing another
+    /// caller's slot. UART emission follows the short slot-state borrow.
     fn slot_ack(&mut self, nonce: u64) -> AckOutcome {
         let outcome = REMOTE.lock(|cell| cell.borrow_mut().slot.on_ack(nonce));
         let (op, n) = match outcome {
@@ -632,6 +647,9 @@ impl Device for FwDevice {
         outcome
     }
 
+    /// Explicitly abort the frozen slot without requiring a nonce.
+    /// This clears RAM state and emits a diagnostic after the borrow ends;
+    /// the underlying last-composed planes remain available for a later get.
     fn slot_clear(&mut self) -> ClearOutcome {
         REMOTE.lock(|cell| {
             let _ = cell.borrow_mut().slot.on_clear();
@@ -640,6 +658,9 @@ impl Device for FwDevice {
         ClearOutcome::Cleared
     }
 
+    /// Record the decoded MCU reboot request without resetting inside dispatch.
+    /// The BLE owner handles acknowledgement and the storage barrier before
+    /// normal reset; logging here performs no filesystem or GPIO operation.
     fn on_reboot(&mut self) {
         crate::emit(Event::RemoteReboot {
             t_ms: crate::now_ms(),

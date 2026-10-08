@@ -97,8 +97,13 @@ use seeed_reterminal_sticky::{imu, Latch, PanelView, I2C_FREQUENCY_HZ};
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
+/// Bounded Core 0 producer queue for the UART logger; overflow increments DROPPED.
+/// Producers use try_send so a slow UART cannot hold their bus or task context.
 static EVENTS: Channel<CriticalSectionRawMutex, Event, 32> = Channel::new();
+/// Four pending key/touch chirps, separate from the microphone sample path.
+/// The buzzer task owns GPIO48 and drains requests without producer-side I/O.
 static BEEPS: Channel<CriticalSectionRawMutex, Beep, 4> = Channel::new();
+/// Atomic count of UART events discarded when the bounded queue was full.
 static DROPPED: AtomicU32 = AtomicU32::new(0);
 
 /// How many PDM windows the mic task should print as `pcm` rows.
@@ -275,6 +280,9 @@ fn reset_with_int_level(
     delay.delay_ms(ADDR_SELECT_INT_FLOAT_MS);
 }
 
+/// Drive GT911 GPIO21 to the address-select level during its reset sequence.
+/// The caller enables output first, then floats the pad after the documented
+/// hold interval. No I2C transaction occurs here and HAL GPIO writes cannot fail.
 fn apply_int_level(int: &mut Flex<'static>, high: bool) {
     if high {
         int.set_high();
@@ -283,6 +291,10 @@ fn apply_int_level(int: &mut Flex<'static>, high: bool) {
     }
 }
 
+/// Read the GT911 Product ID at one candidate address on its dedicated I2C bus.
+/// A successful transaction establishes reachability; it does not validate the
+/// returned identity bytes. NAK or other bus errors return false without writes
+/// to the touch controller's configuration or command registers.
 fn probe_gt911_addr(i2c: &mut I2c<'static, Blocking>, addr: u8) -> bool {
     let mut id = [0u8; PRODUCT_ID_LEN];
     i2c.write_read(addr, &Register::Id.addr_bytes(), &mut id)
@@ -1303,6 +1315,7 @@ fn poll_synthetic() {
 /// [`IMU_REPORT_SECS`].
 #[embassy_executor::task]
 async fn imu_task(i2c: I2c<'static, Blocking>, start_rotation: PageRotation) {
+    /// Cooperative pose-sampling period; slower UART reporting uses its own gate.
     const POLL_MS: u64 = 250;
 
     let settings = LsmSettings::default().with_accel(

@@ -434,10 +434,13 @@ fn run_poll_loop(
     #[cfg(feature = "operator")]
     let mut gt911_fail_polls: u32 = 0;
 
+    /// Quiet proof-of-life polling cadence; GPIO samples remain read-only.
     #[cfg(not(feature = "operator"))]
     const POLL_MS: u32 = 1_000;
+    /// Operator edge/touch polling cadence, yielding through the blocking delay.
     #[cfg(feature = "operator")]
     const POLL_MS: u32 = 20;
+    /// Number of operator polls per one-second UART heartbeat.
     #[cfg(feature = "operator")]
     const HEARTBEAT_EVERY: u32 = 1_000 / POLL_MS;
 
@@ -598,6 +601,9 @@ fn print_rtc_line(sensor_i2c: &RefCell<I2c<'static, Blocking>>) {
     }
 }
 
+/// Decode one already-masked PCF8563 packed-BCD field for the UART formatter.
+/// The caller removes status bits first. This arithmetic does not validate BCD
+/// nibbles or issue RTC writes; voltage-low status is reported separately.
 fn bcd_digit(bcd: u8) -> u8 {
     (bcd & 0x0f) + ((bcd >> 4) * 10)
 }

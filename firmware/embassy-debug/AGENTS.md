@@ -21,7 +21,11 @@ Live-ask, never-erase, and flash I/O: root
   flash that feature unless the operator is present.
 - GPIO7 is input-only (IMU INT1 and gauge GPOUT share it). Do not
   drive it.
-- MicroSD: CS idle-high on the default image. `--features sd` is
+- MicroSD: default storage owns GPIO8/10/11 and shares SPI2 with the panel
+  on Core 1. Mount never formats; explicit provisioning publishes MBR last.
+  Quiesce before reboot/sleep/latch release; a failed barrier keeps BLE and MCU
+  power available. `storage-test` adds confirmed faults and timed sleep.
+  [Storage guide](../../docs/storage.md) describes limits and operator recipes. `--features sd` is
   read-only identify plus a FAT root list and one `ReadOnly` file
   read. No writes, no CID product serial, no file contents on UART.
   Do not combine with `mic`, `radio`, or `wifi` (`compile_error!`).
@@ -126,7 +130,7 @@ Live-ask, never-erase, and flash I/O: root
   [src/wifi.rs](src/wifi.rs). How-to:
   [README.md](README.md#wifi-test-instructions).
 - Remote desk debug: `--features remote-debug` is **not default**
-  and is **insecure**. It packs with default `pair` + `wifi` (not
+  and is **insecure**. It packs with default `pair` + `wifi` + `storage` (not
   an exclusive sit). Snapshot is the last composed **DRAW** planes
   (pre-rotation 800×480) plus hold — not a panel readout and not
   the 1-bit `TX` 180° copy. Capacity is **one frozen slot**: a

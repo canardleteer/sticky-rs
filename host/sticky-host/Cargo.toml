@@ -19,6 +19,7 @@ rustix = { version = "1.1.6", features = ["termios"] }
 # Library used by cargo-espflash. The cargo plugin itself has no lib target.
 # `cli` is intentionally off: no SemVer, and we must not pull ELF-flash helpers.
 espflash = { version = "4.7.0", default-features = false, features = ["serialport"] }
+esp-idf-part = "0.6.0"
 # Advisory flock for live UART commands (no unsafe in this crate).
 fs4 = "1.1.0"
 log = "0.4.35"

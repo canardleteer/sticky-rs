@@ -5,8 +5,9 @@
 | Path | Contents |
 | --- | --- |
 | `crates/*` | Default-members. Host-testable format crates and (when present) `no_std` `embedded-hal` 1.0 drivers |
+| `crates/embedded-storage-volume/` | Reusable no_std partition views, littlefs/FAT adapters, commit policy, completion receipts and bounded package validation. Optional SD SPI adapter; caller owns devices and scheduling |
 | `host/` | Default-members. Host libraries and future host CLIs (not `xtask`) |
-| `host/sticky-host/` | Host library (`publish = true`, not crates.io yet). Detect, factory backup / confirm / restore, `build-fw`, `flash-app`, learn-uart, monitor, remote-debug UART PIN / allowlist / page-space PNG. Wraps the generic broker with xtask `remote-debug serve` argv and the Sticky flock dir. Callers pass `Layout`; live methods take the UART lock |
+| `host/sticky-host/` | Host library (`publish = true`, not crates.io yet). Detect, factory backup / confirm / restore, `build-fw`, `flash-app`, learn-uart, monitor, remote-debug UART PIN / allowlist / page-space PNG and correlated storage controls. Wraps the generic broker with xtask `remote-debug serve` argv and the Sticky flock dir. Callers pass `Layout`; live methods take the UART lock |
 | `host/remote-debug-host/` | Generic BLE central (`publish = false`; git dep). No clap, no UART, no Sticky pins. Linux uses `bluer` (Connect, not Pair) |
 | `host/remote-debug-broker/` | ConnectRPC owner (`publish = false`; git dep). Holds 0..N GATT `Session`s keyed by advertise name. Loopback HTTP + `remote-debug.connect` endpoint file. `serve_with` + `SpawnSpec` (exe + argv). No clap, no UART, no Seeed crate |
 | `protos/` | Shared IDL (`sticky.remote.shared.v1`, GATT `Envelope`, ConnectRPC control). `buf lint` STANDARD+COMMENTS. Generated trees are committed; `REGEN_PROTO=1` rewrites |
@@ -112,3 +113,9 @@ pins, latch, rails, transforms, and typed spaces
   [README.md](../../../../README.md) in the same change. Touch `AGENTS.md`
   only if the live-ask or safety set changed. `cargo xtask --help` is not a
   substitute for those two lists.
+
+`embedded-storage-volume` is a default-member no_std crate. It owns no board
+GPIOs, locks or global buffers. Firmware storage owns SPI on Core 1 and uses
+bounded request/reply channels to Core 0. Both `build-fw` and firmware CI set
+the linker script once even in nested worktrees, and discover Clang resource
+headers without tracked machine paths. See [storage](../../../../docs/storage.md).

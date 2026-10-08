@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures::StreamExt;
-use remote_debug_wire::{GATT_RX_UUID, GATT_SERVICE_UUID, GATT_TX_UUID};
+use remote_debug_wire::{GATT_RX_UUID, GATT_SERVICE_UUID, GATT_TX_UUID, GATT_WRITE_MAX};
 use tokio::sync::Mutex;
 use tokio::time::timeout;
 use uuid::Uuid;
@@ -394,7 +394,9 @@ impl Transport for BluerTransport {
     fn write_frame(&mut self, framed: &[u8]) -> Result<(), Error> {
         let rx = self.rx.clone();
         self.rt.block_on(async move {
-            let mtu = rx.mtu().await.unwrap_or(20).max(20);
+            // BlueR already adjusts the BlueZ MTU. Respect the peripheral's
+            // receive bound even when the negotiated payload is larger.
+            let mtu = rx.mtu().await.unwrap_or(20).clamp(1, GATT_WRITE_MAX);
             for chunk in framed.chunks(mtu) {
                 rx.write(chunk)
                     .await
@@ -437,5 +439,40 @@ impl Transport for BluerTransport {
             }
             Ok(())
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use remote_debug_wire::GATT_WRITE_MAX;
+    use remote_debug_wire::{decode_envelope, encode_body, v1, FrameAssembler};
+
+    #[test]
+    fn storage_frame_survives_a_large_negotiated_mtu() {
+        let frame = encode_body(v1::StorageRequest {
+            id: 42,
+            operation: v1::StorageOperation::STORAGE_OPERATION_STAGE_CHUNK.into(),
+            offset: 512,
+            data: vec![0xa5; 512],
+            ..Default::default()
+        });
+        for negotiated_payload in [18usize, 20, 242, 244, 507] {
+            let payload = negotiated_payload.clamp(1, GATT_WRITE_MAX);
+            let mut assembler = FrameAssembler::device_rx();
+            let mut complete = None;
+            for chunk in frame.chunks(payload) {
+                assert!(chunk.len() <= 244);
+                if let Some(value) = assembler.push(chunk).unwrap() {
+                    complete = Some(value);
+                }
+            }
+            let envelope = decode_envelope(&complete.unwrap()).unwrap();
+            let Some(v1::envelope::Body::StorageRequest(request)) = envelope.body else {
+                panic!("wrong envelope");
+            };
+            assert_eq!(request.offset, 512);
+            assert_eq!(request.data, vec![0xa5; 512]);
+            assert_eq!(assembler.pending(), 0);
+        }
     }
 }

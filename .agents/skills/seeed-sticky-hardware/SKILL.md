@@ -302,3 +302,9 @@ Factory firmware also ACKs the PDM microphone and SD slot.
 - Treat a key as being on the glass. The three tactile buttons are the right
   edge ([enclosure.md](references/enclosure.md)). Recessed Reset is the bottom
   pinhole, not GPIO4.
+
+Persistent storage sequencing and its unmeasured electrical limits are in
+[input-storage.md](references/input-storage.md#persistent-storage-firmware).
+Core 1 owns shared SPI; normal reboot, sleep and latch release require a
+successful storage barrier. Physical durability evidence is recorded in
+[storage guide](../../../docs/storage.md) and does not close rail measurements.

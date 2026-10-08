@@ -146,6 +146,22 @@ impl ::buffa::Message for Envelope {
                         += 2u64 + ::buffa::encoding::varint_len(inner as u64) as u64
                             + inner as u64;
                 }
+                __buffa::oneof::envelope::Body::StorageRequest(x) => {
+                    let __slot = __cache.reserve();
+                    let inner = x.compute_size(__cache);
+                    __cache.set(__slot, inner);
+                    size
+                        += 2u64 + ::buffa::encoding::varint_len(inner as u64) as u64
+                            + inner as u64;
+                }
+                __buffa::oneof::envelope::Body::StorageReply(x) => {
+                    let __slot = __cache.reserve();
+                    let inner = x.compute_size(__cache);
+                    __cache.set(__slot, inner);
+                    size
+                        += 2u64 + ::buffa::encoding::varint_len(inner as u64) as u64
+                            + inner as u64;
+                }
             }
         }
         size += self.__buffa_unknown_fields.encoded_len() as u64;
@@ -238,6 +254,22 @@ impl ::buffa::Message for Envelope {
                 __buffa::oneof::envelope::Body::RebootAck(x) => {
                     ::buffa::types::put_len_delimited_header(
                         19u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    x.write_to(__cache, buf);
+                }
+                __buffa::oneof::envelope::Body::StorageRequest(x) => {
+                    ::buffa::types::put_len_delimited_header(
+                        20u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    x.write_to(__cache, buf);
+                }
+                __buffa::oneof::envelope::Body::StorageReply(x) => {
+                    ::buffa::types::put_len_delimited_header(
+                        21u32,
                         u64::from(__cache.consume_next()),
                         buf,
                     );
@@ -460,6 +492,46 @@ impl ::buffa::Message for Envelope {
                     ::buffa::Message::merge_length_delimited(&mut val, buf, ctx)?;
                     self.body = ::core::option::Option::Some(
                         __buffa::oneof::envelope::Body::RebootAck(
+                            ::buffa::alloc::boxed::Box::new(val),
+                        ),
+                    );
+                }
+            }
+            20u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                if let ::core::option::Option::Some(
+                    __buffa::oneof::envelope::Body::StorageRequest(ref mut existing),
+                ) = self.body
+                {
+                    ::buffa::Message::merge_length_delimited(&mut **existing, buf, ctx)?;
+                } else {
+                    let mut val = ::core::default::Default::default();
+                    ::buffa::Message::merge_length_delimited(&mut val, buf, ctx)?;
+                    self.body = ::core::option::Option::Some(
+                        __buffa::oneof::envelope::Body::StorageRequest(
+                            ::buffa::alloc::boxed::Box::new(val),
+                        ),
+                    );
+                }
+            }
+            21u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                if let ::core::option::Option::Some(
+                    __buffa::oneof::envelope::Body::StorageReply(ref mut existing),
+                ) = self.body
+                {
+                    ::buffa::Message::merge_length_delimited(&mut **existing, buf, ctx)?;
+                } else {
+                    let mut val = ::core::default::Default::default();
+                    ::buffa::Message::merge_length_delimited(&mut val, buf, ctx)?;
+                    self.body = ::core::option::Option::Some(
+                        __buffa::oneof::envelope::Body::StorageReply(
                             ::buffa::alloc::boxed::Box::new(val),
                         ),
                     );
@@ -775,6 +847,58 @@ impl<'de> ::serde::Deserialize<'de> for Envelope {
                                 }
                                 __oneof_body = Some(
                                     __buffa::oneof::envelope::Body::RebootAck(
+                                        ::buffa::alloc::boxed::Box::new(v),
+                                    ),
+                                );
+                            }
+                        }
+                        "storageRequest" | "storage_request" => {
+                            let v: ::core::option::Option<
+                                super::shared::v1::StorageRequest,
+                            > = map
+                                .next_value_seed(
+                                    ::buffa::json_helpers::NullableDeserializeSeed(
+                                        ::buffa::json_helpers::DefaultDeserializeSeed::<
+                                            super::shared::v1::StorageRequest,
+                                        >::new(),
+                                    ),
+                                )?;
+                            if let Some(v) = v {
+                                if __oneof_body.is_some() {
+                                    return Err(
+                                        ::serde::de::Error::custom(
+                                            "multiple oneof fields set for 'body'",
+                                        ),
+                                    );
+                                }
+                                __oneof_body = Some(
+                                    __buffa::oneof::envelope::Body::StorageRequest(
+                                        ::buffa::alloc::boxed::Box::new(v),
+                                    ),
+                                );
+                            }
+                        }
+                        "storageReply" | "storage_reply" => {
+                            let v: ::core::option::Option<
+                                super::shared::v1::StorageReply,
+                            > = map
+                                .next_value_seed(
+                                    ::buffa::json_helpers::NullableDeserializeSeed(
+                                        ::buffa::json_helpers::DefaultDeserializeSeed::<
+                                            super::shared::v1::StorageReply,
+                                        >::new(),
+                                    ),
+                                )?;
+                            if let Some(v) = v {
+                                if __oneof_body.is_some() {
+                                    return Err(
+                                        ::serde::de::Error::custom(
+                                            "multiple oneof fields set for 'body'",
+                                        ),
+                                    );
+                                }
+                                __oneof_body = Some(
+                                    __buffa::oneof::envelope::Body::StorageReply(
                                         ::buffa::alloc::boxed::Box::new(v),
                                     ),
                                 );

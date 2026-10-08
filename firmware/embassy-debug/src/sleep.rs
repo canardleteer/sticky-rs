@@ -184,6 +184,18 @@ pub(crate) fn enter_deep_sleep(mut lpwr: LowPower<'static>) -> ! {
     lpwr.sleep_deep(RtcSleepConfig::deep())
 }
 
+/// Test-only deep sleep with an RTC timer deadline configured after the panel
+/// and SD rails are parked. Timer wake resumes without a physical key hold.
+/// The ESP Book distinguishes deep-sleep reset from a retained task context;
+/// startup reconstructs drivers and revalidates the card on the next boot.
+#[cfg(feature = "storage-test")]
+pub(crate) fn enter_timed_sleep(mut lpwr: LowPower<'static>, milliseconds: u32) -> ! {
+    let deadline = esp_hal::time::Instant::now()
+        + esp_hal::time::Duration::from_millis(u64::from(milliseconds));
+    lpwr.set_wakeup_deadline(deadline);
+    enter_deep_sleep(lpwr)
+}
+
 /// Drive latch pins high and hold them across sleep.
 pub(crate) fn hold_latch(latch: Latch<Output<'static>, Output<'static>>) {
     let (mut hold, mut lock) = latch.release_ownership_only();
@@ -197,15 +209,22 @@ pub(crate) fn hold_latch(latch: Latch<Output<'static>, Output<'static>>) {
 
 /// Drop both latch pins: software power-off.
 ///
-/// On battery the board dies. USB-C plug or the stock ~3 s AI Voice
-/// hold is the power-on path. After this returns the MCU may already
-/// be unpowered; the caller should not expect further work.
+/// The board contract expects MCU power loss on battery; confirm that outcome
+/// on the actual unit. USB-C plug or the stock ~3 s AI Voice hold is the
+/// power-on path. After this returns the MCU may already be unpowered;
+/// the caller should not expect further work. Keep both GPIO
+/// drivers and low pad holds explicitly while external power may still keep
+/// the MCU alive. A latch request alone does not prove supply removal.
 pub(crate) fn release_latch(latch: Latch<Output<'static>, Output<'static>>) {
     let mut buf = [0u8; LINE_CAPACITY];
     if let Ok(line) = format_poweroff(&mut buf) {
         println!("{line}");
     }
-    let _ = latch.release();
+    let (mut hold, mut lock) = latch.release().expect("infallible latch GPIO");
+    hold.set_pad_hold(true);
+    lock.set_pad_hold(true);
+    core::mem::forget(hold);
+    core::mem::forget(lock);
 }
 
 pub(crate) fn hold_output(pin: &mut Output<'static>) {

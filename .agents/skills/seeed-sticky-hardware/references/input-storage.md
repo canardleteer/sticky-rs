@@ -91,3 +91,18 @@ firmware usually loses the `vbus 1 -> 0` line; the host seeing the QinHeng
 node drop and return **is** the vbus step. After replug, heartbeats are
 `vbus=1` again. CC1/CC2 are 5.1 kΩ Rd to GND: **5 V sink only**, no PD
 controller.
+
+## Persistent storage firmware
+
+Default Embassy storage owns the shared SPI2 controller on Core 1, switching
+clock before either CS asserts. SD identification uses at most 400 kHz; normal
+traffic uses 10 MHz. The board profile is MBR: first volume at 1 MiB, two
+64 MiB littlefs volumes and remaining aligned FAT32 bulk (minimum 64 MiB).
+Mount never formats; confirmed provisioning invalidates the table first and
+publishes it after formatting. Shutdown drains filesystems, deselects, parks
+MOSI/SCK and disables GPIO10. Recovery abandons poisoned state, settles the
+rail and reidentifies. These are software sequencing facts; rail voltage
+decay and back-powering remain unmeasured. Physical acceptance results belong
+in [storage guide](../../../../docs/storage.md), separate from card-controller
+guarantees. GPIO11 is checked during initialization; this feature has no
+automatic hotplug remount or physical card removal tests.

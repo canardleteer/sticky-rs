@@ -28,6 +28,7 @@ use embedded_hal::delay::DelayNs;
 // SPI panel: exclusive CS, BUSY wait, OTP sequences.
 use embedded_hal::digital::InputPin;
 use embedded_hal_async::digital::Wait;
+#[cfg(not(feature = "storage"))]
 use embedded_hal_bus::spi::ExclusiveDevice;
 use esp_hal::gpio::{Input, InputConfig, Level, Output, OutputConfig, Pull};
 use esp_hal::peripherals::{GPIO13, GPIO14, GPIO15, GPIO16, GPIO17, GPIO18, SPI2};
@@ -79,8 +80,8 @@ pub struct PanelParts {
     pub sclk: GPIO13<'static>,
     /// MOSI.
     pub mosi: GPIO14<'static>,
-    /// MISO. Needed only when `--features sd`.
-    #[cfg(feature = "sd")]
+    /// MISO, used by default storage and the read-only SD diagnostic.
+    #[cfg(any(feature = "sd", feature = "storage"))]
     pub miso: esp_hal::peripherals::GPIO12<'static>,
     /// Chip select. Idle-high except during a transfer.
     pub cs: GPIO15<'static>,
@@ -88,11 +89,15 @@ pub struct PanelParts {
     pub dc: GPIO16<'static>,
     /// Reset.
     pub rst: GPIO17<'static>,
-    /// BUSY (active high). Do not talk on the bus while it is high.
+    /// Panel BUSY (active high). Wait before another panel command; the
+    /// deselected panel leaves shared SPI2 available for SD while waiting.
     pub busy: GPIO18<'static>,
-    /// Read-only identify. The card CS is never asserted on the default image.
+    /// Read-only identify owner, selected by the exclusive `sd` feature.
     #[cfg(feature = "sd")]
     pub sd: crate::sd::SdParts,
+    /// Persistent card owner with power gated by the acquired latch.
+    #[cfg(feature = "storage")]
+    pub storage: crate::storage::StorageParts,
 }
 
 /// Bring the panel up, paint the start card, then wait for a key or an IMU pose.
@@ -112,10 +117,12 @@ pub async fn display_task(
     rail: EpdRail<Output<'static>, Enabled>,
     start: Scene,
     start_rotation: PageRotation,
+    #[cfg_attr(not(feature = "storage"), allow(unused_variables))]
+    spawner: embassy_executor::Spawner,
 ) {
-    #[cfg(feature = "sd")]
+    #[cfg(any(feature = "sd", feature = "storage"))]
     let start_hz = seeed_reterminal_sticky::sd::INIT_HZ;
-    #[cfg(not(feature = "sd"))]
+    #[cfg(not(any(feature = "sd", feature = "storage")))]
     let start_hz = SPI_HZ;
     let spi = Spi::new(
         parts.spi,
@@ -126,11 +133,13 @@ pub async fn display_task(
     .expect("SPI configuration")
     .with_sck(parts.sclk)
     .with_mosi(parts.mosi);
+    #[cfg(any(feature = "sd", feature = "storage"))]
+    let spi = spi.with_miso(parts.miso);
     #[cfg(feature = "sd")]
-    let mut spi = spi.with_miso(parts.miso);
+    let mut spi = spi;
     #[cfg(feature = "sd")]
     let mut delay = Delay;
-    #[cfg(not(feature = "sd"))]
+    #[cfg(not(any(feature = "sd", feature = "storage")))]
     let delay = Delay;
     #[cfg(feature = "sd")]
     {
@@ -144,7 +153,17 @@ pub async fn display_task(
     println!("embassy-debug: spi={SPI_HZ}");
 
     let cs = Output::new(parts.cs, Level::High, OutputConfig::default());
+    #[cfg(not(feature = "storage"))]
     let bus = ExclusiveDevice::new(spi, cs, delay).expect("EPD CS");
+    #[cfg(feature = "storage")]
+    let bus = {
+        // Embassy schedules both owners on Core 1. Borrowing ends at each
+        // synchronous transaction; panel BUSY awaits leave SPI available to SD.
+        let shared = crate::storage::share(spi);
+        let runtime = crate::storage::Runtime::new(shared, parts.storage);
+        spawner.spawn(crate::storage::storage_task(runtime).expect("storage owner"));
+        crate::storage::panel_device(shared, cs, SPI_HZ)
+    };
     let dc = Output::new(parts.dc, Level::Low, OutputConfig::default());
     let rst = Output::new(parts.rst, Level::High, OutputConfig::default());
     let busy = Input::new(parts.busy, InputConfig::default().with_pull(Pull::None));

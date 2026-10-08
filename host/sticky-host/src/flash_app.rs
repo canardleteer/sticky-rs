@@ -1,6 +1,7 @@
 //! Write a custom application image into factory `app0` only.
 
 use std::fs;
+use std::io::{Read, Write};
 use std::path::Path;
 
 use crate::device::DeviceIo;
@@ -12,6 +13,176 @@ use crate::Error;
 pub const APP0_MIN_OFFSET: u32 = 0x90000;
 
 const ELF_MAGIC: [u8; 4] = [0x7f, b'E', b'L', b'F'];
+
+/// Which backup prerequisite applies to an application-only flash.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum BackupPolicy {
+    /// Require a matching original or capture stored locally.
+    #[default]
+    RequireLocalSnapshot,
+    /// The operator has a backup elsewhere; validate the live table instead.
+    ExternallyBackedUp,
+}
+
+/// Application flash policy; these options never authorize a full erase.
+#[derive(Clone, Debug, Default)]
+pub struct FlashAppOptions {
+    /// Explicit confirmation that application flash may be written.
+    pub yes: bool,
+    /// Backup prerequisite, defaulting to a bound local snapshot.
+    pub backup_policy: BackupPolicy,
+    /// Permit an unknown snapshot table; unavailable with external-backup mode.
+    pub allow_unknown_layout: bool,
+    /// Named local capture; unavailable with external-backup mode.
+    pub capture: Option<String>,
+}
+
+/// Flash with explicit backup policy, retaining all app0 address boundaries.
+///
+/// External-backup mode reads the live table and verifies its checksum and
+/// geometry against the factory catalog. It does not persist a flash dump.
+pub fn flash_app_with_options<D: DeviceIo>(
+    device: &D,
+    layout: &Layout,
+    port: &str,
+    image: &Path,
+    options: &FlashAppOptions,
+) -> Result<(), Error> {
+    if options.backup_policy == BackupPolicy::RequireLocalSnapshot {
+        return flash_app(
+            device,
+            layout,
+            port,
+            image,
+            options.yes,
+            options.allow_unknown_layout,
+            options.capture.as_deref(),
+        );
+    }
+    if !options.yes {
+        return Err(Error::FlashNotConfirmed);
+    }
+    if options.capture.is_some() || options.allow_unknown_layout {
+        return Err(Error::Device(
+            "external-backup mode requires the known live factory layout".into(),
+        ));
+    }
+    let (_, board) = crate::detect::read_live_board(device, port)?;
+    if board.secure_boot != Some(false) || board.flash_encryption != Some(false) {
+        return Err(Error::Device(
+            "force flash requires explicitly disabled secure boot and flash encryption".into(),
+        ));
+    }
+    let table = device.read_flash(
+        port,
+        crate::partitions::PARTITION_TABLE_OFFSET as u32,
+        crate::partitions::PARTITION_TABLE_LEN as u32,
+    )?;
+    // Inspection accepts table prefixes; writing requires the complete table
+    // and the upstream parser's checksum and overlap validation.
+    esp_idf_part::PartitionTable::try_from_bytes(table.clone())
+        .map_err(|error| Error::PartitionTable(error.to_string()))?;
+    let parts = crate::partitions::parse_partition_table(&table)?;
+    let checksum_offset = parts.len() * 32;
+    if table.get(checksum_offset..checksum_offset + 2) != Some(&[0xeb, 0xeb]) {
+        return Err(Error::PartitionTable("live table has no MD5 record".into()));
+    }
+    let status = match_layout(&parts);
+    if !status.is_known() || parts.iter().any(|part| part.flags != 0) {
+        return Err(Error::UnsafePartitionLayout {
+            status: status.evidence_token(),
+        });
+    }
+    let app0 = parts
+        .iter()
+        .find(|part| part.label == "app0")
+        .ok_or_else(|| Error::UnknownPartition("app0".into()))?;
+    if app0.offset < APP0_MIN_OFFSET {
+        return Err(Error::UnsafeAppOffset(app0.offset));
+    }
+    let bytes = read_app_image(image, app0.size)?;
+    validate_app_image(&bytes, app0.size)?;
+    validate_esp32s3_image(&bytes)?;
+    // Write the bytes we actually validated, even if the source path changes
+    // while live discovery/table validation or flash-window retries run.
+    let mut validated = tempfile::NamedTempFile::new()?;
+    validated.write_all(&bytes)?;
+    validated.flush()?;
+    device.write_bin(port, app0.offset, validated.path())
+}
+
+/// Read at most the partition size plus one byte, rejecting a larger source
+/// before allocating. A concurrent file growth is also bounded and rejected.
+/// Returns an I/O error or [`Error::ImageTooLarge`] without device writes.
+pub fn read_app_image(image: &Path, maximum: u32) -> Result<Vec<u8>, Error> {
+    let source = fs::File::open(image)?;
+    let size = source.metadata()?.len();
+    if size > u64::from(maximum) {
+        return Err(Error::ImageTooLarge { size, max: maximum });
+    }
+    let mut bytes = Vec::with_capacity(size as usize);
+    source
+        .take(u64::from(maximum) + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() > maximum as usize {
+        return Err(Error::ImageTooLarge {
+            size: bytes.len() as u64,
+            max: maximum,
+        });
+    }
+    Ok(bytes)
+}
+
+/// Check an ESP32-S3 app header, bounded segments, XOR checksum, and optional
+/// image SHA-256 before externally backed-up app0 flashing.
+/// Layout follows espflash 4.5's `ImageHeader` and `save_segment` implementation,
+/// grounded in esptool's "Firmware Image Format" file/extended-header sections.
+/// Returns [`Error::ImageNotApp`] for malformed, truncated, or wrong-target data.
+pub fn validate_esp32s3_image(bytes: &[u8]) -> Result<(), Error> {
+    use sha2::{Digest, Sha256};
+    let invalid = || Error::ImageNotApp;
+    if bytes.len() < 24
+        || bytes[0] != ESP_IMAGE_MAGIC
+        || !(1..=16).contains(&bytes[1])
+        || u16::from_le_bytes([bytes[12], bytes[13]]) != espflash::target::Chip::Esp32s3.id()
+        || bytes[23] > 1
+    {
+        return Err(invalid());
+    }
+    let mut cursor = 24usize;
+    let mut checksum = 0xef;
+    for _ in 0..bytes[1] {
+        let header = bytes
+            .get(cursor..cursor.checked_add(8).ok_or_else(invalid)?)
+            .ok_or_else(invalid)?;
+        let size = u32::from_le_bytes(header[4..].try_into().map_err(|_| invalid())?) as usize;
+        cursor = cursor.checked_add(8).ok_or_else(invalid)?;
+        let end = cursor.checked_add(size).ok_or_else(invalid)?;
+        let data = bytes.get(cursor..end).ok_or_else(invalid)?;
+        for byte in data {
+            checksum ^= byte;
+        }
+        cursor = end;
+    }
+    let checksum_offset = cursor.checked_add(15 - cursor % 16).ok_or_else(invalid)?;
+    if bytes.get(checksum_offset) != Some(&checksum)
+        || bytes
+            .get(cursor..checksum_offset)
+            .is_none_or(|padding| padding.iter().any(|b| *b != 0))
+    {
+        return Err(invalid());
+    }
+    let end = checksum_offset + 1;
+    if bytes[23] == 1 {
+        let digest: [u8; 32] = Sha256::digest(&bytes[..end]).into();
+        if bytes.get(end..) != Some(digest.as_slice()) {
+            return Err(invalid());
+        }
+    } else if bytes.len() != end {
+        return Err(invalid());
+    }
+    Ok(())
+}
 
 /// First byte of an Espressif application image header (`esptool` / IDF
 /// `ESP_IMAGE_HEADER_MAGIC`). `validate_app_image` names this so a
@@ -65,7 +236,7 @@ pub fn flash_app<D: DeviceIo>(
     if app0.offset < APP0_MIN_OFFSET {
         return Err(Error::UnsafeAppOffset(app0.offset));
     }
-    let bytes = fs::read(image)?;
+    let bytes = read_app_image(image, app0.size)?;
     validate_app_image(&bytes, app0.size)?;
     device.write_bin(port, app0.offset, image)
 }
@@ -92,10 +263,106 @@ mod tests {
     use crate::backup::persist_original;
     use crate::device::MockDevice;
     use crate::identity::{parse_board_info, test_mac};
+
+    fn valid_s3_image() -> Vec<u8> {
+        let mut image = vec![0; 48];
+        image[0] = ESP_IMAGE_MAGIC;
+        image[1] = 1;
+        image[12] = 9;
+        image[28..32].copy_from_slice(&4u32.to_le_bytes());
+        image[32..36].copy_from_slice(&[1, 2, 3, 4]);
+        image[47] = 0xef ^ 1 ^ 2 ^ 3 ^ 4;
+        image
+    }
+
+    fn factory_table() -> Vec<u8> {
+        let csv: String = crate::partition_layouts::FACTORY_32MB_V1
+            .entries
+            .iter()
+            .map(|p| {
+                format!(
+                    "{},{},0x{:x},0x{:x},0x{:x},\n",
+                    p.label,
+                    if p.type_id == 0 { "app" } else { "data" },
+                    p.subtype_id,
+                    p.offset,
+                    p.size
+                )
+            })
+            .collect();
+        esp_idf_part::PartitionTable::try_from_str(csv)
+            .unwrap()
+            .to_bin()
+            .unwrap()
+    }
+
+    #[test]
+    fn external_backup_flash_validates_live_table_and_image_before_app0_write() {
+        let tmp = tempfile::tempdir().unwrap();
+        let layout = Layout::from_developer_data_root(tmp.path());
+        let mut flash = vec![0xff; PARTITION_TABLE_OFFSET + PARTITION_TABLE_LEN];
+        let table = factory_table();
+        flash[PARTITION_TABLE_OFFSET..PARTITION_TABLE_OFFSET + table.len()].copy_from_slice(&table);
+        let mock = RefCell::new(MockDevice {
+            flash,
+            board_info: info(),
+            ..Default::default()
+        });
+        let bytes = valid_s3_image();
+        let image = payload(tmp.path(), &bytes);
+        let options = FlashAppOptions {
+            yes: true,
+            backup_policy: BackupPolicy::ExternallyBackedUp,
+            ..Default::default()
+        };
+        flash_app_with_options(&mock, &layout, "PORT", &image, &options).unwrap();
+        assert_eq!(mock.borrow().writes, [(APP0_MIN_OFFSET, bytes)]);
+        mock.borrow_mut().writes.clear();
+        for security in [
+            "",
+            "Secure Boot: Unknown\nFlash Encryption: Disabled\n",
+            "Secure Boot: Disabled\nFlash Encryption: Unknown\n",
+            "Secure Boot: Enabled\nFlash Encryption: Disabled\n",
+            "Secure Boot: Disabled\nFlash Encryption: Enabled\n",
+        ] {
+            mock.borrow_mut().board_info =
+                format!("Flash size: 32MB\nMAC address: {}\n{security}", test_mac());
+            assert!(flash_app_with_options(&mock, &layout, "PORT", &image, &options).is_err());
+            assert!(mock.borrow().writes.is_empty());
+        }
+        mock.borrow_mut().board_info = info();
+        mock.borrow_mut().flash[PARTITION_TABLE_OFFSET + 16] ^= 1;
+        assert!(flash_app_with_options(&mock, &layout, "PORT", &image, &options).is_err());
+        assert!(mock.borrow().writes.is_empty());
+    }
+
+    #[test]
+    fn force_image_check_rejects_wrong_chip_truncation_and_bad_checksum() {
+        let bytes = valid_s3_image();
+        validate_esp32s3_image(&bytes).unwrap();
+        for size in 0..bytes.len() {
+            assert!(validate_esp32s3_image(&bytes[..size]).is_err());
+        }
+        for index in [0, 1, 12, 28, 32, 47] {
+            let mut invalid = bytes.clone();
+            invalid[index] ^= 0x40;
+            assert!(
+                validate_esp32s3_image(&invalid).is_err(),
+                "corrupted byte {index}"
+            );
+        }
+        let mut hashed = bytes;
+        hashed[23] = 1;
+        use sha2::{Digest, Sha256};
+        hashed.extend_from_slice(&Sha256::digest(&hashed));
+        validate_esp32s3_image(&hashed).unwrap();
+        *hashed.last_mut().unwrap() ^= 1;
+        assert!(validate_esp32s3_image(&hashed).is_err());
+    }
     use crate::manifest::SnapshotKind;
     use crate::original::load_manifest;
     use crate::partition_layouts::{partitions_from_layout, FACTORY_32MB_V1};
-    use crate::partitions::{test_entry, PARTITION_TABLE_OFFSET};
+    use crate::partitions::{test_entry, PARTITION_TABLE_LEN, PARTITION_TABLE_OFFSET};
     use std::cell::RefCell;
     use std::fs;
 

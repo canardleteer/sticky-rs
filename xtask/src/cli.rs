@@ -6,9 +6,10 @@ use std::process::ExitCode;
 use clap::{Args, Parser, Subcommand};
 use sticky_host::{
     backup_import, backup_live, build_fw, confirm_live, detect_connected, diff_learn_uart,
-    flash_app, learn_uart, load_manifest, monitor, refuse_if_legacy_backups_at_repo_root, restore,
-    BackupRequest, BuildFwArgs, Error, FirmwareImage, Layout, LearnUartArgs, MonitorOptions,
-    SnapshotKind, FLASH_SIZE,
+    flash_app_with_options, learn_uart, load_manifest, monitor,
+    refuse_if_legacy_backups_at_repo_root, restore, BackupPolicy, BackupRequest, BuildFwArgs,
+    Error, FirmwareImage, FlashAppOptions, Layout, LearnUartArgs, MonitorOptions, SnapshotKind,
+    FLASH_SIZE,
 };
 
 /// Sticky host CLI: UART, snapshots, flash-app, and host-only builds.
@@ -229,6 +230,9 @@ pub struct RestoreArgs {
 /// App0-only custom image write.
 #[derive(Debug, Args)]
 pub struct FlashAppArgs {
+    /// Use an external backup; validate the live factory table without a local snapshot.
+    #[arg(long, conflicts_with_all = ["capture", "allow_unknown_layout"])]
+    pub force: bool,
     /// Serial device. Also `ESPFLASH_PORT`. Optional if exactly one Sticky CH343 is present.
     #[arg(long, env = "ESPFLASH_PORT", hide_env_values = true)]
     pub port: Option<String>,
@@ -401,13 +405,20 @@ impl Cli {
                 Ok(())
             }
             Command::FlashApp(args) => {
-                flash_app(
+                flash_app_with_options(
                     &layout,
                     args.port,
                     &args.image,
-                    args.yes,
-                    args.allow_unknown_layout,
-                    args.capture.as_deref(),
+                    &FlashAppOptions {
+                        yes: args.yes,
+                        backup_policy: if args.force {
+                            BackupPolicy::ExternallyBackedUp
+                        } else {
+                            BackupPolicy::RequireLocalSnapshot
+                        },
+                        allow_unknown_layout: args.allow_unknown_layout,
+                        capture: args.capture,
+                    },
                 )?;
                 println!("flash-app write-bin app0 finished");
                 Ok(())

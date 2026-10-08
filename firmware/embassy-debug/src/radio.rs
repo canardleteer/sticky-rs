@@ -23,7 +23,9 @@ use trouble_host::prelude::{
     Address, Controller, DefaultPacketPool, EventHandler, HostResources, LeAdvReportsIter, Scanner,
 };
 
+/// Bound each Wi-Fi scan's returned APs and UART rows, limiting task memory.
 const MAX_WIFI_LINES: usize = 8;
+/// Bound the retained BLE name/RSSI list; unnamed reports only affect counts.
 const MAX_BLE_LINES: usize = 8;
 
 /// Bring up Wi-Fi and BLE together and print scan lines.
@@ -49,6 +51,10 @@ pub async fn radio_task(wifi: WIFI<'static>, bluetooth: BT<'static>) {
     .await;
 }
 
+/// Own the Wi-Fi controller and periodically scan while the BLE future runs.
+/// Labels use fixed stack buffers and omit BSSIDs. Controller or formatting
+/// failures produce a diagnostic or skip that row; the timer yields between
+/// windows, following Embassy's cooperative task model. No SPI bus is used.
 async fn wifi_scan_loop(mut controller: WifiController<'static>) {
     let scan_config = ScanConfig::default().with_max(MAX_WIFI_LINES);
     loop {
@@ -72,6 +78,11 @@ async fn wifi_scan_loop(mut controller: WifiController<'static>) {
     }
 }
 
+/// Drive the BLE host and scan future together using caller-provided HCI.
+/// One bounded resource pool and a fixed diagnostic address avoid reading a
+/// per-unit identity. Each window drops its scan session before starting the
+/// next; scan errors wait for the next window. This exclusive diagnostic
+/// never pairs and keeps its radio runner polled while the scan timer waits.
 async fn ble_scan_loop<C>(controller: C)
 where
     C: Controller + ControllerCmdSync<LeSetScanParams>,
@@ -108,9 +119,15 @@ where
         }
     };
 
+    // Embassy polls both futures: waiting on a report timer must still leave
+    // the HCI runner able to receive and dispatch advertisement events.
     let _ = embassy_futures::join::join(runner.run_with_handler(&printer), scan).await;
 }
 
+/// Bounded BLE report accumulator shared by the HCI handler and scan window.
+/// Atomics count reports; a short critical-section borrow protects names and
+/// RSSI values. Addresses are never retained, and full lists keep stronger
+/// named reports instead of allocating more memory.
 struct NamePrinter {
     count: core::sync::atomic::AtomicU32,
     names: embassy_sync::blocking_mutex::Mutex<
@@ -120,6 +137,7 @@ struct NamePrinter {
 }
 
 impl NamePrinter {
+    /// Start an empty report window without allocating or touching the radio.
     fn new() -> Self {
         Self {
             count: core::sync::atomic::AtomicU32::new(0),
@@ -129,6 +147,9 @@ impl NamePrinter {
         }
     }
 
+    /// Print the saturated report count and retained names, then clear them.
+    /// UART formatting uses a fixed stack buffer; rows that do not fit are
+    /// skipped. The names borrow ends before the next asynchronous scan wait.
     fn flush(&self) {
         let n = self
             .count
@@ -148,6 +169,9 @@ impl NamePrinter {
         });
     }
 
+    /// Merge one sanitized name into the bounded strongest-report list.
+    /// Repeated names keep their strongest RSSI. Oversized names and weaker
+    /// reports in a full list are discarded; this performs no controller I/O.
     fn consider(&self, name: &str, rssi: i8) {
         self.names.lock(|cell| {
             let mut names = cell.borrow_mut();
@@ -174,6 +198,9 @@ impl NamePrinter {
 }
 
 impl EventHandler for NamePrinter {
+    /// Consume valid HCI reports, count them and retain sanitized local names.
+    /// A malformed iterator item ends this batch; absent names become empty
+    /// labels. The handler uses stack storage and never prints an address.
     fn on_adv_reports(&self, mut it: LeAdvReportsIter<'_>) {
         while let Some(Ok(report)) = it.next() {
             self.count
@@ -186,10 +213,16 @@ impl EventHandler for NamePrinter {
     }
 }
 
+/// Borrow the first shortened or complete local-name AD payload.
+/// Length bytes delimit fields; zero or truncated fields end parsing with
+/// `None` when no name was found. This parses received bytes without radio I/O
+/// and leaves sanitization to the caller's fixed output buffer.
 fn adv_local_name(data: &[u8]) -> Option<&[u8]> {
     let mut i = 0;
     while i + 1 < data.len() {
         let len = data[i] as usize;
+        // Validate the whole length-prefixed field before slicing its type and
+        // payload. Corrupt advertising data cannot index past this report.
         if len == 0 || i + 1 + len > data.len() {
             break;
         }
@@ -203,4 +236,5 @@ fn adv_local_name(data: &[u8]) -> Option<&[u8]> {
     None
 }
 
+/// Static UART prefix for this diagnostic; it contains no device identity.
 const LOG: &str = "embassy-debug";

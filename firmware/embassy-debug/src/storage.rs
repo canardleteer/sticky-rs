@@ -161,6 +161,7 @@ pub struct StorageParts {
 /// after the latch; StorageParts moves ownership to Core 1.
 pub struct SdEnablePin(Output<'static>);
 impl embedded_hal::digital::ErrorType for SdEnablePin {
+    /// GPIO10 level/hold writes are infallible in this HAL adapter.
     type Error = core::convert::Infallible;
 }
 impl OutputPin for SdEnablePin {
@@ -200,6 +201,7 @@ pub fn share(bus: Spi<'static, Blocking>) -> &'static SharedBus {
 #[derive(Clone, Copy)]
 pub struct CsPin(&'static RefCell<Output<'static>>);
 impl embedded_hal::digital::ErrorType for CsPin {
+    /// Core 1 GPIO chip-select writes cannot fail in this adapter.
     type Error = core::convert::Infallible;
 }
 impl OutputPin for CsPin {
@@ -242,6 +244,7 @@ impl ConfiguredDevice {
     }
 }
 impl ErrorType for ConfiguredDevice {
+    /// Preserve clock-selection and transfer failures as distinct device errors.
     type Error = ConfiguredError;
 }
 /// Separate clock-configuration failures from complete SPI transaction failures.

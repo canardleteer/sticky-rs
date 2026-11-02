@@ -1,5 +1,9 @@
 # cargo xtask
 
+Host dependencies inherit Rust 1.95 MSRV (`espflash` 4.7, `fs4` 1.1,
+`rmcp` 3.8). The dependency refresh preserves the existing commands
+and live-device authorization set.
+
 Invoke from the repo root (`cargo xtask <subcommand>`). `cargo xtask --help`
 and `cargo xtask <cmd> --help` are the flag source of truth. Keep this page
 and the root [README.md](../../../../README.md) xtask list in the same

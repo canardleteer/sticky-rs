@@ -2,6 +2,7 @@
 name = "embassy-debug-fw"
 version = "0.1.0"
 edition = "2021"
+rust-version.workspace = true
 publish = false
 description = "reTerminal Sticky Embassy event-logger image. Flash only via cargo xtask flash-app after a matching original exists."
 license = "MIT"
@@ -14,45 +15,53 @@ license = "MIT"
 # Do not inherit [lints] workspace = true (missing_docs / unsafe_code).
 
 [dependencies]
-# crates.io `esp-rtos` 0.3.0 still pins `esp-hal` ~1.1. Take the HAL family
-# from the 1.2.0-rc.0 tag so Embassy and `esp-hal` are one graph.
-esp-hal = { git = "https://github.com/esp-rs/esp-hal", tag = "esp-hal-v1.2.0-rc.0", features = [
+# Keep the released HAL family aligned across both firmware packages.
+esp-hal = { version = "1.2.2", features = [
   "esp32s3",
   "unstable",
 ] }
-esp-rtos = { git = "https://github.com/esp-rs/esp-hal", tag = "esp-hal-v1.2.0-rc.0", features = [
+esp-rtos = { version = "0.4.0", features = [
   "esp32s3",
   "embassy",
 ] }
-esp-radio = { git = "https://github.com/esp-rs/esp-hal", tag = "esp-hal-v1.2.0-rc.0", optional = true, features = [
+esp-radio = { version = "=1.0.0-beta.1", optional = true, features = [
   "esp32s3",
   "unstable",
 ] }
-bt-hci = { version = "0.9.0", optional = true }
-trouble-host = { version = "0.7.0", optional = true, default-features = false, features = [
+bt-hci = { version = "0.11.0", optional = true }
+trouble-host = { git = "https://github.com/embassy-rs/trouble", rev = "866ee711c14f9d4011ca7079c5c4af0f64a1f1bb", optional = true, default-features = false, features = [
   "default-packet-pool-mtu-255",
 ] }
-esp-println = { git = "https://github.com/esp-rs/esp-hal", tag = "esp-hal-v1.2.0-rc.0", default-features = false, features = [
+esp-println = { version = "0.18.0", default-features = false, features = [
   "esp32s3",
   "uart",
   "critical-section",
 ] }
-esp-backtrace = { git = "https://github.com/esp-rs/esp-hal", tag = "esp-hal-v1.2.0-rc.0", features = [
+esp-backtrace = { version = "0.20.0", features = [
   "esp32s3",
   "panic-handler",
   "println",
 ] }
-esp-bootloader-esp-idf = { git = "https://github.com/esp-rs/esp-hal", tag = "esp-hal-v1.2.0-rc.0", features = [
+esp-bootloader-esp-idf = { version = "0.6.0", features = [
   "esp32s3",
 ] }
 # lsm6ds3tr pulls `alloc` (`Vec` on the IRQ path). A small internal heap is
 # enough; we never call that path.
-esp-alloc = { git = "https://github.com/esp-rs/esp-hal", tag = "esp-hal-v1.2.0-rc.0", features = [
+esp-alloc = { version = "0.11.0", features = [
   "esp32s3",
 ] }
 
+# Software AES/CMAC/P-256 provider; the BLE runner supplies controller entropy.
+embassy-crypto = { git = "https://github.com/embassy-rs/embassy.git", rev = "bd35bd7a7d19147c8bcae9c2eda99b25e597294c", optional = true }
+rand_chacha = { version = "0.10.0", default-features = false, optional = true }
+embassy-crypto-rustcrypto = { git = "https://github.com/embassy-rs/embassy.git", rev = "bd35bd7a7d19147c8bcae9c2eda99b25e597294c", optional = true, features = [
+  "embassy-crypto-aes128-ecb",
+  "embassy-crypto-aes128-cmac",
+  "embassy-crypto-p256-ecdh",
+] }
+
 embassy-executor = "0.10.0"
-embassy-time = "0.5.0"
+embassy-time = "0.5.1"
 embassy-sync = "0.8.0"
 embassy-futures = "0.1.2"
 
@@ -73,9 +82,9 @@ ssd1677-gray4 = { path = "../../crates/ssd1677-gray4", default-features = false,
   "async",
 ] }
 static_cell = "2.1.1"
-heapless = { version = "0.8.0", optional = true }
+heapless = { version = "0.9.3", optional = true }
 embedded-sdmmc = { version = "0.10.0", optional = true, default-features = false }
-embassy-net = { version = "0.9.0", optional = true, features = [
+embassy-net = { version = "0.9.1", optional = true, features = [
   "dhcpv4",
   "medium-ethernet",
   "tcp",
@@ -84,7 +93,7 @@ embassy-net = { version = "0.9.0", optional = true, features = [
 edge-dhcp = { version = "0.8.0", optional = true }
 edge-nal = { version = "0.7.0", optional = true }
 edge-nal-embassy = { version = "0.9.0", optional = true }
-embedded-io-async = { version = "0.7", optional = true }
+embedded-io-async = { version = "0.7.0", optional = true }
 
 [features]
 # Pair + Wi-Fi survey / SoftAP cards. Advertise BLE only while the
@@ -153,10 +162,11 @@ wifi = [
 # BLE peripheral + DisplayOnly passkey card. Advertise `sticky-rs`.
 # RAM bond this connection; no factory NVS; no eFuse MAC on UART. Walkthrough:
 # src/pair.rs. Do not combine with `mic`, `radio`, `charge`, or `sd`.
-# `legacy-pairing` is the passkey path. `central` is required so
-# trouble-host 0.7 defines GAP_SERVICE_ATTRIBUTE_COUNT (security +
-# derive alone is not enough).
+# Retain the passkey fallback and both roles used by the existing host graph.
 pair = [
+  "dep:embassy-crypto",
+  "dep:rand_chacha",
+  "dep:embassy-crypto-rustcrypto",
   "dep:esp-radio",
   "dep:bt-hci",
   "dep:trouble-host",
@@ -168,6 +178,5 @@ pair = [
   "trouble-host/security",
   "trouble-host/legacy-pairing",
   "trouble-host/derive",
-  # 0.7 only defines GAP_SERVICE_ATTRIBUTE_COUNT with security+central.
   "trouble-host/central",
 ]

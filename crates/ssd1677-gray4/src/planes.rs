@@ -158,7 +158,7 @@ pub fn split_gray4(
     black_white: &mut [u8],
     red: &mut [u8],
 ) -> Result<(), PackError> {
-    if width % 8 != 0 {
+    if !width.is_multiple_of(8) {
         return Err(PackError::WidthNotByteAligned { width });
     }
 
@@ -230,7 +230,7 @@ pub fn gray4_to_mono(
     height: usize,
     mono: &mut [u8],
 ) -> Result<(), PackError> {
-    if width % 8 != 0 {
+    if !width.is_multiple_of(8) {
         return Err(PackError::WidthNotByteAligned { width });
     }
 
@@ -292,7 +292,7 @@ pub fn rotate180_mono(
     height: usize,
     target: &mut [u8],
 ) -> Result<(), PackError> {
-    if width % 8 != 0 {
+    if !width.is_multiple_of(8) {
         return Err(PackError::WidthNotByteAligned { width });
     }
 

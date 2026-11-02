@@ -54,6 +54,10 @@ There is no Cargo `runner`, so `cargo run` cannot flash.
 
 ## The workspace (host, no special toolchain)
 
+Use Rust 1.95 or newer. Firmware cross-builds use the ESP Rust 1.97
+toolchain; [CRATES.md](CRATES.md) records the released ESP stack and
+pinned BLE crypto providers.
+
 ```shell
 cargo test --locked
 cargo clippy --locked --all-targets -- -D warnings
@@ -174,7 +178,7 @@ Three failure modes look like a code bug and are not:
 
 | Symptom | Cause |
 | --- | --- |
-| `rustc 1.x is not supported by the following packages: esp-hal@1.2.0-rc.0 requires rustc 1.95.0` | The `esp` toolchain is older than esp-hal needs. Run `espup update`. Verified working: Xtensa Rust `1.97.0.0` |
+| `rustc 1.x is not supported by the following packages: esp-hal@1.2.2 requires rustc 1.95.0` | The `esp` toolchain is older than esp-hal needs. Run `espup update`. Verified working: Xtensa Rust `1.97.0.0` |
 | `linker 'xtensa-esp32s3-elf-gcc' not found` | `. $HOME/export-esp.sh` was not sourced in this shell |
 | `none of the selected packages contains this feature: operator` | Host `cargo build --features operator` (crate `simple-debug`). Pass `-p simple-debug-fw` or use `cargo xtask build-fw simple-debug --features operator` |
 | `cannot find module or crate xtensa_lx` (`esp-sync`) | Built without `--target xtensa-esp32s3-none-elf` and `-Zbuild-std=core,alloc`. Use `cargo xtask build-fw`. Ignore a leftover ELF from a failed `cargo` |

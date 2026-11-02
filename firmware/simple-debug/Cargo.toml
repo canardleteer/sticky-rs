@@ -2,6 +2,7 @@
 name = "simple-debug-fw"
 version = "0.1.0"
 edition = "2021"
+rust-version.workspace = true
 publish = false
 description = "reTerminal Sticky proof-of-life image. Flash only via cargo xtask flash-app after a matching original exists."
 license = "MIT"
@@ -14,28 +15,26 @@ license = "MIT"
 # Do not inherit [lints] workspace = true (missing_docs / unsafe_code).
 
 [dependencies]
-# Same git tag as embassy-debug-fw. One lockfile cannot hold crates.io
-# `esp-println` 0.18 and the tag's 0.17 (`links` conflict).
-esp-hal = { git = "https://github.com/esp-rs/esp-hal", tag = "esp-hal-v1.2.0-rc.0", features = [
+esp-hal = { version = "1.2.2", features = [
   "esp32s3",
   "unstable",
 ] }
-esp-println = { git = "https://github.com/esp-rs/esp-hal", tag = "esp-hal-v1.2.0-rc.0", default-features = false, features = [
+esp-println = { version = "0.18.0", default-features = false, features = [
   "esp32s3",
   "uart",
   "critical-section",
 ] }
-esp-backtrace = { git = "https://github.com/esp-rs/esp-hal", tag = "esp-hal-v1.2.0-rc.0", features = [
+esp-backtrace = { version = "0.20.0", features = [
   "esp32s3",
   "panic-handler",
   "println",
 ] }
-esp-bootloader-esp-idf = { git = "https://github.com/esp-rs/esp-hal", tag = "esp-hal-v1.2.0-rc.0", features = [
+esp-bootloader-esp-idf = { version = "0.6.0", features = [
   "esp32s3",
 ] }
 # lsm6ds3tr pulls `alloc` (`Vec` on the IRQ path). A small internal heap is
 # enough; we never call that path.
-esp-alloc = { git = "https://github.com/esp-rs/esp-hal", tag = "esp-hal-v1.2.0-rc.0", features = [
+esp-alloc = { version = "0.11.0", features = [
   "esp32s3",
 ] }
 

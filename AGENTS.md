@@ -312,8 +312,7 @@ and the README list.
   under `developer-data/` may.
 - A rustc newer than MSRV can fail the host trio clippy on
   default-members. Keep `cargo clippy --locked --all-targets -- -D
-  warnings` green; do not pin an older clippy. Workspace MSRV 1.85
-  treats `const { assert!(…) }` items as experimental.
+  warnings` green; do not pin an older clippy. Workspace MSRV is 1.95.
 - Measurement-backlog items in the hardware skill stay open until someone
   measures them. Firmware evidence proves intent and sequencing, never
   electrical fact.

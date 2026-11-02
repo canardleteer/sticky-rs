@@ -105,7 +105,7 @@ impl<Hold> ExpectedFrame<'_, Hold> {
     #[inline]
     #[must_use]
     pub fn is_consistent(&self) -> bool {
-        if self.width == 0 || self.height == 0 || self.width % 8 != 0 {
+        if self.width == 0 || self.height == 0 || !self.width.is_multiple_of(8) {
             return false;
         }
         let n = Self::plane_bytes(self.width, self.height);

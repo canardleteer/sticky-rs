@@ -16,12 +16,12 @@ fatfs = { package = "starry-fatfs", version = "=0.4.1-preview.2", default-featur
 hadris-storage = { version = "=2.5.0", default-features = false, features = ["sync"] }
 gpt_disk_types = { version = "=0.16.1", default-features = false }
 gpt_disk_io = { version = "=0.17.0", default-features = false }
-embedded-io = "0.7"
+embedded-io = "0.7.1"
 hadris-io = { version = "=2.5.0", default-features = false }
 embedded-hal.workspace = true
-sha2 = { version = "0.11", default-features = false }
-serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
-serde-json-core = "0.6"
+sha2 = { version = "0.11.1", default-features = false }
+serde = { version = "1.0.229", default-features = false, features = ["derive", "alloc"] }
+serde-json-core = "0.7.0"
 
 [features]
 default = []

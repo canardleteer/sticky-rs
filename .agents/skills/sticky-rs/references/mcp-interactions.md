@@ -44,7 +44,7 @@ the filename; no serial).
 Stay on splash for pair (Ferris never shows the PIN). Do not ask
 the operator to pair from a phone. Tools are `connect`, `status`,
 `list-targets`, `inject-touch`, `inject-button`, `get-snapshot`,
-`snapshot-ack`, `snapshot-clear`, `reboot`, `disconnect`, `logs` (not
+`snapshot-ack`, `snapshot-clear`, `reboot`, `disconnect`, `logs`, `storage` (not
 `remote-debug_*`). Do not run `monitor` during auto-PIN. No
 `--remember` unless the human asked. New MCP tools need a new
 agent. A host notify / owner change is enough with
@@ -116,6 +116,7 @@ the CLI:
 | `snapshot-clear` | Operator abort (no nonce); use after a failed get |
 | `reboot` | Software-reset the **embedded MCU**, then re-pair unless `no_reconnect` |
 | `disconnect` | Drop one GATT session; empty map also shuts the owner down. Unknown units lose the BlueZ bond |
+| `storage` | Typed status/provision/verify/stress/power-cycle/quiesce/stage/fault/sleep operations. Confirm destructive jobs; wait for their correlated receipt |
 
 stdio also advertises initialize **instructions**, prompts
 `desk-sit` / `targets-walk` / `after-failed-snapshot`, and
@@ -180,6 +181,16 @@ edges under [Difficult / crude](#difficult--crude).
 
 ## Discoveries
 
+- Storage after dependency refresh (2026-11-01), fresh subagent:
+  116 host-only checks and 41 loopback mock ConnectRPC calls passed
+  with rmcp 3.8. All twelve schemas, nine storage operations, three
+  prompts/resources, bounds, confirmations, correlated receipt success
+  and failure, synthetic staging, and reboot defaults passed. The
+  mock covered externalPower true/false/absent, exact staged bytes,
+  chunk order and 512-byte bounds, bad/oversized images, and
+  `force=false` / explicit `force=true`. Hazardous flash tools remain
+  absent. Clean EOF; no UART, BLE, or device I/O. Firmware refusals
+  were simulated; the real five-minute timeout was not waited.
 - Dependency refresh (2026-11-01), fresh-process host-only smoke:
   rmcp 3.8 `ServerConfig` initializes with instructions and the same
   eleven leaves. Every input/output schema is an object; output allows

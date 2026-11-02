@@ -135,7 +135,7 @@ pub fn read_app_image(image: &Path, maximum: u32) -> Result<Vec<u8>, Error> {
 
 /// Check an ESP32-S3 app header, bounded segments, XOR checksum, and optional
 /// image SHA-256 before externally backed-up app0 flashing.
-/// Layout follows espflash 4.5's `ImageHeader` and `save_segment` implementation,
+/// Layout follows espflash 4.7's `ImageHeader` and `save_segment` implementation,
 /// grounded in esptool's "Firmware Image Format" file/extended-header sections.
 /// Returns [`Error::ImageNotApp`] for malformed, truncated, or wrong-target data.
 pub fn validate_esp32s3_image(bytes: &[u8]) -> Result<(), Error> {

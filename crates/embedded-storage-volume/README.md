@@ -1,7 +1,7 @@
 # embedded-storage-volume
 
 `no_std` adapters for partitioned, rewriteable 512-byte media. Applications own
-the device, bus arbitration, and scheduling. Rust 1.88 is required.
+the device, bus arbitration, and scheduling. Rust 1.95 is required.
 
 The crate combines `hadris-storage` block traits with `littlefs2`,
 `starry-fatfs` (imported as `fatfs`), and Google's GPT/MBR crates. The optional

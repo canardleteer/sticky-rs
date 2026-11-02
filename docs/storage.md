@@ -303,6 +303,16 @@ and the card controller's undocumented durability behavior remain unmeasured.
 
 ## Build and memory validation
 
+Compatibility builds on 2026-11-01 passed the complete `cargo xtask ci`
+gate, Rust 1.95 all-feature host checks, and twelve firmware release
+link/save-image variants using ESP Rust 1.97. Payload sizes were
+1,121,008 bytes for default storage, 1,182,864 for `remote-debug`, and
+1,186,640 for `storage-test`; each fits the 6,291,456-byte factory app0.
+The current audit has no vulnerabilities and retains maintenance warnings
+for `paste` and `unsafe-libyaml`. A fresh subagent passed 116 MCP checks
+against a loopback mock owner, including bounded staging and correlated
+receipts. Firmware refusals were simulated; no physical device was used.
+
 Local release builds on 2026-10-08 produced a 1,173,488-byte normal
 `remote-debug` image and a 1,177,344-byte `storage-test` image. Both fit the
 factory's 6,291,456-byte app0 partition. The save-image command's generic

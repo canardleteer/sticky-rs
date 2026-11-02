@@ -57,7 +57,7 @@ exactly one QinHeng CH343 (`1a86:55d3`).
 | `backup-factory-firmware` | live dump yes; `--import` no | Classify then store: known factory → `developer-data/backups/original/<serial>/` (write-once, then sealed read-only); else `--name` capture under `developer-data/backups/captures/<unit-id>/<slug>/`. Alias `backup-firmware`. `--as-original` for uncertain stock under `original/`. `--import` refuses `--port` |
 | `confirm-factory-firmware` | yes | Compare live flash to that unit's original, or `--capture SLUG` |
 | `restore-factory-firmware` | yes | write-bin that unit's original or `--capture` (`--yes`). Never a full-chip erase |
-| `flash-app` | yes | write-bin `--image FILE` into factory `app0` only. Needs a matching original or capture. Does not compile |
+| `flash-app` | yes | write-bin `--image FILE` into factory `app0` only. Requires a matching original/capture, or `--force --yes` for an externally held backup with known-disabled security and a validated live table/image. Does not compile |
 | `learn-uart` | yes | UART heartbeat vet plus skippable human steps |
 | `learn-uart-only` | yes | Same session, only named groups |
 | `diff-learn-uart` | no | Host-only compare of two reports or factory serials |

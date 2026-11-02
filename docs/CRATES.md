@@ -31,14 +31,15 @@ in the lockfile).
 The pinned versions below were checked against their crates.io release records,
 packaged Cargo manifests, license files, and upstream source. All are unyanked;
 the stable versions are current when checked.
-The host graph passes Rust 1.88 with all features. Firmware uses the ESP
-compiler independently; the selected esp-hal tag requires Rust 1.95.
+The storage pins remain current at the 2026-11-01 dependency refresh.
+The workspace requires Rust 1.95; firmware uses ESP Rust 1.97 with the
+released ESP HAL 1.2.2 family.
 
 | Dependency | License / declared Rust | Verdict and required features | Maintenance evidence |
 | --- | --- | --- | --- |
 | [`embedded-sdmmc` 0.10.0](https://github.com/rust-embedded-community/embedded-sdmmc-rs) | MIT OR Apache-2.0 / 1.87 | pass-with-wrapper for SPI transport, optional `sd`, defaults off. Application owns CS, clocks, power and recovery; its FAT volume manager is not used. | Stable release 2026-08-10. |
 | [`littlefs2` 0.8.1](https://github.com/trussed-dev/littlefs2) | MIT OR Apache-2.0 / 1.87 | pass-with-wrapper, defaults off, `alloc`. Compile-time geometry; caller chooses profile. Flush every program callback because the binding's C sync callback performs no I/O. Close files explicitly before rename. | Stable release 2026-08-08. |
-| [`littlefs2-sys` 0.4.0](https://github.com/nickray/littlefs2-sys) | BSD-3-Clause / unspecified | pass-with-wrapper as littlefs2's C backend. Clang builtin headers and target C ABI must match. Xtensa enables C stubs with `tinyrlibc` and `software-intrinsics`; no tracked host header paths. | Stable release 2026-06-22; Rust 1.88 verified through the complete host graph. |
+| [`littlefs2-sys` 0.4.0](https://github.com/nickray/littlefs2-sys) | BSD-3-Clause / unspecified | pass-with-wrapper as littlefs2's C backend. Clang builtin headers and target C ABI must match. Xtensa enables C stubs with `tinyrlibc` and `software-intrinsics`; no tracked host header paths. | Stable release 2026-06-22; included in the Rust 1.95 workspace graph. |
 | [`starry-fatfs` 0.4.1-preview.2](https://crates.io/crates/starry-fatfs/0.4.1-preview.2) | MIT / 1.65 | pass-with-wrapper, imported as `fatfs`, defaults off, `alloc`, `lfn`, `unicode`. Supports no_std byte streams. Explicit file flush and filesystem unmount required; upstream Drop attempts unmount. Our poisoned stream suppresses cleanup device I/O after failure. FAT bulk data is replaceable. | Preview released 2026-02-06; no stable release published. Pin exactly and retain fault tests before changing it. |
 | [`hadris-storage` / `hadris-io` 2.5.0](https://github.com/hxyulin/hadris) | MIT / 1.88 | pass-with-wrapper, defaults off; storage enables `sync`. Supplies synchronous managed-media traits without board resources or implicit bus locks. | Stable releases 2026-10-03. |
 | [`gpt_disk_types` 0.16.1 / `gpt_disk_io` 0.17.0](https://github.com/google/gpt-disk-rs) | MIT OR Apache-2.0 / 1.81 and 1.85 | pass-with-wrapper, defaults off. Codecs validate CRCs; our wrapper additionally checks bounds, primary/backup placement, usable ranges and unique nonzero GUIDs. Caller supplies the 16 KiB entry-array buffer. | Stable releases 2025-04-01 / 2026-10-01. Upstream explicitly disclaims official Google product support. |
@@ -55,7 +56,7 @@ no-op. No filesystem engine can guarantee the consumer card controller's
 undocumented power-loss behavior.
 
 Supporting storage dependencies use embedded-hal, embedded-io 0.7, SHA-256,
-serde with `derive`/`alloc`, and serde-json-core. Defaults are disabled where
+serde with `derive`/`alloc`, and serde-json-core 0.7.0. Defaults are disabled where
 needed for no_std; JSON and hashing buffers have explicit bounds. SHA-256
 detects corruption; publisher authentication requires a separate policy.
 

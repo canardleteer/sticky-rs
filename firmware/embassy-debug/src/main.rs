@@ -1306,6 +1306,8 @@ mod draw;
 mod mic;
 #[cfg(feature = "pair")]
 mod pair;
+#[cfg(feature = "pair")]
+mod pair_crypto;
 #[cfg(feature = "radio")]
 mod radio;
 #[cfg(feature = "remote-debug")]

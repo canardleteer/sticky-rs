@@ -32,8 +32,8 @@
 //!   software-resets the **MCU**, not the host; the next pairing is
 //!   a new DisplayOnly PIN.
 //! - **Fixed random address.** Do not read or print the eFuse MAC.
-//!   `runner.run()` seeds the security CSPRNG from controller `LeRand`
-//!   (not the crate’s zero seed).
+//!   `pair_crypto` seeds the security CSPRNG from controller `LeRand`
+//!   before the stack creates keys; no deterministic fallback.
 //! - **Custom GATT service** with one encrypted-read byte so Settings
 //!   pairing has something to bond against. The UUIDs are local, not
 //!   Bluetooth SIG assigned.
@@ -54,6 +54,10 @@ compile_error!("do not combine pair with sd");
 compile_error!("remote-debug needs pair (encrypted GATT after DisplayOnly SMP)");
 
 use crate::{emit, now_ms};
+
+// Register software AES/CMAC/P-256, as in the pinned TrouBLE ESP example.
+// pair_crypto seeds pairing from controller LeRand before stack creation.
+use embassy_crypto_rustcrypto as _;
 
 use core::cell::RefCell;
 #[cfg(feature = "remote-debug")]
@@ -267,7 +271,8 @@ struct PairService {
 /// line on splash (desk Connect without walking) and keeps ADV up
 /// until a central Connects. UART `pair pin=` follows the SMP
 /// passkey. In the MCU: controller → trouble-host runner + accept
-/// loop. The runner must stay polled or `LeRand` never seeds SMP.
+/// loop. First seed the crypto provider while polling controller reads; then
+/// the runner must stay polled for SMP and ATT progress.
 #[embassy_executor::task]
 pub async fn pair_task(bluetooth: BT<'static>) {
     let Ok(connector) = BleConnector::new(bluetooth, Default::default()) else {
@@ -276,13 +281,17 @@ pub async fn pair_task(bluetooth: BT<'static>) {
     };
     // 10 is the HCI event slot count on the external controller wrapper.
     let ble_controller: ExternalController<_, 10> = ExternalController::new(connector);
+    if let Err(why) = crate::pair_crypto::seed_from_controller(&ble_controller).await {
+        fail_and_hold(why).await;
+        return;
+    }
 
     // Fixed random address so we do not read or print the eFuse MAC.
-    // `runner.run()` seeds the security CSPRNG from controller LeRand
-    // (not the crate's zero seed). Bonds stay in HostResources RAM
+    // Seed before HostResources / Stack can create security keys.
+    // Bonds stay in HostResources RAM
     // for this connection only; [`forget_ram_bond`] on drop.
     let address = Address::random([0x02, 0x00, 0x00, 0x00, 0x00, 0x02]);
-    let mut resources: HostResources<_, DefaultPacketPool, BLE_CONNS, BLE_CHANNELS> =
+    let mut resources: HostResources<DefaultPacketPool, BLE_CONNS, BLE_CHANNELS> =
         HostResources::new();
     let stack = trouble_host::new(ble_controller, &mut resources)
         .set_random_address(address)

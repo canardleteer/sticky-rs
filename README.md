@@ -44,7 +44,9 @@
 ## cargo xtask
 
 From the repo root (`cargo xtask <subcommand>`). `cargo xtask --help` lists
-flags.
+flags. Host tools and firmware manifests require Rust 1.95 or newer;
+Xtensa builds use the ESP Rust 1.97 toolchain. Dependency choices and
+immutable BLE crypto pins are recorded in [CRATES.md](docs/CRATES.md).
 
 Live commands take `--port` or `ESPFLASH_PORT`; if unset they need
 exactly one QinHeng CH343 (`1a86:55d3`).

@@ -29,6 +29,11 @@ permission to open a port. Do not open a UART unless the human **explicitly
 asked to run** a live command on a device in that message. The always-on
 copy of that gate is the root `AGENTS.md`.
 
+Host and firmware manifests inherit Rust 1.95 MSRV; Xtensa uses ESP Rust
+1.97. Released ESP versions and pinned BLE crypto providers are in
+[references/rust.md](references/rust.md) and
+[crate verdicts](../../../docs/CRATES.md).
+
 ## How to read this skill
 
 1. **xtask** — [references/xtask.md](references/xtask.md). Command catalog,

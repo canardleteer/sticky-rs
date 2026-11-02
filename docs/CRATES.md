@@ -57,39 +57,52 @@ in the lockfile).
 `remote-debug-wire` uses [`buffa`](https://crates.io/crates/buffa) 0.9.2
 (`default-features = false` → `no_std` + `alloc`) and locates official
 `buf` via [`buf-tools`](https://crates.io/crates/buf-tools)
-`>=1.73.0-rc.1` when `REGEN_PROTO=1`. That is infrastructure for the
+`1.75.0` when `REGEN_PROTO=1`. That is infrastructure for the
 codec, not a chip-driver verdict. Do not add `buffa` to `panel-view`.
 
-`sticky-host` uses [`espflash`](https://crates.io/crates/espflash) 4.5 as a
+`sticky-host` uses [`espflash`](https://crates.io/crates/espflash) 4.7 as a
 library (`default-features = false`, feature `serialport`).
 [`cargo-espflash`](https://crates.io/crates/cargo-espflash) is the Cargo
 plugin binary wrapping that crate; it has no library target. Do not enable
 espflash's `cli` feature (no SemVer). Never call the full-chip erase APIs.
 `cargo xtask` is clap over `sticky-host`.
 
-When firmware members land, both images take `esp-hal`, `esp-println`,
-`esp-backtrace`, `esp-bootloader-esp-idf`, and `esp-alloc` from git tag
-`esp-hal-v1.2.0-rc.0`. `embassy-debug` also takes `esp-rtos` from that tag
-(crates.io `esp-rtos` 0.3.0 still pins `esp-hal` ~1.1). The images share
-that source so one workspace lockfile does not hit a `links = "esp-println"`
-conflict (crates.io `esp-println` 0.18 vs the tag's 0.17).
-`esp-bootloader-esp-idf` is only for `esp_app_desc!()`, so the factory
-ESP-IDF 2nd-stage bootloader and `espflash save-image` accept the payload.
-Do not `--merge`. `esp-alloc` is present because `lsm6ds3tr` 0.2.2 pulls
-`alloc`. `embassy-debug-fw --features radio` also takes `esp-radio` from
-that tag plus `trouble-host` / `bt-hci` for concurrent scan.
-Default embassy-debug `pair` takes the same radio crates for BLE
-peripheral + DisplayOnly passkey. Advertise only while the pair
-card is showing. Default `wifi` adds `esp-radio` `wifi` + `coex`
-plus crates.io [`embassy-net`](https://crates.io/crates/embassy-net)
-0.9, [`edge-dhcp`](https://crates.io/crates/edge-dhcp) 0.8,
-[`edge-nal`](https://crates.io/crates/edge-nal) 0.7, and
-[`edge-nal-embassy`](https://crates.io/crates/edge-nal-embassy)
-0.9 for SoftAP DHCP + `GET /` JSON. That is infrastructure for
-this image, not a chip-driver verdict. Do not merge `--features
-radio` (scan-only sit) into `wifi`. `trouble-host` 0.7 still
-needs the `central` feature so `GAP_SERVICE_ATTRIBUTE_COUNT` exists
-(`security` + `derive` alone is not enough).
+Both firmware images use the released ESP family: `esp-hal` 1.2.2,
+`esp-println` 0.18.0, `esp-backtrace` 0.20.0,
+`esp-bootloader-esp-idf` 0.6.0, and `esp-alloc` 0.11.0.
+`embassy-debug` adds `esp-rtos` 0.4.0 and exactly `esp-radio`
+1.0.0-beta.1 (beta.2 is yanked). The shared registry sources avoid
+`links` conflicts. Rust 1.95 is the workspace MSRV; Xtensa uses the
+installed ESP Rust 1.97 toolchain.
+`esp-bootloader-esp-idf` supplies `esp_app_desc!()` for the factory
+ESP-IDF second-stage bootloader and host-only `save-image`. Do not
+`--merge`. `esp-alloc` supports `lsm6ds3tr`'s `alloc` dependency.
+
+BLE uses [`TrouBLE revision 866ee711`](https://github.com/embassy-rs/trouble/tree/866ee711c14f9d4011ca7079c5c4af0f64a1f1bb)
+with matching macros and `bt-hci` 0.11. Released TrouBLE 0.8.0 retains
+an older vulnerable crypto chain. The pinned revision uses
+[`Embassy crypto revision bd35bd7a`](https://github.com/embassy-rs/embassy/tree/bd35bd7a7d19147c8bcae9c2eda99b25e597294c).
+The software AES/CMAC/P-256 backend follows its ESP example. An explicit
+ChaCha12 RNG provider is seeded with four controller `LeRand` replies
+before stack construction. Entropy errors stop pairing; there is no
+fixed seed fallback. DisplayOnly passkeys and connection-local RAM
+bonds stay unchanged. No factory NVS writes.
+
+Default `pair` advertises only on the pair card; `remote-debug` also
+advertises from splash and holds the paired GATT after leaving.
+Default `wifi` uses `embassy-net` 0.9.1, `edge-dhcp` 0.8,
+`edge-nal` 0.7, and `edge-nal-embassy` 0.9 for SoftAP DHCP and
+`GET /` JSON. The exclusive `radio` sit remains scan-only.
+
+The lockfile selects the newest compatible releases within these
+upstream constraints and Rust 1.95: `az` 1.2.1 (graphics requires
+`~1.2`), `fixed` 1.29.0 (newer releases need a newer compiler), and
+`generic-array` 0.14.7 (upstream exact constraint). Audit has no
+vulnerabilities. It retains maintenance warnings for transitive
+`paste` (RUSTSEC-2024-0436) and `unsafe-libyaml` (RUSTSEC-2024-0449).
+Do not suppress those warnings or weaken the canonical `cargo xtask ci`
+gate.
+
 A host pair sit on a physical unit used BlueZ D-Bus **Connect** plus
 a KeyboardOnly `RequestPasskey` (UART `pair pin=` then `pair ok`).
 Do not call BlueZ `Pair()` while the image’s `request_security()` is
@@ -97,7 +110,7 @@ in flight. [`bluer`](https://crates.io/crates/bluer) 0.17.4
 (`bluetoothd`) wraps that on Linux in `remote-debug-host` (in the
 lockfile). Do not wrap `bluetoothctl`.
 `cargo xtask remote-debug --mcp` uses
-[`rmcp`](https://crates.io/crates/rmcp) 3.2
+[`rmcp`](https://crates.io/crates/rmcp) 3.8
 (`server`, `macros`, `schemars`, `transport-io`) on that subtree
 only — never the full xtask CLI (flash-app / restore stay out of
 MCP). clap still parses argv (`--mcp` is a clap flag). This is an
@@ -106,7 +119,7 @@ MCP is a subset surface, not the whole CLI tree. Always-on in
 xtask (`publish = false`). That is infrastructure, not a
 chip-driver verdict.
 `sticky-host` serializes learn-uart YAML with
-[`noyalib`](https://crates.io/crates/noyalib) 0.0.30 (serde, no `unsafe` in
+[`noyalib`](https://crates.io/crates/noyalib) 0.0.58 (serde, no `unsafe` in
 sticky-host). Operator prompts use [`anstyle`](https://crates.io/crates/anstyle)
 1.0.14 and [`anstream`](https://crates.io/crates/anstream) 1.0.0 (`anstream`
 honors TTY, `NO_COLOR`, and `CLICOLOR`).

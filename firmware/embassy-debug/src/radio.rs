@@ -78,15 +78,15 @@ where
 {
     // Fixed random address so we do not read or print the eFuse MAC.
     let address = Address::random([0x02, 0x00, 0x00, 0x00, 0x00, 0x01]);
-    let mut resources: HostResources<_, DefaultPacketPool, 1, 1> = HostResources::new();
+    let mut resources: HostResources<DefaultPacketPool, 1, 1> = HostResources::new();
     let stack = trouble_host::new(controller, &mut resources)
         .set_random_address(address)
         .build();
     let mut runner = stack.runner();
-    let central = stack.central();
+    let mut central = stack.central();
 
     let printer = NamePrinter::new();
-    let mut scanner = Scanner::new(central);
+    let mut scanner = Scanner::new(&mut central);
     let config = BleScanConfig::default();
 
     // One session per report window, same as Wi-Fi `scan_async`. A single

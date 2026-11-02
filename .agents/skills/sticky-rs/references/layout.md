@@ -71,8 +71,8 @@ pins, latch, rails, transforms, and typed spaces
   [`cargo-espflash`](https://crates.io/crates/cargo-espflash) is a
   binary-only Cargo plugin wrapping that crate. Do not enable
   espflash's `cli` feature. `sticky-host`, `remote-debug-host`,
-  `remote-debug-broker`, and xtask require rustc 1.88 (espflash 4.5);
-  the `no_std` crates stay at workspace MSRV 1.85. Live
+  `remote-debug-broker`, and xtask inherit workspace MSRV 1.95
+  (espflash 4.7 / ESP HAL 1.2.2). Live
   `sticky-host` methods take [`uart_lock::try_acquire`](xtask.md#uart-session-lock-shared)
   internally. New UART-touching in-repo tools reuse that same lock; do not
   invent another. UART-touching subprocesses go through
@@ -92,9 +92,7 @@ pins, latch, rails, transforms, and typed spaces
   PDF extracts under the hardware skill `resources/datasheets/md/`.
   A rustc newer than MSRV can fail that clippy on default-members
   (`too_many_arguments`, `assertions_on_constants`). Keep the trio
-  green; do not pin an older clippy. Workspace MSRV 1.85 treats
-  `const { assert!(…) }` items as experimental — use a named
-  `const _: u32 = A - B` underflow (or pack arguments) instead.
+  green; do not pin an older clippy. Workspace MSRV is 1.95.
 - One workspace lockfile is committed. Pass `--locked` and keep the claimed
   MSRV. After changing `host/sticky-host/Cargo.toml`, `xtask/Cargo.toml`,
   `firmware/*/Cargo.toml`, or workspace members, refresh it with

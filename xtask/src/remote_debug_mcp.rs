@@ -12,7 +12,7 @@ use rmcp::model::{
     GetPromptRequestParams, GetPromptResponse, GetPromptResult, Implementation, ListPromptsResult,
     ListResourcesResult, PaginatedRequestParams, Prompt, PromptMessage, ReadResourceRequestParams,
     ReadResourceResponse, ReadResourceResult, Resource, ResourceContents, Role, ServerCapabilities,
-    ServerInfo,
+    ServerConfig,
 };
 use rmcp::service::{RequestContext, RoleServer};
 use rmcp::{tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler, ServiceExt};
@@ -462,8 +462,8 @@ fn broker_target(name: String) -> BrokerTarget {
 
 #[tool_handler]
 impl ServerHandler for RemoteDebugMcp {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(
             ServerCapabilities::builder()
                 .enable_tools()
                 .enable_prompts()

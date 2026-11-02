@@ -12,7 +12,7 @@ path in this file.
 
 ## Attach
 
-`--mcp` is rmcp 3.2 on this subtree (`xtask/src/remote_debug_mcp.rs`).
+`--mcp` is rmcp 3.8 on this subtree (`xtask/src/remote_debug_mcp.rs`).
 clap still parses argv (`--mcp` is a clap flag). It is **not** the
 full xtask CLI: `flash-app`, restore, backup, and `serve` are
 never tools. Parent names `xtask` / `remote-debug` are not tools.
@@ -163,6 +163,14 @@ edges under [Difficult / crude](#difficult--crude).
 
 ## Discoveries
 
+- Dependency refresh (2026-11-01), fresh-process host-only smoke:
+  rmcp 3.8 `ServerConfig` initializes with instructions and the same
+  eleven leaves. Every input/output schema is an object; output allows
+  additional properties. All three prompts and resources were read.
+  With an isolated runtime directory, `status` and `list-targets`
+  report no broker, create no endpoint, and exit cleanly. Hazardous
+  flash/restore/backup operations and `serve` remain absent. No UART,
+  BLE, or physical-unit verification.
 - Host-only MCP attach (2026-10-07): a rebuilt binary with an
   isolated runtime directory verified initialize, discovery
   of all eleven leaves with object output schemas, all three

@@ -5,8 +5,7 @@ description = "Device-side Envelope dispatch and optional Trouble GATT for remot
 readme = "README.md"
 publish = false
 edition.workspace = true
-# trouble-host (gatt feature) tracks the host/firmware MSRV, not 1.85.
-rust-version = "1.88"
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
@@ -23,7 +22,7 @@ gatt = ["dep:static_cell", "dep:trouble-host"]
 panel-view = { path = "../panel-view", version = "0.1.0" }
 remote-debug-wire = { path = "../remote-debug-wire", version = "0.1.0" }
 static_cell = { version = "2.1.1", optional = true }
-trouble-host = { version = "0.7.0", optional = true, default-features = false, features = [
+trouble-host = { git = "https://github.com/embassy-rs/trouble", rev = "866ee711c14f9d4011ca7079c5c4af0f64a1f1bb", optional = true, default-features = false, features = [
   "default-packet-pool-mtu-255",
   "peripheral",
   "gatt",
@@ -35,3 +34,7 @@ trouble-host = { version = "0.7.0", optional = true, default-features = false, f
 
 [lints]
 workspace = true
+
+# The gatt_service expansion names static_cell::StaticCell for attributes.
+[package.metadata.cargo-machete]
+ignored = ["static_cell"]

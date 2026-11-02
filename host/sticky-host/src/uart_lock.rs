@@ -23,8 +23,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Output};
 
-use fs4::fs_std::FileExt;
-use sha2::{Digest, Sha256};
+use fs4::{FileExt, TryLockError};
 
 use crate::Error;
 
@@ -131,17 +130,19 @@ fn acquire(
         .create(true)
         .truncate(false)
         .open(&path)?;
-    match file.try_lock_exclusive() {
-        Ok(true) => {
+    match FileExt::try_lock(&file) {
+        Ok(()) => {
             write_holder(&file, command)?;
             Ok(UartSession {
                 path,
                 _file: Some(file),
             })
         }
-        Ok(false) if can_join(&path, inherit) => Ok(UartSession { path, _file: None }),
-        Ok(false) => Err(busy_from(&path)),
-        Err(error) => Err(Error::from(error)),
+        Err(TryLockError::WouldBlock) if can_join(&path, inherit) => {
+            Ok(UartSession { path, _file: None })
+        }
+        Err(TryLockError::WouldBlock) => Err(busy_from(&path)),
+        Err(TryLockError::Error(error)) => Err(Error::from(error)),
     }
 }
 
@@ -192,8 +193,7 @@ fn lock_stem(port: &str) -> String {
             return format!("{}-{}", meta.dev(), meta.ino());
         }
     }
-    let digest = Sha256::digest(port.as_bytes());
-    format!("{digest:x}")
+    crate::dump::sha256_hex(port.as_bytes())
 }
 
 fn write_holder(file: &File, command: &str) -> io::Result<()> {

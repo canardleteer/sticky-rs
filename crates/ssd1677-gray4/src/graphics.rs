@@ -30,7 +30,7 @@ impl<'buf> Gray4Canvas<'buf> {
     /// Fails if the width is not a multiple of 8 (plane rows would not be byte
     /// aligned) or the buffer length does not match `width * height / 4`.
     pub fn new(buffer: &'buf mut [u8], width: usize, height: usize) -> Result<Self, PackError> {
-        if width % 8 != 0 {
+        if !width.is_multiple_of(8) {
             return Err(PackError::WidthNotByteAligned { width });
         }
 

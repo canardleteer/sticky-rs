@@ -41,7 +41,7 @@ pub struct BuildFwArgs {
     pub image: FirmwareImage,
     /// Cargo features on that package (`operator` on simple-debug).
     ///
-    /// Embassy-debug defaults to `pair` + `wifi`. Exclusive sits
+    /// Embassy-debug defaults to `pair` + `wifi` + `storage`. Exclusive sits
     /// (`mic` / `radio` / `charge` / `sd`) add `--no-default-features`.
     pub features: Vec<String>,
     /// `true` is `--profile release-fw` (the documented default).
@@ -64,6 +64,8 @@ pub struct BuildFwOutput {
 pub fn build_fw(repo_root: &Path, args: &BuildFwArgs) -> Result<BuildFwOutput, Error> {
     let package = args.image.package();
     let mut cargo = Command::new("cargo");
+    configure_firmware_linker(&mut cargo);
+    configure_storage_bindgen(&mut cargo);
     cargo
         .current_dir(repo_root)
         .arg("+esp")
@@ -134,6 +136,52 @@ pub fn build_fw(repo_root: &Path, args: &BuildFwArgs) -> Result<BuildFwOutput, E
     }
 
     Ok(BuildFwOutput { elf, bin })
+}
+
+/// Configure littlefs bindgen for the ESP32-S3 C ABI and locate espup's bundled
+/// Clang resource headers. Explicit target-specific user arguments take
+/// precedence. This only adjusts a child command; it never mutates the host.
+pub fn configure_storage_bindgen(command: &mut Command) {
+    const KEY: &str = "BINDGEN_EXTRA_CLANG_ARGS_xtensa_esp32s3_none_elf";
+    if std::env::var_os(KEY).is_some()
+        || std::env::var_os("BINDGEN_EXTRA_CLANG_ARGS_xtensa-esp32s3-none-elf").is_some()
+    {
+        return;
+    }
+    let mut args = String::from("--target=xtensa-esp32s3-elf -ffreestanding");
+    if let Some(lib) = std::env::var_os("LIBCLANG_PATH") {
+        let resources = PathBuf::from(lib).join("clang");
+        if let Ok(entries) = std::fs::read_dir(resources) {
+            let mut includes: Vec<_> = entries
+                .filter_map(Result::ok)
+                .map(|entry| entry.path().join("include"))
+                .filter(|path| path.join("stdint.h").is_file())
+                .collect();
+            includes.sort();
+            if let Some(include) = includes.last() {
+                args.push_str(&format!(" -isystem '{}'", include.display()));
+            }
+        }
+    }
+    command.env(KEY, args);
+}
+
+/// Set the repository linker script once in the firmware child command.
+/// Cargo concatenates ancestor config arrays in nested worktrees. Encoded flags
+/// avoid that duplicate script while leaving explicit RUSTFLAGS overrides intact.
+/// Target-specific environment flags are retained and gain the required script.
+pub fn configure_firmware_linker(command: &mut Command) {
+    if std::env::var_os("CARGO_ENCODED_RUSTFLAGS").is_some()
+        || std::env::var_os("RUSTFLAGS").is_some()
+    {
+        return;
+    }
+    let extra = std::env::var("CARGO_TARGET_XTENSA_ESP32S3_NONE_ELF_RUSTFLAGS").unwrap_or_default();
+    let mut flags: Vec<&str> = extra.split_whitespace().collect();
+    if !flags.contains(&"link-arg=-Tlinkall.x") {
+        flags.extend(["-C", "link-arg=-Tlinkall.x"]);
+    }
+    command.env("CARGO_ENCODED_RUSTFLAGS", flags.join("\u{1f}"));
 }
 
 /// Cargo features that cannot share a binary with default `pair`.

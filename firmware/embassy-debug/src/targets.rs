@@ -179,6 +179,9 @@ fn advance(id: u8) {
     TARGET_VIEW.signal(());
 }
 
+/// Queue one target observation using page-space measured and expected points.
+/// The common bounded event path handles UART overflow; this performs no touch
+/// I2C access or display update and preserves the mark's ID for correlation.
 fn emit_verb(verb: TargetVerb, mark: TargetMark, page: PagePoint, metric: u16) {
     emit(Event::Target {
         t_ms: now_ms(),
@@ -193,11 +196,16 @@ fn emit_verb(verb: TargetVerb, mark: TargetMark, page: PagePoint, metric: u16) {
     });
 }
 
+/// Restore empty slide extrema before scoring the next target.
+/// Atomic sentinels let the touch producer accumulate samples without an await
+/// or a shared bus borrow; no physical input configuration changes here.
 fn reset_slide() {
     SLIDE_MIN.store(u16::MAX, Ordering::Release);
     SLIDE_MAX.store(0, Ordering::Release);
 }
 
+/// Encode the application's in-plane rotation for atomic target-state storage.
+/// This pure four-value mapping matches rotation_from_byte and performs no I/O.
 fn rotation_byte(rotation: PageRotation) -> u8 {
     match rotation {
         PageRotation::Portrait0 => 0,
@@ -207,6 +215,9 @@ fn rotation_byte(rotation: PageRotation) -> u8 {
     }
 }
 
+/// Decode target-state rotation, defaulting unknown values to Portrait0.
+/// The initial zero uses that default; this selects canvas geometry without
+/// changing panel registers or the touch controller's coordinate reporting.
 fn rotation_from_byte(byte: u8) -> PageRotation {
     match byte {
         1 => PageRotation::Portrait180,

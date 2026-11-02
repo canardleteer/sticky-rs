@@ -44,7 +44,7 @@ the filename; no serial).
 Stay on splash for pair (Ferris never shows the PIN). Do not ask
 the operator to pair from a phone. Tools are `connect`, `status`,
 `list-targets`, `inject-touch`, `inject-button`, `get-snapshot`,
-`snapshot-ack`, `snapshot-clear`, `reboot`, `disconnect`, `logs` (not
+`snapshot-ack`, `snapshot-clear`, `reboot`, `disconnect`, `logs`, `storage` (not
 `remote-debug_*`). Do not run `monitor` during auto-PIN. No
 `--remember` unless the human asked. New MCP tools need a new
 agent. A host notify / owner change is enough with
@@ -116,6 +116,7 @@ the CLI:
 | `snapshot-clear` | Operator abort (no nonce); use after a failed get |
 | `reboot` | Software-reset the **embedded MCU**, then re-pair unless `no_reconnect` |
 | `disconnect` | Drop one GATT session; empty map also shuts the owner down. Unknown units lose the BlueZ bond |
+| `storage` | Typed status/provision/verify/stress/power-cycle/quiesce/stage/fault/sleep operations. Confirm destructive jobs; wait for their correlated receipt |
 
 stdio also advertises initialize **instructions**, prompts
 `desk-sit` / `targets-walk` / `after-failed-snapshot`, and
@@ -127,6 +128,23 @@ Structured output is the generated ConnectRPC `*Response` JSON.
 `get-snapshot` also adds host-only `png` (absolute page-image
 path) and `pageWidth` / `pageHeight` after the write.
 `message` must not include a MAC.
+
+## Storage tool
+
+The interface has twelve tools, including typed `storage`. Its `action` is a
+structured operation: status, provision, verify, stress, power-cycle, quiesce,
+stage, fault or sleep. Destructive operations require `yes=true`; test controls
+also require `storage-test`. Input bounds match clap. Completion refers to the
+submitted job ID, retained for four jobs; reboot/eviction/timeout fails instead
+of reporting an older ready package or another operation's success. CLI and
+MCP use the same host staging and receipt-polling logic. Chunk size is at most
+512 bytes, metadata at most 1024 bytes, and app0 at most 6 MiB. Publisher
+authentication and update activation remain future work.
+
+A normal `reboot` waits for storage; refusal keeps the GATT session. `force`
+explicitly bypasses that barrier. `quiesce` parks SD; `power-cycle` resumes it.
+See [storage guide](../../../../docs/storage.md) for desk recipes and measured
+acceptance outcomes.
 
 ## Self-test
 
@@ -163,6 +181,16 @@ edges under [Difficult / crude](#difficult--crude).
 
 ## Discoveries
 
+- Storage after dependency refresh (2026-11-01), fresh subagent:
+  116 host-only checks and 41 loopback mock ConnectRPC calls passed
+  with rmcp 3.8. All twelve schemas, nine storage operations, three
+  prompts/resources, bounds, confirmations, correlated receipt success
+  and failure, synthetic staging, and reboot defaults passed. The
+  mock covered externalPower true/false/absent, exact staged bytes,
+  chunk order and 512-byte bounds, bad/oversized images, and
+  `force=false` / explicit `force=true`. Hazardous flash tools remain
+  absent. Clean EOF; no UART, BLE, or device I/O. Firmware refusals
+  were simulated; the real five-minute timeout was not waited.
 - Dependency refresh (2026-11-01), fresh-process host-only smoke:
   rmcp 3.8 `ServerConfig` initializes with instructions and the same
   eleven leaves. Every input/output schema is an object; output allows
@@ -171,6 +199,15 @@ edges under [Difficult / crude](#difficult--crude).
   report no broker, create no endpoint, and exit cleanly. Hazardous
   flash/restore/backup operations and `serve` remain absent. No UART,
   BLE, or physical-unit verification.
+- Storage MCP revalidation (2026-10-08): a fresh subagent launched the rebuilt
+  stdio server with an isolated runtime directory and passed 121 checks using
+  a loopback mock ConnectRPC owner. All twelve tools, three prompts/resources,
+  and nine typed storage operations passed. Checks covered confirmations,
+  field bounds, malformed inputs, receipt correlation and failure, reboot's
+  default `force=false`, and `externalPower` true, false, and absent. EOF exited
+  cleanly. This probe used ConnectRPC 0.9.1 and performed no hardware access;
+  firmware refusals were simulated and the real five-minute timeout was not
+  waited. Earlier probes passed 48 isolated checks and 24 live read-only checks.
 - Host-only MCP attach (2026-10-07): a rebuilt binary with an
   isolated runtime directory verified initialize, discovery
   of all eleven leaves with object output schemas, all three
@@ -333,6 +370,22 @@ edges under [Difficult / crude](#difficult--crude).
 
 ## Difficult / crude
 
+- Large storage chunks require ATT fragments no larger than the firmware's
+  244-byte receive buffer. BlueR applies its own MTU adjustment; the transport
+  additionally caps the resulting payload. An uncapped large negotiated MTU
+  truncated a physical staging request and left its frame waiting for bytes.
+  Firmware now rejects oversized writes and discards partial frames after five
+  seconds without a fragment. Rebuild/restart an older broker before retrying.
+- Storage waits require a job receipt. A completed later job, an idle cache,
+  or a previously ready package cannot complete an earlier request. Receipt
+  eviction and MCU reset fail the wait. A timeout clears the host assembler
+  while retaining the session for recovery. Stress budgets include one second
+  per requested round beyond the five-minute base; the earlier fixed
+  deadline expired during a physical 1,000-round job that completed later.
+- Storage status includes an optional GPIO9 `externalPower` indication. It
+  reports a sampled digital level, not an analog voltage. Confirmed latch
+  faults refuse a high or unknown indication; USB enumeration loss cannot
+  substitute for checking external power.
 - rmcp exposes only the remote-debug leaves. There is no
   stdio path for `flash-app`, restore, or `serve` (on purpose).
 - The CLI owner holds the session. stdio MCP is a client of

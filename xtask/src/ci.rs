@@ -35,6 +35,7 @@ pub fn run(repo_root: &Path) -> Result<(), Error> {
     fw_clippy(repo_root, "embassy-debug-fw", Some("sd"))?;
     fw_clippy(repo_root, "embassy-debug-fw", Some("charge"))?;
     fw_clippy(repo_root, "embassy-debug-fw", Some("remote-debug"))?;
+    fw_clippy(repo_root, "embassy-debug-fw", Some("storage-test"))?;
 
     require_on_path("rumdl", "cargo install rumdl")?;
     step(repo_root, "rumdl", &["check"])?;
@@ -88,7 +89,19 @@ fn fw_clippy(repo_root: &Path, package: &str, feature: Option<&str>) -> Result<(
         args.push(feature);
     }
     args.extend_from_slice(&["--", "-D", "warnings"]);
-    step(repo_root, "cargo", &args)
+    let mut command = Command::new("cargo");
+    sticky_host::build_fw::configure_firmware_linker(&mut command);
+    sticky_host::build_fw::configure_storage_bindgen(&mut command);
+    command.current_dir(repo_root).args(&args);
+    eprintln!("==> cargo {}", args.join(" "));
+    let status = command
+        .status()
+        .map_err(|error| Error::Device(error.to_string()))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(Error::Device(format!("firmware clippy failed: {package}")))
+    }
 }
 
 fn require_cargo_esp() -> Result<(), Error> {

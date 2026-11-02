@@ -88,10 +88,14 @@ pub(crate) fn cancel_power_off_request() {
     POWERING_OFF.store(false, Ordering::Release);
 }
 
+/// Application-owned RTC retention marker (`SLP1`), unrelated to chip registers.
+/// The reset-cause check and marker together gate restoration of packed state.
 const SNAP_MAGIC: u32 = 0x534C5031;
 
+/// RTC-retained validity word, written after the packed scene by the sleep owner.
 #[esp_hal::ram(unstable(rtc_fast, persistent))]
 static mut SNAP_MAGIC_CELL: u32 = 0;
+/// RTC-retained scene byte and rotation byte; cold boots never consume it.
 #[esp_hal::ram(unstable(rtc_fast, persistent))]
 static mut SNAP_PACKED: u32 = 0;
 
@@ -102,6 +106,8 @@ pub(crate) struct SleepSnap {
     pub rotation: PageRotation,
 }
 
+/// Encode a page rotation in the application's RTC snapshot format.
+/// This pure mapping matches `rotation_from_byte` and performs no panel I/O.
 fn rotation_byte(rotation: PageRotation) -> u8 {
     match rotation {
         PageRotation::Portrait0 => 0,
@@ -111,6 +117,8 @@ fn rotation_byte(rotation: PageRotation) -> u8 {
     }
 }
 
+/// Decode a retained rotation, rejecting unknown bytes instead of guessing.
+/// Invalid retention data prevents scene restoration and uses the boot default.
 fn rotation_from_byte(byte: u8) -> Option<PageRotation> {
     match byte {
         0 => Some(PageRotation::Portrait0),
@@ -125,12 +133,20 @@ fn rotation_from_byte(byte: u8) -> Option<PageRotation> {
 pub(crate) fn persist(scene: Scene, rotation: PageRotation) {
     let packed = u32::from(scene.persist_byte()) | (u32::from(rotation_byte(rotation)) << 8);
     unsafe {
+        // Publish payload before its validity marker. This is the serialized
+        // sleep owner, and the boot path additionally checks the reset cause.
         SNAP_PACKED = packed;
         SNAP_MAGIC_CELL = SNAP_MAGIC;
     }
 }
 
+/// Read the RTC words and validate marker, scene and rotation encodings.
+/// The boot/sleep owner serializes accesses; call only after checking the reset
+/// cause with `resume_snap`. Corrupt or unknown fields return `None` without
+/// touching rails, GPIOs, storage or the panel.
 fn load_snap() -> Option<SleepSnap> {
+    // Boot reconstructs typed scene/rotation from application-owned RTC state
+    // before another display request; deep-sleep wake starts a new task context.
     let (magic, packed) = unsafe { (SNAP_MAGIC_CELL, SNAP_PACKED) };
     if magic != SNAP_MAGIC {
         return None;
@@ -184,6 +200,18 @@ pub(crate) fn enter_deep_sleep(mut lpwr: LowPower<'static>) -> ! {
     lpwr.sleep_deep(RtcSleepConfig::deep())
 }
 
+/// Test-only deep sleep with an RTC timer deadline configured after the panel
+/// and SD rails are parked. Timer wake resumes without a physical key hold.
+/// Startup reconstructs drivers and revalidates the card on the next boot;
+/// the sleeping task does not continue after the deep-sleep reset.
+#[cfg(feature = "storage-test")]
+pub(crate) fn enter_timed_sleep(mut lpwr: LowPower<'static>, milliseconds: u32) -> ! {
+    let deadline = esp_hal::time::Instant::now()
+        + esp_hal::time::Duration::from_millis(u64::from(milliseconds));
+    lpwr.set_wakeup_deadline(deadline);
+    enter_deep_sleep(lpwr)
+}
+
 /// Drive latch pins high and hold them across sleep.
 pub(crate) fn hold_latch(latch: Latch<Output<'static>, Output<'static>>) {
     let (mut hold, mut lock) = latch.release_ownership_only();
@@ -197,21 +225,35 @@ pub(crate) fn hold_latch(latch: Latch<Output<'static>, Output<'static>>) {
 
 /// Drop both latch pins: software power-off.
 ///
-/// On battery the board dies. USB-C plug or the stock ~3 s AI Voice
-/// hold is the power-on path. After this returns the MCU may already
-/// be unpowered; the caller should not expect further work.
+/// The board contract expects MCU power loss on battery; confirm that outcome
+/// on the actual unit. USB-C plug or the stock ~3 s AI Voice hold is the
+/// power-on path. After this returns the MCU may already be unpowered;
+/// the caller should not expect further work. Keep both GPIO
+/// drivers and low pad holds explicitly while external power may still keep
+/// the MCU alive. A latch request alone does not prove supply removal.
 pub(crate) fn release_latch(latch: Latch<Output<'static>, Output<'static>>) {
     let mut buf = [0u8; LINE_CAPACITY];
     if let Ok(line) = format_poweroff(&mut buf) {
         println!("{line}");
     }
-    let _ = latch.release();
+    let (mut hold, mut lock) = latch.release().expect("infallible latch GPIO");
+    hold.set_pad_hold(true);
+    lock.set_pad_hold(true);
+    core::mem::forget(hold);
+    core::mem::forget(lock);
 }
 
+/// Retain an already-configured output's current level across low-power entry.
+/// Call after parking its rail or signal; the hold does not choose a level.
+/// Wake initialization restores the intended pad configuration and releases
+/// holds before normal peripheral use.
 pub(crate) fn hold_output(pin: &mut Output<'static>) {
     pin.set_pad_hold(true);
 }
 
+/// Retain an input pad's existing configuration for the low-power path.
+/// The caller selects pull and wake settings first. This enables no output and
+/// performs no bus operation; startup releases holds before normal use.
 pub(crate) fn hold_input(pin: &mut Input<'static>) {
     pin.set_pad_hold(true);
 }

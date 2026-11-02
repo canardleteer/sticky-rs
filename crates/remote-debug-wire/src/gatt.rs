@@ -22,6 +22,13 @@ pub const GATT_SERVICE_UUID: &str = "c81e1000-5c8a-4f0e-9c3a-2e7b1a0d4f11";
 /// full frame is present, then [`crate::decode_envelope`].
 pub const GATT_RX_UUID: &str = "c81e1001-5c8a-4f0e-9c3a-2e7b1a0d4f11";
 
+/// Largest accepted host-to-device ATT payload, independent of negotiated MTU.
+///
+/// The peripheral copies each write into a fixed stack buffer before yielding.
+/// A larger frame uses ordered writes of at most this many bytes; peripherals
+/// reject oversized writes rather than accepting a truncated fragment.
+pub const GATT_WRITE_MAX: usize = 244;
+
 /// Device → host: notify of framed [`crate::v1::Envelope`] bytes.
 ///
 /// Encrypted notify. A 48 KiB snapshot is many ATT payloads. Reassemble

@@ -47,6 +47,8 @@ pub mod __buffa {
         reg.register_json_any(super::__DISCONNECT_RESPONSE_JSON_ANY);
         reg.register_json_any(super::__SHUTDOWN_REQUEST_JSON_ANY);
         reg.register_json_any(super::__SHUTDOWN_RESPONSE_JSON_ANY);
+        reg.register_json_any(super::__STORAGE_REQUEST_JSON_ANY);
+        reg.register_json_any(super::__STORAGE_RESPONSE_JSON_ANY);
     }
 }
 #[doc(inline)]
@@ -149,5 +151,13 @@ pub use self::__buffa::view::ShutdownRequestOwnedView;
 pub use self::__buffa::view::ShutdownResponseView;
 #[doc(inline)]
 pub use self::__buffa::view::ShutdownResponseOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::StorageRequestView;
+#[doc(inline)]
+pub use self::__buffa::view::StorageRequestOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::StorageResponseView;
+#[doc(inline)]
+pub use self::__buffa::view::StorageResponseOwnedView;
 #[doc(inline)]
 pub use self::__buffa::register_types;

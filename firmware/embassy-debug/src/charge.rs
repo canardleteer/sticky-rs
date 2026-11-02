@@ -90,14 +90,23 @@ pub fn run<I2C: I2c, D: DelayNs>(
     charger
 }
 
+/// Sample the charger STAT input on GPIO40 without changing its configuration.
+/// Only an explicit high is true; a read error becomes false, so this helper
+/// cannot establish charge completion or a measured current.
 fn stat_is_high(stat: &mut ChargeStatus<Input<'static>>) -> bool {
     matches!(stat.level(), Ok(Level::High))
 }
 
+/// Borrow sensor I2C for the BQ27220's read-only signed Current command.
+/// A bus error returns None for the UART formatter. No gauge configuration,
+/// unseal or capacity write is issued by this diagnostic read.
 fn gauge_current_ma<I2C: I2c>(i2c: &mut I2C) -> Option<i16> {
     Bq27220::new(i2c).current_ma().ok()
 }
 
+/// Format one attended-charge observation in fixed stack storage for UART.
+/// If formatting fails, skip the row; this helper performs no charger or gauge
+/// operation and cannot convert a GPIO observation into electrical evidence.
 fn print_line(format: impl FnOnce(&mut [u8]) -> Result<&str, embassy_debug::FormatError>) {
     let mut buf = [0u8; LINE_CAPACITY];
     if let Ok(line) = format(&mut buf) {

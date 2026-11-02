@@ -61,3 +61,11 @@ pub use self::__buffa::view::RebootOwnedView;
 pub use self::__buffa::view::RebootAckView;
 #[doc(inline)]
 pub use self::__buffa::view::RebootAckOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::StorageRequestView;
+#[doc(inline)]
+pub use self::__buffa::view::StorageRequestOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::StorageReplyView;
+#[doc(inline)]
+pub use self::__buffa::view::StorageReplyOwnedView;

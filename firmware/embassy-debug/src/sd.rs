@@ -108,6 +108,11 @@ pub fn run<D: DelayNs>(spi: &mut Spi<'static, Blocking>, parts: SdParts, delay: 
     cs.set_high();
 }
 
+/// Borrow shared SPI2 with EPD deselected and inspect FAT volume zero.
+/// Enumerate at most `MAX_ENTS` visible short names, then read at most
+/// `READ_BUF` bytes from the first regular file without printing its contents.
+/// Mount, directory and read errors produce bounded UART diagnostics; this
+/// diagnostic uses `Mode::ReadOnly` and never provisions a volume.
 fn list_fat(spi: &mut Spi<'static, Blocking>, cs: &mut Output<'static>) {
     let bus = CsSpi { spi, cs };
     let card = SdCard::new(bus, Delay);
@@ -174,11 +179,16 @@ fn list_fat(spi: &mut Spi<'static, Blocking>, cs: &mut Output<'static>) {
     }
 }
 
+/// Recognize FAT's current/parent directory entries from their short base name.
+/// This pure filter prevents those navigation entries from filling the report.
 fn is_dot(name: &ShortFileName) -> bool {
     let base = name.base_name();
     base == b"." || base == b".."
 }
 
+/// Copy an 8.3 name into caller-owned storage, inserting the extension dot.
+/// Return only initialized bytes, bounded by the twelve-byte destination.
+/// No allocation, filesystem access or Unicode conversion occurs here.
 fn sfn_bytes<'a>(name: &ShortFileName, out: &'a mut [u8; 12]) -> &'a [u8] {
     let base = name.base_name();
     let ext = name.extension();
@@ -202,6 +212,10 @@ fn sfn_bytes<'a>(name: &ShortFileName, out: &'a mut [u8; 12]) -> &'a [u8] {
     &out[..n]
 }
 
+/// Configure shared SPI2 for mode zero at the caller's selected frequency.
+/// Both devices must be deselected before changing clock configuration. An
+/// unsupported HAL configuration maps to `IdentifyError::Bus`; this function
+/// does not assert CS or send an SD command.
 fn set_hz(spi: &mut Spi<'static, Blocking>, hz: u32) -> Result<(), IdentifyError> {
     spi.apply_config(
         &SpiConfig::default()
@@ -211,6 +225,9 @@ fn set_hz(spi: &mut Spi<'static, Blocking>, hz: u32) -> Result<(), IdentifyError
     .map_err(|_| IdentifyError::Bus)
 }
 
+/// Format one UART diagnostic in a fixed stack buffer and print it if it fits.
+/// Formatting errors skip the row; callers retain responsibility for selecting
+/// public labels and excluding file contents or card identity fields.
 fn print_line(format: impl FnOnce(&mut [u8]) -> Result<&str, embassy_debug::FormatError>) {
     let mut buf = [0u8; LINE_CAPACITY];
     if let Ok(line) = format(&mut buf) {
@@ -222,6 +239,8 @@ fn print_line(format: impl FnOnce(&mut [u8]) -> Result<&str, embassy_debug::Form
 struct NoClock;
 
 impl TimeSource for NoClock {
+    /// Return a placeholder timestamp for the read-only filesystem adapter.
+    /// No RTC transaction occurs and no directory timestamp is written.
     fn get_timestamp(&self) -> Timestamp {
         Timestamp {
             year_since_1970: 0,
@@ -240,26 +259,38 @@ struct CsSpi<'a> {
     cs: &'a mut Output<'static>,
 }
 
+/// Coarse SPI transport failure used by the read-only SD diagnostic.
+/// The HAL detail is intentionally collapsed; CS is still released on failure.
 #[derive(Debug)]
 struct SdSpiError;
 
 impl embedded_hal::spi::Error for SdSpiError {
+    /// Classify every collapsed HAL transfer failure as the portable Other kind.
     fn kind(&self) -> embedded_hal::spi::ErrorKind {
         embedded_hal::spi::ErrorKind::Other
     }
 }
 
 impl embedded_hal::spi::ErrorType for CsSpi<'_> {
+    /// Transport error shared by all SD operations on this borrowed device.
     type Error = SdSpiError;
 }
 
 impl SpiDevice for CsSpi<'_> {
+    /// Assert GPIO8 for this operation group, then deselect on success or error.
+    /// Read clocks transmit idle-high bytes; writes/transfers borrow the shared
+    /// SPI2 controller synchronously. Delay operations retain CS. The caller
+    /// exclusively owns the bus and keeps panel GPIO15 high throughout.
     fn transaction(&mut self, operations: &mut [Operation<'_, u8>]) -> Result<(), Self::Error> {
         self.cs.set_low();
+        // Keep fallible transfers inside the closure. Its ? exits return here,
+        // so both success and bus failure reach the final CS-high write.
         let result = (|| {
             for op in operations.iter_mut() {
                 match op {
                     Operation::Read(buf) => {
+                        // SD SPI reads need outgoing idle-one bits to generate
+                        // the clock; the same borrowed bytes receive the reply.
                         buf.fill(0xFF);
                         self.spi.transfer(buf).map_err(|_| SdSpiError)?;
                     }

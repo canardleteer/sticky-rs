@@ -49,6 +49,16 @@ pub mod envelope {
         RebootAck(
             ::buffa::alloc::boxed::Box<super::super::super::super::shared::v1::RebootAck>,
         ),
+        StorageRequest(
+            ::buffa::alloc::boxed::Box<
+                super::super::super::super::shared::v1::StorageRequest,
+            >,
+        ),
+        StorageReply(
+            ::buffa::alloc::boxed::Box<
+                super::super::super::super::shared::v1::StorageReply,
+            >,
+        ),
     }
     impl ::buffa::Oneof for Body {}
     impl From<super::super::super::super::shared::v1::InjectTouch> for Body {
@@ -158,6 +168,28 @@ pub mod envelope {
     impl From<super::super::super::super::shared::v1::RebootAck>
     for ::core::option::Option<Body> {
         fn from(v: super::super::super::super::shared::v1::RebootAck) -> Self {
+            Self::Some(Body::from(v))
+        }
+    }
+    impl From<super::super::super::super::shared::v1::StorageRequest> for Body {
+        fn from(v: super::super::super::super::shared::v1::StorageRequest) -> Self {
+            Self::StorageRequest(::buffa::alloc::boxed::Box::new(v))
+        }
+    }
+    impl From<super::super::super::super::shared::v1::StorageRequest>
+    for ::core::option::Option<Body> {
+        fn from(v: super::super::super::super::shared::v1::StorageRequest) -> Self {
+            Self::Some(Body::from(v))
+        }
+    }
+    impl From<super::super::super::super::shared::v1::StorageReply> for Body {
+        fn from(v: super::super::super::super::shared::v1::StorageReply) -> Self {
+            Self::StorageReply(::buffa::alloc::boxed::Box::new(v))
+        }
+    }
+    impl From<super::super::super::super::shared::v1::StorageReply>
+    for ::core::option::Option<Body> {
+        fn from(v: super::super::super::super::shared::v1::StorageReply) -> Self {
             Self::Some(Body::from(v))
         }
     }

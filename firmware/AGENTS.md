@@ -29,7 +29,7 @@ excludes `simple-debug-fw` and `embassy-debug-fw`.
 | Path | Stack | Status |
 | --- | --- | --- |
 | `simple-debug/` | blocking `esp-hal` | Member. Latch, park hazards, I2C facts, UART heartbeat. No Embassy. `--features operator` for `learn-uart` |
-| `embassy-debug/` | `esp-hal` + Embassy | Member. Panel always on. Default image is keys / glass / IMU / oriented cards / pair (advertise only on that card) / idle-until-touch Wi-Fi survey + SoftAP / looping `scene=targets` touch validation. `mic` / `radio` / `sd` / `charge` / `spi20` are opt-in and exclusive where the package `AGENTS.md` says so. `remote-debug` is opt-in insecure desk debug (last DRAW snapshot + synthetic tap mux + UART `src=`; advertises from splash); not default; packs with `pair` + `wifi`. Pair verification (phone or host BlueZ Connect): [embassy-debug/AGENTS.md](embassy-debug/AGENTS.md#bluetooth-pairing-verification-workflow). SoftAP (phone/PC join or host `nmcli`/`curl`): [embassy-debug/AGENTS.md](embassy-debug/AGENTS.md#wi-fi-survey-and-softap-verification-workflow) |
+| `embassy-debug/` | `esp-hal` + Embassy | Member. Panel always on. Default image is keys / glass / IMU / oriented cards / pair (advertise only on that card) / idle-until-touch Wi-Fi survey + SoftAP / persistent SD storage / looping `scene=targets` touch validation. `mic` / `radio` / `sd` / `charge` / `spi20` are opt-in and exclusive where the package `AGENTS.md` says so. `remote-debug` is opt-in insecure desk debug (last DRAW snapshot + synthetic tap mux + UART `src=`; advertises from splash); not default; packs with `pair` + `wifi` + `storage`. Pair verification (phone or host BlueZ Connect): [embassy-debug/AGENTS.md](embassy-debug/AGENTS.md#bluetooth-pairing-verification-workflow). SoftAP (phone/PC join or host `nmcli`/`curl`): [embassy-debug/AGENTS.md](embassy-debug/AGENTS.md#wi-fi-survey-and-softap-verification-workflow) |
 
 Envelope for every image:
 
@@ -57,6 +57,13 @@ in authoritative terminology from *The Embedded Rust Book*,
 Do not leave a protocol, rail, or UART token unexplained because the
 item is `fn` not `pub fn`. Host-tested line format stays in the
 `crates/*` twin; the Xtensa file teaches how that line is produced.
+
+`embassy-debug/src/storage.rs` teaches the shared SPI2 owner, bounded Core 0
+requests, explicit filesystem completion, and shutdown barriers. Keep its
+comments aligned with actual callbacks and yields. Core 1 formatting remains
+synchronous; software sequencing cannot establish rail voltage or a card
+controller's power-loss guarantees. `storage-test` adds confirmed destructive
+fault controls and must remain absent from normal images.
 
 ## Named constants and datasheets
 

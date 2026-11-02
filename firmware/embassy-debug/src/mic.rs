@@ -25,6 +25,8 @@ use seeed_reterminal_sticky::rails::{Enabled, MicRail, Rail};
 /// Community hold before enabling the load switch (GPIO38 can float).
 const RAIL_HOLD_MS: u32 = 150;
 
+/// DMA window bytes for PCM_WINDOW_SAMPLES signed sixteen-bit mono samples.
+/// This fixed capacity also bounds the stack conversion buffer in emit_window.
 const WINDOW_BYTES: usize = PCM_WINDOW_SAMPLES * 2;
 
 /// Drive GPIO38 low, wait, then enable. Caller keeps the rail alive.
@@ -99,12 +101,18 @@ pub async fn mic_task(
     }
 }
 
+/// Decode one DMA window into bounded stack PCM storage and report its energy.
+/// The I2S owner supplies at most WINDOW_BYTES; an odd final byte is ignored.
+/// Empty input returns immediately. Optional sample rows use fixed UART buffers
+/// and skip formatting failures; this does not drive the buzzer or access I2S.
 fn emit_window(bytes: &[u8], dump_pcm: bool) {
     let n = bytes.len() / 2;
     if n == 0 {
         return;
     }
     let mut samples = [0i16; PCM_WINDOW_SAMPLES];
+    // The DMA owner bounds bytes by WINDOW_BYTES. Convert explicitly rather
+    // than casting alignment-sensitive raw DMA memory to an i16 slice.
     for (i, chunk) in bytes.chunks_exact(2).take(n).enumerate() {
         samples[i] = i16::from_le_bytes([chunk[0], chunk[1]]);
     }
@@ -132,4 +140,5 @@ fn emit_window(bytes: &[u8], dump_pcm: bool) {
     }
 }
 
+/// Static UART prefix for the exclusive microphone diagnostic.
 const LOG: &str = "embassy-debug";

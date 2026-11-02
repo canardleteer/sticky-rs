@@ -76,5 +76,19 @@ pub mod envelope {
                 >,
             >,
         ),
+        StorageRequest(
+            ::buffa::alloc::boxed::Box<
+                super::super::super::super::super::shared::v1::__buffa::view::StorageRequestView<
+                    'a,
+                >,
+            >,
+        ),
+        StorageReply(
+            ::buffa::alloc::boxed::Box<
+                super::super::super::super::super::shared::v1::__buffa::view::StorageReplyView<
+                    'a,
+                >,
+            >,
+        ),
     }
 }

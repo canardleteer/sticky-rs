@@ -548,7 +548,7 @@ async fn refresh<SPI, DC, RST, BUSY>(
         return;
     }
 
-    match with_timeout(REFRESH_TIMEOUT, driver.wait_until_idle_async()).await {
+    match with_timeout(REFRESH_TIMEOUT, driver.wait_for_refresh_async()).await {
         Ok(Ok(())) => {
             emit(Event::Scene {
                 t_ms: now_ms(),
@@ -864,7 +864,7 @@ where
         println!("embassy-debug: epd update failed");
         return false;
     }
-    match with_timeout(REFRESH_TIMEOUT, driver.wait_until_idle_async()).await {
+    match with_timeout(REFRESH_TIMEOUT, driver.wait_for_refresh_async()).await {
         Ok(Ok(())) => {
             if sleeping {
                 emit(Event::Sleeping { t_ms: now_ms() });

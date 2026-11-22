@@ -48,7 +48,7 @@ pub mod gray {
 /// Errors from the packing helpers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PackError {
-    /// Width is not a multiple of 8, so plane rows would not be byte aligned.
+    /// The row width does not fill whole bytes in the requested format.
     WidthNotByteAligned {
         /// The offending width in pixels.
         width: usize,
@@ -333,6 +333,8 @@ pub fn mirror_x_plane(plane: &mut [u8]) {
 
 /// Rotates a packed 2bpp framebuffer by 180 degrees into `target`.
 ///
+/// The width must be a multiple of four pixels.
+///
 /// The Sticky needs this plus the controller's horizontal mirror to match
 /// glass. Rotating packed data means reversing byte order *and* reversing the
 /// four pixels inside each byte, which is exactly the step that is easy to get
@@ -343,6 +345,10 @@ pub fn rotate180_gray4(
     height: usize,
     target: &mut [u8],
 ) -> Result<(), PackError> {
+    if !width.is_multiple_of(4) {
+        return Err(PackError::WidthNotByteAligned { width });
+    }
+
     let expected = gray4_stride(width) * height;
     if source.len() != expected {
         return Err(PackError::BufferLength {
@@ -539,6 +545,21 @@ mod tests {
         assert_eq!(read_gray4(&rotated, W, W - 1, H - 1), gray::WHITE);
         assert_eq!(read_gray4(&rotated, W, W - 2, H - 1), gray::LIGHT_GRAY);
         assert_eq!(read_gray4(&rotated, W, 0, 0), gray::BLACK);
+    }
+
+    #[test]
+    fn rotate180_rejects_an_incomplete_gray4_row() {
+        assert_eq!(
+            rotate180_gray4(&[0], 5, 1, &mut [0]),
+            Err(PackError::WidthNotByteAligned { width: 5 })
+        );
+    }
+
+    #[test]
+    fn rotate180_accepts_one_byte_per_gray4_row() {
+        let mut rotated = [0; 2];
+        rotate180_gray4(&[0b00_01_10_11, 0b11_00_01_10], 4, 2, &mut rotated).unwrap();
+        assert_eq!(rotated, [0b10_01_00_11, 0b11_10_01_00]);
     }
 
     #[test]

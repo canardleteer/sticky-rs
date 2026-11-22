@@ -84,8 +84,10 @@ pub use crate::sequence::{BoosterSoftStart, GateScan, UpdateSequence};
 /// Reset pulse width from the board contract: 10 ms low, 10 ms high.
 const RESET_PULSE_MS: u32 = 10;
 
-/// How often [`Ssd1677::wait_until_idle`] samples BUSY.
+/// How often to poll while the controller is busy.
 const BUSY_POLL_MS: u32 = 10;
+/// Poll more often while waiting for the update to start.
+const BUSY_ASSERT_POLL_MS: u32 = 1;
 
 /// Errors this driver can produce.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -94,7 +96,7 @@ pub enum Error<SpiError, PinError> {
     Spi(SpiError),
     /// A GPIO operation failed.
     Pin(PinError),
-    /// BUSY stayed high past the caller's timeout.
+    /// BUSY did not reach the expected level within the timeout.
     ///
     /// Treat this as "the panel may be mid-update": do not power down the rail
     /// and do not retry blindly.
@@ -444,14 +446,19 @@ where
         self.write(Command::MasterActivation, &[])
     }
 
-    /// Starts an update and blocks until BUSY clears.
+    /// Starts an update and waits for BUSY to assert and then clear.
+    ///
+    /// Both transitions share `timeout_ms`. Use this for display updates
+    /// that produce a BUSY pulse.
     pub fn refresh(
         &mut self,
         sequence: UpdateSequence,
         timeout_ms: u32,
     ) -> DriverResult<(), SPI, DC> {
         self.start_update(sequence)?;
-        self.wait_until_idle(timeout_ms)
+        let mut remaining_ms = timeout_ms;
+        self.wait_for_busy_level(true, BUSY_ASSERT_POLL_MS, &mut remaining_ms)?;
+        self.wait_for_busy_level(false, BUSY_POLL_MS, &mut remaining_ms)
     }
 
     /// Returns whether BUSY is asserted (high means busy).
@@ -463,14 +470,23 @@ where
     ///
     /// Refreshes on this panel take seconds, so pick a timeout generously; a
     /// [`Error::BusyTimeout`] means the panel may still be mid-update.
-    pub fn wait_until_idle(&mut self, timeout_ms: u32) -> DriverResult<(), SPI, DC> {
-        let mut waited = 0;
-        while self.is_busy()? {
-            if waited >= timeout_ms {
+    pub fn wait_until_idle(&mut self, mut timeout_ms: u32) -> DriverResult<(), SPI, DC> {
+        self.wait_for_busy_level(false, BUSY_POLL_MS, &mut timeout_ms)
+    }
+
+    fn wait_for_busy_level(
+        &mut self,
+        busy: bool,
+        poll_ms: u32,
+        remaining_ms: &mut u32,
+    ) -> DriverResult<(), SPI, DC> {
+        while self.is_busy()? != busy {
+            let delay_ms = poll_ms.min(*remaining_ms);
+            if delay_ms == 0 {
                 return Err(Error::BusyTimeout);
             }
-            self.delay.delay_ms(BUSY_POLL_MS);
-            waited += BUSY_POLL_MS;
+            self.delay.delay_ms(delay_ms);
+            *remaining_ms -= delay_ms;
         }
         Ok(())
     }
@@ -577,11 +593,20 @@ where
     DC: OutputPin,
     BUSY: embedded_hal_async::digital::Wait<Error = DC::Error>,
 {
-    /// Waits for BUSY to fall using an interrupt rather than polling.
+    /// Waits until BUSY is low. If it is already low, returns immediately.
     ///
     /// Preferable on battery: a full refresh is seconds of otherwise idle CPU.
     pub async fn wait_until_idle_async(&mut self) -> Result<(), Error<SPI::Error, DC::Error>> {
         self.busy.wait_for_low().await.map_err(Error::Pin)
+    }
+
+    /// Waits for BUSY to go high and then low after a display update starts.
+    ///
+    /// Call immediately after [`Ssd1677::start_update`] and apply a timeout
+    /// around the whole wait. The pulse must still be pending or in progress.
+    pub async fn wait_for_refresh_async(&mut self) -> Result<(), Error<SPI::Error, DC::Error>> {
+        self.busy.wait_for_high().await.map_err(Error::Pin)?;
+        self.wait_until_idle_async().await
     }
 }
 
@@ -592,6 +617,8 @@ mod tests {
         Mock as PinMock, State as PinState, Transaction as PinTransaction,
     };
     use embedded_hal_mock::eh1::spi::{Mock as SpiMock, Transaction as SpiTransaction};
+    use embedded_hal_mock::eh1::MockError;
+    use std::io::ErrorKind;
     use std::vec;
     use std::vec::Vec;
 
@@ -804,7 +831,7 @@ mod tests {
     }
 
     #[test]
-    fn refresh_starts_the_update_then_waits_for_busy_to_fall() {
+    fn refresh_waits_for_busy_to_assert_and_clear() {
         let mut expected = Vec::new();
         expected.extend(command_txns(
             Command::DisplayUpdateControl2.opcode(),
@@ -818,8 +845,8 @@ mod tests {
             PinTransaction::set(PinState::High),
             PinTransaction::set(PinState::Low),
         ]);
-        // Busy for two polls, then idle.
         let busy = PinMock::new(&[
+            PinTransaction::get(PinState::Low),
             PinTransaction::get(PinState::High),
             PinTransaction::get(PinState::High),
             PinTransaction::get(PinState::Low),
@@ -843,6 +870,83 @@ mod tests {
         dc.done();
         rst.done();
         busy.done();
+    }
+
+    #[test]
+    fn busy_wait_uses_one_timeout_for_both_levels() {
+        let busy = PinMock::new(&[
+            PinTransaction::get(PinState::Low),
+            PinTransaction::get(PinState::High),
+            PinTransaction::get(PinState::High),
+            PinTransaction::get(PinState::High),
+        ]);
+        let mut driver = Ssd1677::<SpiMock<u8>, PinMock, PinMock, _, _, Active> {
+            spi: SpiMock::new(&[]),
+            dc: PinMock::new(&[]),
+            rst: PinMock::new(&[]),
+            busy,
+            delay: NoopDelay::new(),
+            _state: PhantomData,
+        };
+
+        let mut remaining_ms = 2;
+        assert_eq!(
+            driver.wait_for_busy_level(true, 1, &mut remaining_ms),
+            Ok(())
+        );
+        assert_eq!(remaining_ms, 1);
+        assert_eq!(
+            driver.wait_for_busy_level(false, 10, &mut remaining_ms),
+            Err(Error::BusyTimeout)
+        );
+        assert_eq!(remaining_ms, 0);
+        driver.spi.done();
+        driver.dc.done();
+        driver.rst.done();
+        driver.busy.done();
+    }
+
+    #[test]
+    fn busy_assertion_can_succeed_immediately_or_time_out() {
+        for (state, expected) in [
+            (PinState::High, Ok(())),
+            (PinState::Low, Err(Error::BusyTimeout)),
+        ] {
+            let mut driver = Ssd1677::<SpiMock<u8>, PinMock, PinMock, _, _, Active> {
+                spi: SpiMock::new(&[]),
+                dc: PinMock::new(&[]),
+                rst: PinMock::new(&[]),
+                busy: PinMock::new(&[PinTransaction::get(state)]),
+                delay: NoopDelay::new(),
+                _state: PhantomData,
+            };
+            assert_eq!(driver.wait_for_busy_level(true, 1, &mut 0), expected);
+            driver.spi.done();
+            driver.dc.done();
+            driver.rst.done();
+            driver.busy.done();
+        }
+    }
+
+    #[test]
+    fn busy_wait_reports_pin_errors() {
+        let error = MockError::Io(ErrorKind::NotConnected);
+        let mut driver = Ssd1677::<SpiMock<u8>, PinMock, PinMock, _, _, Active> {
+            spi: SpiMock::new(&[]),
+            dc: PinMock::new(&[]),
+            rst: PinMock::new(&[]),
+            busy: PinMock::new(&[PinTransaction::get(PinState::Low).with_error(error.clone())]),
+            delay: NoopDelay::new(),
+            _state: PhantomData,
+        };
+        assert_eq!(
+            driver.wait_for_busy_level(true, 1, &mut 10),
+            Err(Error::Pin(error))
+        );
+        driver.spi.done();
+        driver.dc.done();
+        driver.rst.done();
+        driver.busy.done();
     }
 
     #[test]
@@ -871,10 +975,11 @@ mod tests {
 
     #[cfg(feature = "async")]
     #[test]
-    fn the_async_wait_blocks_on_a_busy_edge_rather_than_polling() {
-        // Executed, not just type-checked: this is the path battery-powered
-        // callers are meant to prefer over the polling loop.
-        let busy = PinMock::new(&[PinTransaction::wait_for_state(PinState::Low)]);
+    fn the_async_refresh_wait_requires_high_before_low() {
+        let busy = PinMock::new(&[
+            PinTransaction::wait_for_state(PinState::High),
+            PinTransaction::wait_for_state(PinState::Low),
+        ]);
 
         let mut driver = Ssd1677::<SpiMock<u8>, PinMock, PinMock, _, _, Active> {
             spi: SpiMock::new(&[]),
@@ -885,7 +990,7 @@ mod tests {
             _state: PhantomData,
         };
 
-        embassy_futures::block_on(driver.wait_until_idle_async()).unwrap();
+        embassy_futures::block_on(driver.wait_for_refresh_async()).unwrap();
 
         let (mut spi, mut dc, mut rst, mut busy, _) = driver.release();
         spi.done();

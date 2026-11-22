@@ -106,6 +106,18 @@ pub enum Error<SpiError, PinError> {
         /// Maximum from `8.3` / `8.4` (`RAM_X_MAX` / `RAM_Y_MAX`).
         max: u16,
     },
+    /// The window width cannot be packed into whole bytes in each plane.
+    FrameWidthNotByteAligned {
+        /// Width of the RAM window in pixels.
+        width: u16,
+    },
+    /// A plane length did not match the RAM window.
+    FramePlaneLength {
+        /// Bytes required by the window.
+        expected: usize,
+        /// Bytes supplied for the plane.
+        actual: usize,
+    },
 }
 
 /// A failed transition into deep sleep, returning the still-active driver so
@@ -416,13 +428,34 @@ where
         self.write(Command::WriteRamRed, data)
     }
 
-    /// Writes both planes of a four-gray frame, resetting the cursor first.
+    /// Programs the RAM window and writes both planes from its starting address.
+    ///
+    /// Each row in a plane must contain whole bytes. Both planes must fill
+    /// the entire window. Seeed uses the full panel window for Sticky four-gray
+    /// refreshes. The RAM window only controls where the bytes are written.
     pub fn write_gray4_frame(
         &mut self,
         window: &Window,
         black_white: &[u8],
         second: &[u8],
     ) -> DriverResult<(), SPI, DC> {
+        window.validate()?;
+        let width = window.x_start.abs_diff(window.x_end) + 1;
+        let height = window.y_start.abs_diff(window.y_end) + 1;
+        if !width.is_multiple_of(8) {
+            return Err(Error::FrameWidthNotByteAligned { width });
+        }
+        let expected = usize::from(width / 8) * usize::from(height);
+        for plane in [black_white, second] {
+            if plane.len() != expected {
+                return Err(Error::FramePlaneLength {
+                    expected,
+                    actual: plane.len(),
+                });
+            }
+        }
+
+        self.set_window(window)?;
         self.set_cursor(window.x_start, window.y_start)?;
         self.write_black_white_plane(black_white)?;
         self.set_cursor(window.x_start, window.y_start)?;
@@ -921,20 +954,27 @@ mod tests {
     }
 
     #[test]
-    fn gray4_frame_writes_both_planes_from_the_window_origin() {
+    fn gray4_frame_programs_a_mirrored_window_and_resets_the_cursor_for_each_plane() {
         let bw = [0xaa, 0xbb];
         let second = [0xcc, 0xdd];
+        let window = Window {
+            x_start: 15,
+            x_end: 8,
+            y_start: 32,
+            y_end: 33,
+        };
 
         let mut expected = Vec::new();
-        expected.extend(command_txns(0x4e, &[0x00, 0x00]));
-        expected.extend(command_txns(0x4f, &[0x00, 0x00]));
-        expected.extend(command_txns(0x24, &bw));
-        expected.extend(command_txns(0x4e, &[0x00, 0x00]));
-        expected.extend(command_txns(0x4f, &[0x00, 0x00]));
-        expected.extend(command_txns(0x26, &second));
+        expected.extend(command_txns(0x44, &[15, 0, 8, 0]));
+        expected.extend(command_txns(0x45, &[32, 0, 33, 0]));
+        for (command, plane) in [(0x24, bw), (0x26, second)] {
+            expected.extend(command_txns(0x4e, &[15, 0]));
+            expected.extend(command_txns(0x4f, &[32, 0]));
+            expected.extend(command_txns(command, &plane));
+        }
 
         let spi = SpiMock::new(&expected);
-        let dc = PinMock::new(&dc_pairs(6));
+        let dc = PinMock::new(&dc_pairs(8));
 
         let mut driver = Ssd1677::<_, _, PinMock, PinMock, _, Active> {
             spi,
@@ -945,15 +985,67 @@ mod tests {
             _state: PhantomData,
         };
 
-        driver
-            .write_gray4_frame(&STICKY_WINDOW, &bw, &second)
-            .unwrap();
+        driver.write_gray4_frame(&window, &bw, &second).unwrap();
 
         let (mut spi, mut dc, mut rst, mut busy, _) = driver.release();
         spi.done();
         dc.done();
         rst.done();
         busy.done();
+    }
+
+    #[test]
+    fn gray4_frame_rejects_invalid_geometry_and_lengths_before_spi() {
+        let mut driver = Ssd1677::<SpiMock<u8>, PinMock, PinMock, PinMock, _, Active> {
+            spi: SpiMock::new(&[]),
+            dc: PinMock::new(&[]),
+            rst: PinMock::new(&[]),
+            busy: PinMock::new(&[]),
+            delay: NoopDelay::new(),
+            _state: PhantomData,
+        };
+        let bad_address = Window {
+            x_end: command::RAM_X_MAX + 1,
+            ..STICKY_WINDOW
+        };
+        assert_eq!(
+            driver.write_gray4_frame(&bad_address, &[], &[]),
+            Err(Error::AddressOutOfRange {
+                value: command::RAM_X_MAX + 1,
+                max: command::RAM_X_MAX
+            })
+        );
+        let bad_width = Window {
+            x_end: 6,
+            ..STICKY_WINDOW
+        };
+        assert_eq!(
+            driver.write_gray4_frame(&bad_width, &[], &[]),
+            Err(Error::FrameWidthNotByteAligned { width: 7 })
+        );
+        assert_eq!(
+            driver.write_gray4_frame(&STICKY_WINDOW, &[0; 2], &[0; 2]),
+            Err(Error::FramePlaneLength {
+                expected: 48_000,
+                actual: 2
+            })
+        );
+        let small_window = Window {
+            x_end: 7,
+            y_end: 1,
+            ..STICKY_WINDOW
+        };
+        assert_eq!(
+            driver.write_gray4_frame(&small_window, &[0; 2], &[0; 3]),
+            Err(Error::FramePlaneLength {
+                expected: 2,
+                actual: 3
+            })
+        );
+        driver.spi.done();
+        driver.dc.done();
+        driver.rst.done();
+        driver.busy.done();
     }
 
     #[test]
